@@ -1,0 +1,221 @@
+/* Markdown 内容区域样式 */
+
+.markdown-body {
+  color: var(--text);
+  word-wrap: break-word;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  color: var(--heading);
+  margin: 24px 0 16px;
+  font-weight: 600;
+  scroll-margin-top: 20px;
+}
+
+.markdown-body h1 {
+  font-size: 2em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3em;
+}
+
+.markdown-body h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3em;
+}
+
+.markdown-body h3 { font-size: 1.25em; }
+.markdown-body h4 { font-size: 1em; }
+
+.markdown-body a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+.markdown-body pre {
+  background: var(--code-bg);
+  border-radius: 6px;
+  padding: 16px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  margin: 16px 0;
+  position: relative;
+}
+
+.markdown-body pre .copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 8px;
+  background: var(--th-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.markdown-body pre:hover .copy-btn {
+  opacity: 1;
+}
+
+.markdown-body pre .copy-btn:hover {
+  background: var(--link);
+  border-color: var(--link);
+  color: #fff;
+}
+
+.markdown-body pre .copy-btn.copied {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+
+.markdown-body code {
+  font-family: 'SFMono-Regular', 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 85%;
+}
+
+.markdown-body :not(pre) > code {
+  background: var(--code-bg);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 16px 0;
+  overflow-x: auto;
+  display: block;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: var(--th-bg);
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.markdown-body th:hover {
+  background: var(--hover);
+}
+
+.markdown-body th.sort-asc::after { content: ' ↑'; }
+.markdown-body th.sort-desc::after { content: ' ↓'; }
+
+.markdown-body tr:hover {
+  background: var(--hover);
+}
+
+.markdown-body blockquote {
+  margin: 16px 0;
+  padding: 0 1em;
+  color: var(--text-muted);
+  border-left: 4px solid var(--border);
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 2em;
+  margin: 16px 0;
+}
+
+.markdown-body li + li {
+  margin-top: 0.25em;
+}
+
+.markdown-body hr {
+  border: 0;
+  height: 1px;
+  background: var(--border);
+  margin: 24px 0;
+}
+
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 16px 0;
+}
+
+.markdown-body p {
+  margin: 16px 0;
+}
+
+.markdown-body .mermaid {
+  background: #fff;
+  border-radius: 6px;
+  padding: 16px;
+  margin: 16px 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.markdown-body .katex-display {
+  overflow-x: auto;
+  padding: 8px 0;
+  margin: 16px 0;
+}
+
+/* 任务列表 */
+.markdown-body .task-list-item {
+  list-style: none;
+  margin-left: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+.markdown-body .task-text {
+  cursor: pointer;
+}
+
+.markdown-body input[type="checkbox"] {
+  margin-right: 6px;
+  vertical-align: middle;
+  cursor: pointer;
+  accent-color: var(--link);
+  width: 15px;
+  height: 15px;
+}
+
+.markdown-body .task-checkbox {
+  cursor: pointer;
+}
+
+/* 已完成任务：仅对本层 .task-text 加删除线，不影响子列表 */
+/* 子级 li（无子列表）：<li><input/><span class="task-text">  */
+.markdown-body .task-list-item:has(> .task-checkbox:checked) > .task-text,
+/* 父级 li（有子列表）：<li><p><input/><span class="task-text"></p><ul> */
+.markdown-body .task-list-item:has(> p > .task-checkbox:checked) > p > .task-text {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-muted);
+}
+
+/* 子列表中未勾选的项不继承父级删除线——用 :not(:checked) 精确限定 */
+.markdown-body .task-list-item:has(> .task-checkbox:not(:checked)) > .task-text,
+.markdown-body .task-list-item:has(> p > .task-checkbox:not(:checked)) > p > .task-text {
+  text-decoration: none !important;
+  color: var(--text) !important;
+}

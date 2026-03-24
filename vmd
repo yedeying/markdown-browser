@@ -1,0 +1,45 @@
+#!/bin/bash
+set -e
+
+# 解析脚本所在目录（支持符号链接）
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+CLI_JS="$SCRIPT_DIR/dist/cli.js"
+
+# 颜色
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# 查找 bun（支持 ~/.bun/bin/bun 路径）
+BUN_BIN=""
+if command -v bun &>/dev/null; then
+    BUN_BIN="bun"
+elif [[ -x "$HOME/.bun/bin/bun" ]]; then
+    BUN_BIN="$HOME/.bun/bin/bun"
+else
+    echo -e "${RED}错误: 未找到 bun 运行时${NC}"
+    echo -e "${YELLOW}请先安装 bun: https://bun.sh${NC}"
+    echo -e "  curl -fsSL https://bun.sh/install | bash"
+    exit 1
+fi
+
+# 如果构建产物不存在，自动构建
+if [[ ! -f "$CLI_JS" ]]; then
+    echo -e "${YELLOW}首次使用，正在构建 vmd...${NC}"
+    cd "$SCRIPT_DIR"
+    if ! "$BUN_BIN" x vite build && "$BUN_BIN" build src/cli.ts --outdir dist --target bun; then
+        echo -e "${RED}错误: 构建失败，请检查错误信息${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ 构建完成${NC}"
+fi
+
+exec "$BUN_BIN" "$CLI_JS" "$@"

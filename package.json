@@ -1,0 +1,37 @@
+{
+  "name": "vmd",
+  "version": "2.0.0",
+  "description": "Markdown preview tool with directory browser and live editing",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:client": "vite build",
+    "build:server": "bun build src/cli.ts --outdir dist --target bun",
+    "build": "vite build && bun build src/cli.ts --outdir dist --target bun",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.6.0",
+    "@codemirror/lang-markdown": "^6.3.0",
+    "@codemirror/language": "^6.10.0",
+    "@codemirror/legacy-modes": "^6.5.2",
+    "@codemirror/state": "^6.4.0",
+    "@codemirror/theme-one-dark": "^6.1.0",
+    "@codemirror/view": "^6.34.0",
+    "highlight.js": "^11.10.0",
+    "hono": "^4.4.0",
+    "katex": "^0.16.11",
+    "marked": "^12.0.0",
+    "marked-highlight": "^2.1.0",
+    "mermaid": "^11.3.0",
+    "preact": "^10.24.0",
+    "prettier": "^3.3.3"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.8.0",
+    "@types/node": "^22.0.0",
+    "playwright": "^1.58.2",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  }
+}

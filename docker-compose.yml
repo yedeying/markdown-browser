@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  vmd:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    image: vmd:latest
+    container_name: vmd-server
+    ports:
+      - "8193:8888"
+    volumes:
+      # 挂载本地 markdown 目录（支持编辑，去掉 :ro 即可写）
+      - ..:/markdown
+    environment:
+      DOCKER_CONTAINER: "true"
+      # 可选：设置时区
+      TZ: Asia/Shanghai
+    # 资源限制（可选）
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '1'
+          memory: 256M
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:8888').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # 重启策略
+    restart: unless-stopped
+    # 容器日志
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,57 @@
+/** 前端文件管理 API 封装 */
+
+type FsResult<T = Record<string, unknown>> =
+  | ({ ok: true } & T)
+  | { ok: false; error: string }
+
+async function post<T = Record<string, unknown>>(url: string, body: unknown): Promise<FsResult<T>> {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    return await res.json() as FsResult<T>
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+}
+
+async function del<T = Record<string, unknown>>(url: string, body: unknown): Promise<FsResult<T>> {
+  try {
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    return await res.json() as FsResult<T>
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+}
+
+export const fsApi = {
+  /** 删除文件或文件夹（支持批量） */
+  delete: (paths: string[]) =>
+    del<{ deleted: number }>('/api/fs/delete', { paths }),
+
+  /** 重命名（newName 为新的文件名，不含路径） */
+  rename: (path: string, newName: string) =>
+    post<{ newPath: string }>('/api/fs/rename', { path, newName }),
+
+  /** 移动到目标目录 */
+  move: (paths: string[], dest: string) =>
+    post<{ moved: number }>('/api/fs/move', { paths, dest }),
+
+  /** 复制到目标目录（重名自动追加后缀） */
+  copy: (paths: string[], dest: string) =>
+    post<{ copied: number }>('/api/fs/copy', { paths, dest }),
+
+  /** 创建文件夹 */
+  mkdir: (path: string) =>
+    post('/api/fs/mkdir', { path }),
+
+  /** 创建空文件 */
+  touch: (path: string) =>
+    post('/api/fs/touch', { path }),
+}
