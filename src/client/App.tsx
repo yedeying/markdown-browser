@@ -8,6 +8,7 @@ import { useSSE } from './hooks/useSSE.js'
 import Sidebar from './components/Sidebar.js'
 import ContentArea from './components/ContentArea.js'
 import SingleFileView from './components/SingleFileView.js'
+import ShareFileView from './components/ShareFileView.js'
 import ThemeToggle from './components/ThemeToggle.js'
 import type { FileNode, WatchEvent } from '../types.js'
 import type { ClipboardState } from './components/FolderView.js'
@@ -43,6 +44,11 @@ function makeRootNode(tree: FileNode[], dirName: string): FileNode {
 const App: FunctionalComponent = () => {
   const { theme, toggle } = useTheme()
   const mode = window.__VMD_MODE__ || 'dir'
+
+  // 单文件分享模式：直接渲染文件预览，无侧边栏
+  if (window.__VMD_SHARE_TOKEN__ && window.__VMD_SHARE_TYPE__ === 'file') {
+    return <ShareFileView />
+  }
 
   if (mode === 'single') {
     return (
