@@ -229,6 +229,21 @@ const ContentArea: FunctionalComponent<Props> = ({
     return () => window.removeEventListener('keydown', handler)
   }, [unsaved, viewMode, handleSave])
 
+  // 移动端更多菜单
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
+  // 点击外部关闭 more 菜单
+  useEffect(() => {
+    if (!moreMenuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [moreMenuOpen])
+
   // 回到顶部
   const [showBackTop, setShowBackTop] = useState(false)
   useEffect(() => {
@@ -426,50 +441,77 @@ const ContentArea: FunctionalComponent<Props> = ({
           {/* 文件视图下的操作按钮（文件夹视图时隐藏） */}
           {!isFolderView && (
             <>
-              {/* 全选：只在编辑器可见时（edit 或 code-only 模式）显示 */}
-              {filePath && (viewMode === 'edit' || viewMode === 'code-only') && (
-                <button class="btn" onClick={handleSelectAll} title="全选文件内容">全选</button>
-              )}
-              {/* 复制：有文件内容时始终显示 */}
-              {filePath && (editContent || content) && (
-                <button class="btn" onClick={handleCopyAll} title="复制全文到剪贴板">复制</button>
-              )}
-              {/* Markdown 文件：显示预览/编辑切换 */}
-              {isMarkdown && filePath && (
-                <>
-                  {viewMode === 'edit' && unsaved && onSave && (
-                    <button
-                      class="btn unsaved"
-                      onClick={handleSave}
-                      disabled={saving}
-                    >
-                      {saving ? '保存中...' : '保存'}
-                    </button>
-                  )}
-                  <button
-                    class={`btn ${viewMode === 'preview' ? 'active' : ''}`}
-                    onClick={() => setViewMode('preview')}
-                  >
-                    预览
-                  </button>
-                  <button
-                    class={`btn ${viewMode === 'edit' ? 'active' : ''}`}
-                    onClick={() => setViewMode('edit')}
-                    disabled={!content}
-                  >
-                    编辑
-                  </button>
-                </>
-              )}
-              {/* 代码/文本文件：只显示保存按钮 */}
-              {!isMarkdown && isEditable && filePath && onSave && unsaved && (
-                <button
-                  class="btn unsaved"
-                  onClick={handleSave}
-                  disabled={saving}
-                >
+              {/* 保存按钮：桌面/移动端均显示（有未保存修改时） */}
+              {isMarkdown && filePath && viewMode === 'edit' && unsaved && onSave && (
+                <button class="btn unsaved" onClick={handleSave} disabled={saving}>
                   {saving ? '保存中...' : '保存'}
                 </button>
+              )}
+              {!isMarkdown && isEditable && filePath && onSave && unsaved && (
+                <button class="btn unsaved" onClick={handleSave} disabled={saving}>
+                  {saving ? '保存中...' : '保存'}
+                </button>
+              )}
+
+              {/* 桌面端：直接显示所有操作按钮 */}
+              <div class="desktop-btn-group">
+                {filePath && (viewMode === 'edit' || viewMode === 'code-only') && (
+                  <button class="btn" onClick={handleSelectAll} title="全选文件内容">全选</button>
+                )}
+                {filePath && (editContent || content) && (
+                  <button class="btn" onClick={handleCopyAll} title="复制全文到剪贴板">复制</button>
+                )}
+                {isMarkdown && filePath && (
+                  <>
+                    <button
+                      class={`btn ${viewMode === 'preview' ? 'active' : ''}`}
+                      onClick={() => setViewMode('preview')}
+                    >预览</button>
+                    <button
+                      class={`btn ${viewMode === 'edit' ? 'active' : ''}`}
+                      onClick={() => setViewMode('edit')}
+                      disabled={!content}
+                    >编辑</button>
+                  </>
+                )}
+              </div>
+
+              {/* 移动端：更多操作按钮 + dropdown */}
+              {filePath && (
+                <div ref={moreMenuRef} style={{ position: 'relative' }}>
+                  <button
+                    class="header-more-btn"
+                    onClick={() => setMoreMenuOpen(o => !o)}
+                    aria-label="更多操作"
+                  >···</button>
+                  {moreMenuOpen && (
+                    <div class="header-dropdown">
+                      {(viewMode === 'edit' || viewMode === 'code-only') && (
+                        <button class="header-dropdown-item" onClick={() => { handleSelectAll(); setMoreMenuOpen(false) }}>
+                          全选
+                        </button>
+                      )}
+                      {(editContent || content) && (
+                        <button class="header-dropdown-item" onClick={() => { handleCopyAll(); setMoreMenuOpen(false) }}>
+                          复制全文
+                        </button>
+                      )}
+                      {isMarkdown && (
+                        <>
+                          <button
+                            class={`header-dropdown-item${viewMode === 'preview' ? ' active' : ''}`}
+                            onClick={() => { setViewMode('preview'); setMoreMenuOpen(false) }}
+                          >预览模式</button>
+                          <button
+                            class={`header-dropdown-item${viewMode === 'edit' ? ' active' : ''}`}
+                            onClick={() => { setViewMode('edit'); setMoreMenuOpen(false) }}
+                            disabled={!content}
+                          >编辑模式</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </>
           )}

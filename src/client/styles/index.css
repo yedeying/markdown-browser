@@ -1099,3 +1099,70 @@ body {
   flex-shrink: 1;
   min-width: 0;
 }
+
+/* ================================
+   移动端 header 更多菜单
+   ================================ */
+
+/* 桌面端正常显示，移动端隐藏 */
+.desktop-btn-group { display: contents; }
+
+/* 移动端"更多"按钮，桌面端隐藏 */
+.header-more-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+  font-weight: bold;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  border-radius: 6px;
+  flex-shrink: 0;
+  letter-spacing: -1px;
+}
+.header-more-btn:hover { background: var(--hover); }
+
+/* dropdown 浮层 */
+.header-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 8px;
+  z-index: 1000;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 140px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.header-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+}
+.header-dropdown-item:hover { background: var(--hover); }
+.header-dropdown-item.active { color: var(--active-text); background: var(--active-bg); }
+.header-dropdown-item:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (max-width: 768px) {
+  /* 桌面按钮组在移动端隐藏 */
+  .desktop-btn-group { display: none; }
+  /* 更多按钮在移动端显示 */
+  .header-more-btn { display: flex; }
+  /* header-actions 保持相对定位以便 dropdown 定位 */
+  .header-actions { position: relative; }
+}
