@@ -87,6 +87,9 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
 
   app.options('*', (c) => c.text('', 204))
 
+  // 分享页面路由必须在认证中间件之前注册（无需登录即可访问）
+  createSharePageRoutes(app, basePath, distPath, shareStore)
+
   // 认证路由 + 中间件（在业务路由之前）
   if (authConfig) {
     createAuthRoutes(app, authConfig)
