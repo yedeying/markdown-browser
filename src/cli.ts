@@ -13,8 +13,9 @@ const HELP = `
   如果参数是目录:  启动文件浏览器（支持全文搜索 + 编辑保存）
 
 选项:
-  -h, --help        显示帮助信息
-  -p, --port <n>    指定端口号（默认 8888）
+  -h, --help              显示帮助信息
+  -p, --port <n>          指定端口号（默认 8888）
+  -P, --password <pw>     设置访问密码（也可用 VMD_PASSWORD 环境变量）
 
 示例:
   vmd README.md
@@ -22,7 +23,7 @@ const HELP = `
   vmd . --port 9000
 `
 
-function parseArgs(argv: string[]): { path: string; port: number } | null {
+function parseArgs(argv: string[]): { path: string; port: number; password?: string } | null {
   const args = argv.slice(2)
 
   if (args.length === 0 || args.includes('-h') || args.includes('--help')) {
@@ -32,14 +33,29 @@ function parseArgs(argv: string[]): { path: string; port: number } | null {
 
   let port = 8888
   let pathArg = ''
+  // 优先读取环境变量，命令行参数可覆盖
+  let password: string | undefined = process.env.VMD_PASSWORD !== undefined
+    ? process.env.VMD_PASSWORD
+    : undefined
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '-p' || args[i] === '--port') {
       port = parseInt(args[i + 1] ?? '8888')
       i++
+    } else if (args[i] === '-P' || args[i] === '--password') {
+      password = args[i + 1] ?? ''
+      i++
     } else {
       pathArg = args[i]
     }
+  }
+
+  // 设置了密码参数但值为空 → 报错
+  if (password !== undefined && password.trim() === '') {
+    console.error('\x1b[31m错误: 密码不能为空，请指定一个有效密码\x1b[0m')
+    console.error('\x1b[33m  示例: vmd ~/docs --password mypassword\x1b[0m')
+    console.error('\x1b[33m  或者: VMD_PASSWORD=mypassword vmd ~/docs\x1b[0m')
+    process.exit(1)
   }
 
   if (!pathArg) {
@@ -47,14 +63,14 @@ function parseArgs(argv: string[]): { path: string; port: number } | null {
     process.exit(1)
   }
 
-  return { path: pathArg, port }
+  return { path: pathArg, port, password }
 }
 
 async function main() {
   const parsed = parseArgs(process.argv)
   if (!parsed) return
 
-  const { path: inputPath, port } = parsed
+  const { path: inputPath, port, password } = parsed
   const absPath = resolve(inputPath)
 
   if (!existsSync(absPath)) {
@@ -78,6 +94,7 @@ async function main() {
       basePath: absPath,
       port,
       distPath,
+      password,
     })
   } else if (stat.isFile()) {
     const ext = absPath.toLowerCase()
@@ -91,6 +108,7 @@ async function main() {
       basePath: absPath,
       port,
       distPath,
+      password,
     })
   } else {
     console.error(`\x1b[31m错误: '${inputPath}' 不是有效的文件或目录\x1b[0m`)

@@ -1,6 +1,7 @@
-import type { ServerConfig } from '../types.js'
+import type { ServerConfig, AuthConfig } from '../types.js'
 import { createDirRouter } from './routes/dir.js'
 import { createSingleRouter } from './routes/single.js'
+import { generateSigningKey } from './auth.js'
 import { readFileSync, writeFileSync } from 'fs'
 import { join, basename } from 'path'
 
@@ -67,12 +68,22 @@ export async function startServer(config: ServerConfig) {
   // 注入模式变量到 index.html
   patchIndexHtml(config.distPath, config)
 
+  // 认证配置（password 存在时启用）
+  let authConfig: AuthConfig | null = null
+  if (config.password) {
+    authConfig = {
+      password: config.password,
+      signingKey: generateSigningKey(),
+      maxAge: config.sessionMaxAge ?? 7 * 24 * 3600,
+    }
+  }
+
   let router: ReturnType<typeof createDirRouter> | ReturnType<typeof createSingleRouter>
 
   if (config.mode === 'dir') {
-    router = createDirRouter(config.basePath, config.distPath)
+    router = createDirRouter(config.basePath, config.distPath, authConfig)
   } else {
-    router = createSingleRouter(config.basePath, config.distPath)
+    router = createSingleRouter(config.basePath, config.distPath, authConfig)
   }
 
   const server = Bun.serve({
@@ -89,6 +100,9 @@ export async function startServer(config: ServerConfig) {
     console.log(`\x1b[0m  目录: \x1b[33m${config.basePath}\x1b[0m`)
   } else {
     console.log(`\x1b[0m  文件: \x1b[33m${config.basePath}\x1b[0m`)
+  }
+  if (authConfig) {
+    console.log(`\x1b[32m  认证: 已启用（密码保护）\x1b[0m`)
   }
   console.log(`\x1b[33m  提示: 按 Ctrl+C 停止服务器\x1b[0m`)
   console.log(`\x1b[36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`)

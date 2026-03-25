@@ -4,9 +4,20 @@ type FsResult<T = Record<string, unknown>> =
   | ({ ok: true } & T)
   | { ok: false; error: string }
 
+/** fetch 封装：遇到 401 自动跳转登录页 */
+export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, init)
+  if (res.status === 401) {
+    window.location.href = `/login?returnTo=${encodeURIComponent(window.location.href)}`
+    // 返回一个永不 resolve 的 Promise，避免后续代码继续执行
+    return new Promise(() => {})
+  }
+  return res
+}
+
 async function post<T = Record<string, unknown>>(url: string, body: unknown): Promise<FsResult<T>> {
   try {
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -19,7 +30,7 @@ async function post<T = Record<string, unknown>>(url: string, body: unknown): Pr
 
 async function del<T = Record<string, unknown>>(url: string, body: unknown): Promise<FsResult<T>> {
   try {
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

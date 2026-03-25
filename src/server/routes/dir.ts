@@ -3,8 +3,9 @@ import { stream } from 'hono/streaming'
 import { readdirSync, statSync, readFileSync, writeFileSync, realpathSync } from 'fs'
 import { promises as fsp } from 'node:fs'
 import { join, relative, basename, extname, dirname, resolve, sep } from 'path'
-import type { FileNode, SearchResult } from '../../types.js'
+import type { FileNode, SearchResult, AuthConfig } from '../../types.js'
 import { createDirWatcher } from '../watcher.js'
+import { createAuthMiddleware, createAuthRoutes } from '../auth.js'
 
 const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.DS_Store'])
 
@@ -70,7 +71,7 @@ function buildTree(dir: string, base: string): FileNode[] {
   return [...folders, ...files]
 }
 
-export function createDirRouter(basePath: string, distPath: string) {
+export function createDirRouter(basePath: string, distPath: string, authConfig: AuthConfig | null = null) {
   const app = new Hono()
   const watcher = createDirWatcher(basePath)
 
@@ -78,11 +79,17 @@ export function createDirRouter(basePath: string, distPath: string) {
   app.use('*', async (c, next) => {
     await next()
     c.header('Access-Control-Allow-Origin', '*')
-    c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    c.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
     c.header('Access-Control-Allow-Headers', 'Content-Type')
   })
 
   app.options('*', (c) => c.text('', 204))
+
+  // 认证路由 + 中间件（在业务路由之前）
+  if (authConfig) {
+    createAuthRoutes(app, authConfig)
+    app.use('*', createAuthMiddleware(authConfig))
+  }
 
   // GET /api/files - 递归文件树
   app.get('/api/files', (c) => {

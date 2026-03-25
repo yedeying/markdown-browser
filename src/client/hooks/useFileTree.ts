@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks'
 import type { FileNode } from '../../types.js'
+import { apiFetch } from '../utils/fsApi.js'
 
 export function useFileTree() {
   const [tree, setTree] = useState<FileNode[]>([])
@@ -9,7 +10,7 @@ export function useFileTree() {
   const refresh = async () => {
     try {
       setLoading(true)
-      const res = await fetch('/api/files')
+      const res = await apiFetch('/api/files')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       setTree(data)

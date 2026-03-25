@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
 import type { SearchResult, FileNode } from '../../types.js'
+import { apiFetch } from '../utils/fsApi.js'
 
 export type SearchType = 'name' | 'content'
 
@@ -41,7 +42,7 @@ export function useSearch(tree: FileNode[]) {
     debounceTimer.current = setTimeout(async () => {
       setLoading(true)
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=content`)
+        const res = await apiFetch(`/api/search?q=${encodeURIComponent(query)}&type=content`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
         setResults(data)

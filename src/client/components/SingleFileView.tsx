@@ -3,6 +3,7 @@ import type { FunctionalComponent } from 'preact'
 import ContentArea from './ContentArea.js'
 import { useSSE } from '../hooks/useSSE.js'
 import type { WatchEvent } from '../../types.js'
+import { apiFetch } from '../utils/fsApi.js'
 
 interface Props {
   theme: 'dark' | 'light'
@@ -24,7 +25,7 @@ const SingleFileView: FunctionalComponent<Props> = ({ theme }) => {
 
   const loadContent = useCallback(async () => {
     try {
-      const res = await fetch('/api/content')
+      const res = await apiFetch('/api/content')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const text = await res.text()
       const name = decodeURIComponent(res.headers.get('X-File-Name') || 'document.md')
@@ -55,7 +56,7 @@ const SingleFileView: FunctionalComponent<Props> = ({ theme }) => {
 
   const handleSave = useCallback(async (_path: string, text: string): Promise<boolean> => {
     try {
-      const res = await fetch('/api/save', {
+      const res = await apiFetch('/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: text,

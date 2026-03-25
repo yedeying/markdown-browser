@@ -5,6 +5,7 @@ import { getFileType, getEditorLang } from '../utils/fileType.js'
 import { useLongPress } from '../hooks/useLongPress.js'
 import MarkdownPreview from './MarkdownPreview.js'
 import Editor from './Editor.js'
+import { apiFetch } from '../utils/fsApi.js'
 
 function getNodeIcon(node: FileNode): string {
   if (node.type === 'folder') return '📁'
@@ -66,7 +67,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
     }
     setPreview({ node, content: null, loading: true, error: null })
     try {
-      const res = await fetch(`/api/file/${encodeURI(node.path)}`)
+      const res = await apiFetch(`/api/file/${encodeURI(node.path)}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const text = await res.text()
       setPreview({ node, content: text, loading: false, error: null })

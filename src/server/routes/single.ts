@@ -3,8 +3,10 @@ import { stream } from 'hono/streaming'
 import { readFileSync, writeFileSync, realpathSync, statSync } from 'fs'
 import { join, extname, basename, dirname } from 'path'
 import { createWatcher } from '../watcher.js'
+import type { AuthConfig } from '../../types.js'
+import { createAuthMiddleware, createAuthRoutes } from '../auth.js'
 
-export function createSingleRouter(filePath: string, distPath: string) {
+export function createSingleRouter(filePath: string, distPath: string, authConfig: AuthConfig | null = null) {
   const app = new Hono()
   const watcher = createWatcher(filePath)
 
@@ -17,6 +19,12 @@ export function createSingleRouter(filePath: string, distPath: string) {
   })
 
   app.options('*', (c) => c.text('', 204))
+
+  // 认证路由 + 中间件（在业务路由之前）
+  if (authConfig) {
+    createAuthRoutes(app, authConfig)
+    app.use('*', createAuthMiddleware(authConfig))
+  }
 
   // GET /api/content - 读取文件内容
   app.get('/api/content', (c) => {

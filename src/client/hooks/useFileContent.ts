@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'preact/hooks'
+import { apiFetch } from '../utils/fsApi.js'
 
 export function useFileContent() {
   const [content, setContent] = useState<string | null>(null)
@@ -18,7 +19,7 @@ export function useFileContent() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/file/${encodeURI(path)}`)
+      const res = await apiFetch(`/api/file/${encodeURI(path)}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const text = await res.text()
       setContent(text)
@@ -38,7 +39,7 @@ export function useFileContent() {
 
   const saveFile = useCallback(async (path: string, text: string): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/save/${encodeURI(path)}`, {
+      const res = await apiFetch(`/api/save/${encodeURI(path)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: text,

@@ -22,6 +22,14 @@ export interface ServerConfig {
   basePath: string     // 绝对路径
   port: number
   distPath: string     // dist/client 绝对路径
+  password?: string    // 访问密码，未设置时跳过认证
+  sessionMaxAge?: number  // Cookie 有效期（秒），默认 7 天
+}
+
+export interface AuthConfig {
+  password: string
+  signingKey: Uint8Array  // HMAC-SHA256 32 字节密钥
+  maxAge: number          // Cookie 有效期（秒）
 }
 
 export type WatchEventType = 'reload' | 'tree-change' | 'ping'

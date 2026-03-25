@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   vmd:
@@ -8,26 +8,33 @@ services:
     image: vmd:latest
     container_name: vmd-server
     ports:
-      - "8193:8888"
+      - "127.0.0.1:8193:8888"
     volumes:
       # 挂载本地 markdown 目录（支持编辑，去掉 :ro 即可写）
       - ..:/markdown
     environment:
       DOCKER_CONTAINER: "true"
-      # 可选：设置时区
       TZ: Asia/Shanghai
+      # 访问密码（留空则不启用认证）
+      VMD_PASSWORD: ""
     # 资源限制（可选）
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: "2"
           memory: 512M
         reservations:
-          cpus: '1'
+          cpus: "1"
           memory: 256M
     # 健康检查
     healthcheck:
-      test: ["CMD", "bun", "-e", "fetch('http://localhost:8888').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:8888').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
