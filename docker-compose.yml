@@ -8,7 +8,7 @@ services:
     image: vmd:latest
     container_name: vmd-server
     ports:
-      - "127.0.0.1:8193:8888"
+      - "127.0.0.1:8197:8888"
     volumes:
       # 挂载本地 markdown 目录（支持编辑，去掉 :ro 即可写）
       - ..:/markdown
