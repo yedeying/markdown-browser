@@ -260,6 +260,68 @@ export function createSharePageRoutes(
     }
   })
 
+  // GET /share/:token/api/search — 搜索（仅文件夹分享）
+  app.get('/share/:token/api/search', async (c) => {
+    const share = getShare(c.req.param('token'))
+    if (!share) return c.json({ error: 'Share expired or not found' }, 410)
+    if (share.type !== 'folder') return c.json({ error: 'Not a folder share' }, 400)
+
+    const q = c.req.query('q') || ''
+    const type = c.req.query('type') || 'name'
+    if (!q.trim()) return c.json([])
+
+    const shareDirAbs = join(basePath, share.path)
+
+    if (type === 'name') {
+      // 文件名搜索
+      const results: { filePath: string; fileName: string; matches: never[] }[] = []
+      function searchTree(nodes: ReturnType<typeof buildTree>) {
+        for (const node of nodes) {
+          if (node.type === 'file' && node.name.toLowerCase().includes(q.toLowerCase())) {
+            results.push({ filePath: node.path, fileName: node.name, matches: [] })
+          } else if (node.type === 'folder' && node.children) {
+            searchTree(node.children as ReturnType<typeof buildTree>)
+          }
+        }
+      }
+      searchTree(buildTree(shareDirAbs, shareDirAbs))
+      return c.json(results)
+    }
+
+    // 全文搜索 grep
+    try {
+      const proc = Bun.spawn(
+        ['grep', '-r', '-i', '-n',
+          '--include=*.md', '--include=*.markdown', '--include=*.txt',
+          '--include=*.js', '--include=*.ts', '--include=*.py',
+          '--include=*.json', '--include=*.yaml', '--include=*.yml',
+          '--include=*.sh', '--include=*.css', '--include=*.html',
+          q, shareDirAbs],
+        { stdout: 'pipe', stderr: 'pipe' }
+      )
+      const output = await new Response(proc.stdout).text()
+      await proc.exited
+      const fileMatches = new Map<string, { filePath: string; fileName: string; matches: { lineNumber: number; lineContent: string }[] }>()
+      for (const line of output.split('\n')) {
+        if (!line.trim()) continue
+        const match = line.match(/^(.+?):(\d+):(.*)$/)
+        if (!match) continue
+        const [, filePath, lineNumStr, lineContent] = match
+        const relPath = relative(shareDirAbs, filePath)
+        if (!fileMatches.has(relPath)) {
+          fileMatches.set(relPath, { filePath: relPath, fileName: basename(filePath), matches: [] })
+        }
+        const entry = fileMatches.get(relPath)!
+        if (entry.matches.length < 3) {
+          entry.matches.push({ lineNumber: parseInt(lineNumStr), lineContent: lineContent.trim().slice(0, 120) })
+        }
+      }
+      return c.json([...fileMatches.values()])
+    } catch {
+      return c.json({ error: 'Search failed' }, 500)
+    }
+  })
+
   // GET /share/:token/api/files — 文件夹树
   app.get('/share/:token/api/files', (c) => {
     const share = getShare(c.req.param('token'))

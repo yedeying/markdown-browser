@@ -1333,3 +1333,44 @@ body {
   border-color: var(--danger);
 }
 .btn-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+/* ================================
+   分享 API 用法区域
+   ================================ */
+
+.share-api-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.share-api-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.share-api-copy {
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  color: var(--link);
+  cursor: pointer;
+}
+.share-api-copy:hover { background: var(--hover); }
+
+.share-api-code {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  color: var(--text);
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.6;
+  margin: 0;
+}

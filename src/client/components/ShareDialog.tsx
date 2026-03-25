@@ -22,6 +22,7 @@ const ShareDialog: FunctionalComponent<Props> = ({ path, type, name, onClose }) 
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [shareToken, setShareToken] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [copiedApi, setCopiedApi] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -46,6 +47,13 @@ const ShareDialog: FunctionalComponent<Props> = ({ path, type, name, onClose }) 
     })
   }, [shareUrl])
 
+  const handleCopyApi = useCallback((text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedApi(true)
+      setTimeout(() => setCopiedApi(false), 2000)
+    })
+  }, [])
+
   const handleDelete = useCallback(async () => {
     if (!shareToken) return
     setDeleting(true)
@@ -56,6 +64,28 @@ const ShareDialog: FunctionalComponent<Props> = ({ path, type, name, onClose }) 
   }, [shareToken])
 
   const icon = type === 'folder' ? '📁' : '📄'
+
+  // 生成 API 用法文本
+  const getApiDocs = (baseUrl: string) => {
+    if (type === 'file') {
+      return `# 文件内容
+curl "${baseUrl}/api/file/${path}"
+
+# 下载
+curl -O "${baseUrl}/api/download/${path}"`
+    }
+    return `# 浏览目录树（JSON）
+curl "${baseUrl}/api/files"
+
+# 读取文件内容
+curl "${baseUrl}/api/file/<path>"
+
+# 搜索文件名
+curl "${baseUrl}/api/search?q=keyword&type=name"
+
+# 全文搜索
+curl "${baseUrl}/api/search?q=keyword&type=content"`
+  }
 
   return (
     <div class="dialog-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -81,7 +111,7 @@ const ShareDialog: FunctionalComponent<Props> = ({ path, type, name, onClose }) 
             </div>
             {type === 'folder' && (
               <div class="share-note">
-                访客可浏览、预览文件，并新建文件（不可编辑或删除已有文件）
+                访客可浏览、预览、搜索文件，并新建文件（不可编辑或删除已有文件）
               </div>
             )}
             {type === 'file' && (
@@ -111,6 +141,21 @@ const ShareDialog: FunctionalComponent<Props> = ({ path, type, name, onClose }) 
                 有效期：{TTL_OPTIONS.find(o => o.value === ttl)?.label}
               </div>
             )}
+
+            {/* API 用法（给 AI Agent 使用） */}
+            <div class="share-api-section">
+              <div class="share-api-header">
+                <span class="share-ttl-label">API 用法（AI Agent）</span>
+                <button
+                  class="share-api-copy"
+                  onClick={() => handleCopyApi(getApiDocs(shareUrl))}
+                >
+                  {copiedApi ? '已复制' : '复制'}
+                </button>
+              </div>
+              <pre class="share-api-code">{getApiDocs(shareUrl)}</pre>
+            </div>
+
             <div class="dialog-footer">
               <button class="btn btn-danger" onClick={handleDelete} disabled={deleting}>
                 {deleting ? '撤销中...' : '撤销链接'}
