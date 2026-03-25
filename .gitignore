@@ -4,3 +4,4 @@ dist/
 *.local
 generated-image-*.jpg
 generated-image-*.png
+.env
