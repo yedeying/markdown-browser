@@ -288,10 +288,11 @@ export function createSharePageRoutes(
       return c.json(results)
     }
 
-    // 全文搜索 grep
+    // 全文搜索 grep（排除 dist/node_modules）
     try {
       const proc = Bun.spawn(
         ['grep', '-r', '-i', '-n',
+          '--exclude-dir=dist', '--exclude-dir=node_modules', '--exclude-dir=.git',
           '--include=*.md', '--include=*.markdown', '--include=*.txt',
           '--include=*.js', '--include=*.ts', '--include=*.py',
           '--include=*.json', '--include=*.yaml', '--include=*.yml',
@@ -393,9 +394,13 @@ export function createSharePageRoutes(
       }
       const content = readFileSync(targetAbs)
       const name = basename(targetAbs)
-      c.header('Content-Type', MIME[extname(targetAbs).toLowerCase()] || 'application/octet-stream')
-      c.header('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`)
-      return c.body(content)
+      return new Response(content, {
+        headers: {
+          'Content-Type': MIME[extname(targetAbs).toLowerCase()] || 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${encodeURIComponent(name)}"`,
+          'Content-Length': String(content.length),
+        },
+      })
     } catch {
       return c.json({ error: 'File not found' }, 404)
     }
