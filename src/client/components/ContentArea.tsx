@@ -461,6 +461,10 @@ const ContentArea: FunctionalComponent<Props> = ({
         </div>
         <div class="header-actions">
           {themeToggle}
+          {/* 文件夹视图：分享按钮 */}
+          {isFolderView && !isShareMode && selectedNode && selectedNode.path !== undefined && (
+            <button class="btn" onClick={() => setShareDialogOpen(true)} title="分享此文件夹">分享</button>
+          )}
           {/* 文件视图下的操作按钮（文件夹视图时隐藏） */}
           {!isFolderView && (
             <>
@@ -595,7 +599,15 @@ const ContentArea: FunctionalComponent<Props> = ({
       )}
 
       {/* 分享弹窗 */}
-      {shareDialogOpen && filePath && fileName && (
+      {shareDialogOpen && isFolderView && selectedNode && (
+        <ShareDialog
+          path={selectedNode.path}
+          type="folder"
+          name={selectedNode.name}
+          onClose={() => setShareDialogOpen(false)}
+        />
+      )}
+      {shareDialogOpen && !isFolderView && filePath && fileName && (
         <ShareDialog
           path={filePath}
           type="file"
