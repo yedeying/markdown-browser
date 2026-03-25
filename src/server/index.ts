@@ -5,11 +5,11 @@ import { generateSigningKey } from './auth.js'
 import { readFileSync, writeFileSync } from 'fs'
 import { join, basename } from 'path'
 
-async function findAvailablePort(startPort: number, maxPort = 9000): Promise<number> {
+async function findAvailablePort(startPort: number, maxPort = 9000, host = '0.0.0.0'): Promise<number> {
   for (let port = startPort; port <= maxPort; port++) {
     try {
       // 尝试在该端口启动临时服务器，若成功则端口可用
-      const probe = Bun.serve({ port, hostname: '0.0.0.0', fetch: () => new Response('') })
+      const probe = Bun.serve({ port, hostname: host, fetch: () => new Response('') })
       probe.stop(true)
       return port
     } catch {
@@ -88,7 +88,7 @@ export async function startServer(config: ServerConfig) {
 
   const server = Bun.serve({
     port,
-    hostname: '0.0.0.0',
+    hostname: config.host,
     fetch: router.app.fetch,
   })
 

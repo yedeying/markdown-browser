@@ -32,8 +32,9 @@ RUN mkdir -p /markdown
 ENV DOCKER_CONTAINER=true
 
 # 暴露端口
-EXPOSE 8888
+EXPOSE 8197
 
 # 默认启动命令：浏览 /markdown 目录
+# 注意：容器内绑定 0.0.0.0 以允许 Docker 端口转发，实际访问限制由 Docker 端口映射控制
 ENTRYPOINT ["bun", "dist/cli.js"]
-CMD ["/markdown", "--port", "8888"]
+CMD ["/markdown", "--port", "8888", "--host", "::"]

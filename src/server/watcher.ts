@@ -27,6 +27,11 @@ export function createWatcher(target: string): FileWatcher {
     broadcast({ type: 'reload', mtime: Date.now() })
   })
 
+  // 错误处理：忽略文件系统中的异常（如损坏的 symlink）
+  watcher.on('error', () => {
+    // 忽略 symlink 或权限问题
+  })
+
   // 30s ping 防止连接超时
   const pingInterval = setInterval(() => {
     broadcast({ type: 'ping' })
@@ -69,6 +74,11 @@ export function createDirWatcher(basePath: string): FileWatcher {
     } else {
       broadcast({ type: 'tree-change' })
     }
+  })
+
+  // 错误处理：忽略文件系统中的异常（如损坏的 symlink 或特殊字符文件名）
+  watcher.on('error', () => {
+    // 忽略 symlink 或权限问题
   })
 
   const pingInterval = setInterval(() => {

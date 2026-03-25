@@ -8,3 +8,4 @@ generated-image-*.png
 .vmd-shares.json
 mcp-server/node_modules/
 mcp-server/dist/
+.claude/

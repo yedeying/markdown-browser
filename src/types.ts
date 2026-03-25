@@ -21,6 +21,7 @@ export interface ServerConfig {
   mode: 'dir' | 'single'
   basePath: string     // 绝对路径
   port: number
+  host: string         // 绑定主机地址
   distPath: string     // dist/client 绝对路径
   password?: string    // 访问密码，未设置时跳过认证
   sessionMaxAge?: number  // Cookie 有效期（秒），默认 7 天

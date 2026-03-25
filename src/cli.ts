@@ -15,6 +15,7 @@ const HELP = `
 选项:
   -h, --help              显示帮助信息
   -p, --port <n>          指定端口号（默认 8888）
+  --host <host>           指定绑定主机（默认 0.0.0.0）
   -P, --password <pw>     设置访问密码（也可用 VMD_PASSWORD 环境变量）
 
 示例:
@@ -23,7 +24,7 @@ const HELP = `
   vmd . --port 9000
 `
 
-function parseArgs(argv: string[]): { path: string; port: number; password?: string } | null {
+function parseArgs(argv: string[]): { path: string; port: number; host: string; password?: string } | null {
   const args = argv.slice(2)
 
   if (args.length === 0 || args.includes('-h') || args.includes('--help')) {
@@ -32,6 +33,7 @@ function parseArgs(argv: string[]): { path: string; port: number; password?: str
   }
 
   let port = 8888
+  let host = '0.0.0.0'
   let pathArg = ''
   // 优先读取环境变量，命令行参数可覆盖
   let password: string | undefined = process.env.VMD_PASSWORD !== undefined
@@ -41,6 +43,9 @@ function parseArgs(argv: string[]): { path: string; port: number; password?: str
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '-p' || args[i] === '--port') {
       port = parseInt(args[i + 1] ?? '8888')
+      i++
+    } else if (args[i] === '--host') {
+      host = args[i + 1] ?? '0.0.0.0'
       i++
     } else if (args[i] === '-P' || args[i] === '--password') {
       password = args[i + 1] ?? ''
@@ -63,14 +68,14 @@ function parseArgs(argv: string[]): { path: string; port: number; password?: str
     process.exit(1)
   }
 
-  return { path: pathArg, port, password }
+  return { path: pathArg, port, host, password }
 }
 
 async function main() {
   const parsed = parseArgs(process.argv)
   if (!parsed) return
 
-  const { path: inputPath, port, password } = parsed
+  const { path: inputPath, port, host, password } = parsed
   const absPath = resolve(inputPath)
 
   if (!existsSync(absPath)) {
@@ -93,6 +98,7 @@ async function main() {
       mode: 'dir',
       basePath: absPath,
       port,
+      host,
       distPath,
       password,
     })
@@ -107,6 +113,7 @@ async function main() {
       mode: 'single',
       basePath: absPath,
       port,
+      host,
       distPath,
       password,
     })
