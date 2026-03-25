@@ -33,10 +33,8 @@ function parseArgs(argv: string[]): { path: string; port: number; password?: str
 
   let port = 8888
   let pathArg = ''
-  // 优先读取环境变量，命令行参数可覆盖
-  let password: string | undefined = process.env.VMD_PASSWORD !== undefined
-    ? process.env.VMD_PASSWORD
-    : undefined
+  // 优先读取环境变量（空字符串视为未设置），命令行参数可覆盖
+  let password: string | undefined = process.env.VMD_PASSWORD || undefined
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '-p' || args[i] === '--port') {
@@ -50,7 +48,7 @@ function parseArgs(argv: string[]): { path: string; port: number; password?: str
     }
   }
 
-  // 设置了密码参数但值为空 → 报错
+  // 命令行显式传入空密码 → 报错（环境变量空值已被忽略）
   if (password !== undefined && password.trim() === '') {
     console.error('\x1b[31m错误: 密码不能为空，请指定一个有效密码\x1b[0m')
     console.error('\x1b[33m  示例: vmd ~/docs --password mypassword\x1b[0m')
