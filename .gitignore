@@ -5,3 +5,4 @@ dist/
 generated-image-*.jpg
 generated-image-*.png
 .env
+.vmd-shares.json

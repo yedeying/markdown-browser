@@ -32,6 +32,14 @@ export interface AuthConfig {
   maxAge: number          // Cookie 有效期（秒）
 }
 
+export interface ShareToken {
+  token: string
+  path: string           // 相对于 basePath
+  type: 'file' | 'folder'
+  expiresAt: number | null  // null = 永久
+  createdAt: number
+}
+
 export type WatchEventType = 'reload' | 'tree-change' | 'ping'
 
 export type WatchEvent =

@@ -4,9 +4,17 @@ type FsResult<T = Record<string, unknown>> =
   | ({ ok: true } & T)
   | { ok: false; error: string }
 
-/** fetch 封装：遇到 401 自动跳转登录页 */
+/** 分享模式下的 API 前缀，例如 /share/abc123 */
+export function getSharePrefix(): string {
+  const token = (window as Window & { __VMD_SHARE_TOKEN__?: string }).__VMD_SHARE_TOKEN__
+  return token ? `/share/${token}` : ''
+}
+
+/** fetch 封装：遇到 401 自动跳转登录页；分享模式自动加前缀 */
 export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(url, init)
+  const prefix = getSharePrefix()
+  const fullUrl = prefix && url.startsWith('/api/') ? prefix + url : url
+  const res = await fetch(fullUrl, init)
   if (res.status === 401) {
     window.location.href = `/login?returnTo=${encodeURIComponent(window.location.href)}`
     // 返回一个永不 resolve 的 Promise，避免后续代码继续执行
@@ -65,4 +73,12 @@ export const fsApi = {
   /** 创建空文件 */
   touch: (path: string) =>
     post('/api/fs/touch', { path }),
+
+  /** 创建分享链接 */
+  createShare: (path: string, type: 'file' | 'folder', ttl: number | null) =>
+    post<{ token: string; url: string }>('/api/share', { path, type, ttl }),
+
+  /** 删除分享 */
+  deleteShare: (token: string) =>
+    del('/api/share/' + token, {}),
 }

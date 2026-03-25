@@ -1166,3 +1166,170 @@ body {
   /* header-actions 保持相对定位以便 dropdown 定位 */
   .header-actions { position: relative; }
 }
+
+/* ================================
+   通用弹窗（Dialog）
+   ================================ */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.dialog-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--header-bg);
+}
+
+.dialog-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 8px;
+}
+
+.dialog-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 6px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.dialog-close:hover { background: var(--hover); color: var(--text); }
+
+.dialog-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/* ================================
+   分享弹窗（ShareDialog）
+   ================================ */
+
+.share-ttl-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.share-ttl-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.share-ttl-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.share-ttl-btn:hover { background: var(--hover); }
+.share-ttl-btn.active {
+  background: var(--active-bg);
+  border-color: var(--link);
+  color: var(--active-text);
+}
+
+.share-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  background: var(--code-bg);
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
+.share-error {
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.share-url-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.share-url-row {
+  display: flex;
+  gap: 8px;
+}
+
+.share-url-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--code-bg);
+  color: var(--text);
+  outline: none;
+  font-family: monospace;
+}
+
+.share-copy-btn { flex-shrink: 0; }
+
+.share-expire-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.btn-primary {
+  background: var(--link);
+  color: #fff;
+  border-color: transparent;
+}
+.btn-primary:hover { opacity: 0.88; }
+
+.btn-danger {
+  background: none;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.btn-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }

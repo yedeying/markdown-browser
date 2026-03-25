@@ -8,6 +8,7 @@ import FolderColumnView from './FolderColumnView.js'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.js'
 import ContextModal, { type ModalMode } from './ContextModal.js'
 import BottomSheet from './BottomSheet.js'
+import ShareDialog from './ShareDialog.js'
 import { fsApi } from '../utils/fsApi.js'
 
 type FolderViewMode = 'list' | 'grid' | 'column'
@@ -62,6 +63,8 @@ interface Props {
   onCopy?: (nodes: FileNode[]) => void
   onCut?: (nodes: FileNode[]) => void
   onClearClipboard?: () => void
+  // 分享模式（访客无写权限）
+  shareMode?: boolean
 }
 
 const FolderView: FunctionalComponent<Props> = ({
@@ -74,7 +77,10 @@ const FolderView: FunctionalComponent<Props> = ({
   onCopy,
   onCut,
   onClearClipboard,
+  shareMode = false,
 }) => {
+  // 分享弹窗
+  const [shareTarget, setShareTarget] = useState<FileNode | null>(null)
   const [viewMode, setViewMode] = useState<FolderViewMode>(() =>
     loadPref<FolderViewMode>(VIEW_MODE_KEY, 'list', ['list', 'grid', 'column'])
   )
@@ -241,6 +247,17 @@ const FolderView: FunctionalComponent<Props> = ({
     const isMulti = targets.length > 1
     const label = isMulti ? `${targets.length} 项` : `"${target.name}"`
 
+    // 分享模式：只允许打开
+    if (shareMode) {
+      return [
+        {
+          label: target.type === 'folder' ? '打开文件夹' : '打开文件',
+          icon: target.type === 'folder' ? '📂' : '📄',
+          onClick: () => onSelect(target),
+        },
+      ]
+    }
+
     return [
       {
         label: target.type === 'folder' ? '打开文件夹' : '打开文件',
@@ -280,11 +297,17 @@ const FolderView: FunctionalComponent<Props> = ({
         disabled: !clipboard,
         onClick: handlePaste,
       },
+      ...(!isMulti ? [{
+        label: '分享',
+        icon: '🔗',
+        separator: true,
+        onClick: () => setShareTarget(target),
+      }] : []),
       {
         label: isMulti ? `删除 ${label}` : '删除',
         icon: '🗑️',
         danger: true,
-        separator: true,
+        separator: isMulti,
         onClick: () => setModal({
           mode: 'confirm',
           node: target,
@@ -541,6 +564,16 @@ const FolderView: FunctionalComponent<Props> = ({
           title={bottomSheet.node.name}
           items={buildBottomSheetItems(bottomSheet.node)}
           onClose={() => setBottomSheet(null)}
+        />
+      )}
+
+      {/* ── 分享弹窗 ───────────────────────────────────────── */}
+      {shareTarget && (
+        <ShareDialog
+          path={shareTarget.path}
+          type={shareTarget.type as 'file' | 'folder'}
+          name={shareTarget.name}
+          onClose={() => setShareTarget(null)}
         />
       )}
     </div>

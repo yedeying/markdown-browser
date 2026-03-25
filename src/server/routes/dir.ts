@@ -6,6 +6,7 @@ import { join, relative, basename, extname, dirname, resolve, sep } from 'path'
 import type { FileNode, SearchResult, AuthConfig } from '../../types.js'
 import { createDirWatcher } from '../watcher.js'
 import { createAuthMiddleware, createAuthRoutes } from '../auth.js'
+import { ShareStore, createShareApiRoutes, createSharePageRoutes } from '../share.js'
 
 const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.DS_Store'])
 
@@ -74,6 +75,7 @@ function buildTree(dir: string, base: string): FileNode[] {
 export function createDirRouter(basePath: string, distPath: string, authConfig: AuthConfig | null = null) {
   const app = new Hono()
   const watcher = createDirWatcher(basePath)
+  const shareStore = new ShareStore(basePath)
 
   // CORS headers for all responses
   app.use('*', async (c, next) => {
@@ -275,7 +277,6 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   })
 
   // 静态文件服务
-  // ===========================================================
   // 文件管理 API
   // ===========================================================
 
@@ -435,6 +436,10 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       return c.json({ ok: false, error: String(e) }, 400)
     }
   })
+
+  // 分享路由（管理 API + 页面路由，在静态文件服务之前注册）
+  createShareApiRoutes(app, shareStore, authConfig)
+  createSharePageRoutes(app, basePath, distPath, shareStore)
 
   // 静态文件服务
   // ===========================================================

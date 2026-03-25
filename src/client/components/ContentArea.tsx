@@ -8,6 +8,8 @@ import TableOfContents from './TableOfContents.js'
 import FolderView, { type ClipboardState } from './FolderView.js'
 import { getFileType, getEditorLang } from '../utils/fileType.js'
 import type { FileNode } from '../../types.js'
+import ShareDialog from './ShareDialog.js'
+import { getSharePrefix } from '../utils/fsApi.js'
 
 /** 在 tree 中按 path 查找 FileNode */
 function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
@@ -45,6 +47,8 @@ interface Props {
   onCopy?: (nodes: FileNode[]) => void
   onCut?: (nodes: FileNode[]) => void
   onClearClipboard?: () => void
+  // 分享模式（访客只读）
+  shareMode?: boolean
 }
 
 function showToast(message: string, type: 'success' | 'error') {
@@ -73,7 +77,9 @@ const ContentArea: FunctionalComponent<Props> = ({
   onCopy,
   onCut,
   onClearClipboard,
+  shareMode = false,
 }) => {
+  const isShareMode = shareMode || !!getSharePrefix()
   const fileType = filePath ? getFileType(filePath) : 'markdown'
   const isMarkdown = fileType === 'markdown'
   const isEditable = fileType === 'markdown' || fileType === 'code' || fileType === 'text'
@@ -229,6 +235,22 @@ const ContentArea: FunctionalComponent<Props> = ({
     return () => window.removeEventListener('keydown', handler)
   }, [unsaved, viewMode, handleSave])
 
+  // 分享弹窗
+  const [shareDialogOpen, setShareDialogOpen] = useState(false)
+
+  // 下载当前文件（分享模式）
+  const handleDownload = useCallback(() => {
+    if (!filePath) return
+    const prefix = getSharePrefix()
+    const url = prefix
+      ? `${prefix}/api/download/${encodeURI(filePath)}`
+      : `/api/download/${encodeURI(filePath)}`
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filePath.split('/').pop() || 'file'
+    a.click()
+  }, [filePath])
+
   // 移动端更多菜单
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const moreMenuRef = useRef<HTMLDivElement>(null)
@@ -290,6 +312,7 @@ const ContentArea: FunctionalComponent<Props> = ({
           onCopy={onCopy}
           onCut={onCut}
           onClearClipboard={onClearClipboard}
+          shareMode={isShareMode}
         />
       )
     }
@@ -441,43 +464,54 @@ const ContentArea: FunctionalComponent<Props> = ({
           {/* 文件视图下的操作按钮（文件夹视图时隐藏） */}
           {!isFolderView && (
             <>
-              {/* 保存按钮：桌面/移动端均显示（有未保存修改时） */}
-              {isMarkdown && filePath && viewMode === 'edit' && unsaved && onSave && (
+              {/* 分享模式：显示下载按钮，隐藏编辑/保存 */}
+              {isShareMode && filePath && (
+                <button class="btn" onClick={handleDownload} title="下载文件">下载</button>
+              )}
+
+              {/* 非分享模式：保存按钮（有未保存修改时） */}
+              {!isShareMode && isMarkdown && filePath && viewMode === 'edit' && unsaved && onSave && (
                 <button class="btn unsaved" onClick={handleSave} disabled={saving}>
                   {saving ? '保存中...' : '保存'}
                 </button>
               )}
-              {!isMarkdown && isEditable && filePath && onSave && unsaved && (
+              {!isShareMode && !isMarkdown && isEditable && filePath && onSave && unsaved && (
                 <button class="btn unsaved" onClick={handleSave} disabled={saving}>
                   {saving ? '保存中...' : '保存'}
                 </button>
               )}
 
-              {/* 桌面端：直接显示所有操作按钮 */}
-              <div class="desktop-btn-group">
-                {filePath && (viewMode === 'edit' || viewMode === 'code-only') && (
-                  <button class="btn" onClick={handleSelectAll} title="全选文件内容">全选</button>
-                )}
-                {filePath && (editContent || content) && (
-                  <button class="btn" onClick={handleCopyAll} title="复制全文到剪贴板">复制</button>
-                )}
-                {isMarkdown && filePath && (
-                  <>
-                    <button
-                      class={`btn ${viewMode === 'preview' ? 'active' : ''}`}
-                      onClick={() => setViewMode('preview')}
-                    >预览</button>
-                    <button
-                      class={`btn ${viewMode === 'edit' ? 'active' : ''}`}
-                      onClick={() => setViewMode('edit')}
-                      disabled={!content}
-                    >编辑</button>
-                  </>
-                )}
-              </div>
+              {/* 非分享模式桌面端：直接显示所有操作按钮 */}
+              {!isShareMode && (
+                <div class="desktop-btn-group">
+                  {filePath && (viewMode === 'edit' || viewMode === 'code-only') && (
+                    <button class="btn" onClick={handleSelectAll} title="全选文件内容">全选</button>
+                  )}
+                  {filePath && (editContent || content) && (
+                    <button class="btn" onClick={handleCopyAll} title="复制全文到剪贴板">复制</button>
+                  )}
+                  {isMarkdown && filePath && (
+                    <>
+                      <button
+                        class={`btn ${viewMode === 'preview' ? 'active' : ''}`}
+                        onClick={() => setViewMode('preview')}
+                      >预览</button>
+                      <button
+                        class={`btn ${viewMode === 'edit' ? 'active' : ''}`}
+                        onClick={() => setViewMode('edit')}
+                        disabled={!content}
+                      >编辑</button>
+                    </>
+                  )}
+                  {/* 分享按钮 */}
+                  {filePath && (
+                    <button class="btn" onClick={() => setShareDialogOpen(true)} title="分享此文件">分享</button>
+                  )}
+                </div>
+              )}
 
-              {/* 移动端：更多操作按钮 + dropdown */}
-              {filePath && (
+              {/* 非分享模式移动端：更多操作按钮 + dropdown */}
+              {!isShareMode && filePath && (
                 <div ref={moreMenuRef} style={{ position: 'relative' }}>
                   <button
                     class="header-more-btn"
@@ -509,6 +543,9 @@ const ContentArea: FunctionalComponent<Props> = ({
                           >编辑模式</button>
                         </>
                       )}
+                      <button class="header-dropdown-item" onClick={() => { setShareDialogOpen(true); setMoreMenuOpen(false) }}>
+                        分享
+                      </button>
                     </div>
                   )}
                 </div>
@@ -555,6 +592,16 @@ const ContentArea: FunctionalComponent<Props> = ({
         >
           ↑
         </button>
+      )}
+
+      {/* 分享弹窗 */}
+      {shareDialogOpen && filePath && fileName && (
+        <ShareDialog
+          path={filePath}
+          type="file"
+          name={fileName}
+          onClose={() => setShareDialogOpen(false)}
+        />
       )}
     </main>
   )

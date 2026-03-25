@@ -17,6 +17,9 @@ declare global {
   interface Window {
     __VMD_MODE__: 'dir' | 'single'
     __VMD_DIR_NAME__: string
+    __VMD_SHARE_TOKEN__?: string
+    __VMD_SHARE_TYPE__?: 'file' | 'folder'
+    __VMD_SHARE_PATH__?: string
   }
 }
 
@@ -222,6 +225,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
             onCopy={(nodes) => setClipboard({ nodes, mode: 'copy' })}
             onCut={(nodes) => setClipboard({ nodes, mode: 'cut' })}
             onClearClipboard={() => setClipboard(null)}
+            shareMode={!!window.__VMD_SHARE_TOKEN__}
           />
       </div>
     </div>
