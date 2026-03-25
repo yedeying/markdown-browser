@@ -15,8 +15,8 @@ services:
     environment:
       DOCKER_CONTAINER: "true"
       TZ: Asia/Shanghai
-      # 访问密码（留空则不启用认证）
-      VMD_PASSWORD: ""
+      # 访问密码（不设置或注释掉则不启用认证）
+      # VMD_PASSWORD: "your-password"
     # 资源限制（可选）
     deploy:
       resources:
