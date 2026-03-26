@@ -251,6 +251,44 @@ const ContentArea: FunctionalComponent<Props> = ({
     a.click()
   }, [filePath])
 
+  // 移动端左右滑手势：右滑 → history.back()，左滑 → history.forward()
+  const swipeRef = useRef<{ x: number; y: number; t: number } | null>(null)
+  const mainRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el) return
+
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0]
+      swipeRef.current = { x: t.clientX, y: t.clientY, t: Date.now() }
+    }
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!swipeRef.current) return
+      const t = e.changedTouches[0]
+      const dx = t.clientX - swipeRef.current.x
+      const dy = t.clientY - swipeRef.current.y
+      const dt = Date.now() - swipeRef.current.t
+      swipeRef.current = null
+
+      // 必须是以水平方向为主的快速滑动
+      if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.6 || dt > 400) return
+
+      if (dx > 0) {
+        window.history.back()
+      } else {
+        window.history.forward()
+      }
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [])
+
   // 移动端更多菜单
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const moreMenuRef = useRef<HTMLDivElement>(null)
@@ -443,7 +481,7 @@ const ContentArea: FunctionalComponent<Props> = ({
   }
 
   return (
-    <main class="content-area">
+    <main class="content-area" ref={mainRef}>
       <div class="content-header">
         <div class="current-file">
           {/* 移动端汉堡菜单按钮 */}
