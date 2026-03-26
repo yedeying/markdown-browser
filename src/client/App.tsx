@@ -71,7 +71,7 @@ interface DirModeProps {
 }
 
 const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle }) => {
-  const { tree, refresh } = useFileTree()
+  const { tree, loading: treeLoading, refresh } = useFileTree()
   const { content, loading, error, currentPath, loadFile, selectFile, saveFile, setContent } = useFileContent()
   const { query, setQuery, searchType, setSearchType, results, loading: searchLoading } = useSearch(tree)
 
@@ -204,6 +204,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
         dirName={dirName}
           open={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
+          treeLoading={treeLoading}
         />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           <ContentArea

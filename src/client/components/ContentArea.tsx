@@ -328,8 +328,12 @@ const ContentArea: FunctionalComponent<Props> = ({
 
     if (loading) {
       return (
-        <div class="empty-state">
-          <div class="empty-state-text" style={{ color: 'var(--text-muted)' }}>加载中...</div>
+        <div class="file-loading">
+          <div class="file-loading-bars">
+            {[0.6, 1, 0.75, 0.9, 0.5, 0.8, 0.65, 0.95, 0.7, 0.55, 0.85, 0.4].map((w, i) => (
+              <div key={i} class="file-loading-line" style={{ width: `${w * 100}%`, animationDelay: `${i * 0.04}s` }} />
+            ))}
+          </div>
         </div>
       )
     }

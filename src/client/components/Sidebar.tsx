@@ -19,6 +19,8 @@ interface Props {
   // 移动端抽屉控制
   open?: boolean
   onClose?: () => void
+  // 文件树初始加载中
+  treeLoading?: boolean
 }
 
 const Sidebar: FunctionalComponent<Props> = ({
@@ -34,6 +36,7 @@ const Sidebar: FunctionalComponent<Props> = ({
   dirName,
   open,
   onClose,
+  treeLoading,
 }) => {
   const treeRef = useRef<FileTreeHandle>(null)
 
@@ -78,7 +81,16 @@ const Sidebar: FunctionalComponent<Props> = ({
               onClick={(e) => { e.stopPropagation(); treeRef.current?.collapseAll() }}
             >⊖</button>
           </div>
-          {searchResults && searchResults.length === 0 && query ? (
+          {treeLoading ? (
+            <div class="tree-skeleton">
+              {[0.7, 0.5, 0.85, 0.6, 0.75, 0.45, 0.9, 0.55].map((w, i) => (
+                <div key={i} class="tree-skeleton-row" style={{ paddingLeft: `${8 + (i % 3) * 12}px` }}>
+                  <div class="tree-skeleton-icon" />
+                  <div class="tree-skeleton-line" style={{ width: `${w * 100}%` }} />
+                </div>
+              ))}
+            </div>
+          ) : searchResults && searchResults.length === 0 && query ? (
             <div style={{ color: 'var(--text-muted)', fontSize: '13px', padding: '12px 8px', textAlign: 'center' }}>
               无匹配结果
             </div>

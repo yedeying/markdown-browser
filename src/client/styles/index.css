@@ -1374,3 +1374,98 @@ body {
   line-height: 1.6;
   margin: 0;
 }
+
+/* ================================
+   Loading 动画
+   ================================ */
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes skeleton-fade {
+  0%, 100% { opacity: 0.55; }
+  50%       { opacity: 1; }
+}
+
+/* 文件内容加载态 —— 类代码行 skeleton */
+.file-loading {
+  flex: 1;
+  padding: 40px 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.file-loading-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 680px;
+}
+
+.file-loading-line {
+  height: 13px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--border) 25%,
+    color-mix(in srgb, var(--link) 18%, var(--border)) 50%,
+    var(--border) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+.file-loading-line:nth-child(4n+1) { height: 11px; opacity: 0.7; }
+.file-loading-line:nth-child(4n+3) { height: 15px; }
+
+/* Sidebar 文件树 skeleton */
+.tree-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.tree-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding-right: 12px;
+}
+
+.tree-skeleton-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  background: linear-gradient(
+    90deg,
+    var(--border) 25%,
+    color-mix(in srgb, var(--link) 15%, var(--border)) 50%,
+    var(--border) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+.tree-skeleton-line {
+  height: 11px;
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--border) 25%,
+    color-mix(in srgb, var(--link) 15%, var(--border)) 50%,
+    var(--border) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+@media (max-width: 768px) {
+  .file-loading { padding: 24px 20px; }
+}
