@@ -56,6 +56,8 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  /* 移除点击蓝色高亮 */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -65,6 +67,8 @@ body {
   background: var(--bg);
   height: 100vh;
   overflow: hidden;
+  /* 防止页面整体弹性滚动 */
+  overscroll-behavior: none;
 }
 
 #app {
@@ -1469,3 +1473,70 @@ body {
 @media (max-width: 768px) {
   .file-loading { padding: 24px 20px; }
 }
+
+/* ================================
+   移动端默认行为限制
+   ================================ */
+
+@media (max-width: 768px) {
+  /* UI 操作区：禁止长按选中文字，避免与自定义长按冲突 */
+  .sidebar,
+  .content-header,
+  .folder-toolbar,
+  .folder-list-row,
+  .folder-card,
+  .folder-column-row,
+  .file-list,
+  .folder-row,
+  .bottom-sheet,
+  .header-actions,
+  .hamburger-btn,
+  .btn,
+  .folder-selection-bar {
+    user-select: none;
+  }
+
+  /* 图片：禁止长按拖拽和保存弹窗 */
+  img {
+    -webkit-user-drag: none;
+    pointer-events: auto;
+  }
+  .image-viewer img,
+  .folder-card-thumb img {
+    -webkit-touch-callout: none;
+  }
+
+  /* 滚动区：只允许纵向滑动，防止误触横向滚动传递到外层 */
+  .file-list,
+  .folder-list,
+  .folder-grid-wrap,
+  .content-body,
+  .preview-pane {
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
+  }
+
+  /* 横向滚动区（列视图）：只允许横向 */
+  .folder-columns-wrap {
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+  }
+
+  /* 按钮/交互元素：双击不触发缩放 */
+  button,
+  a,
+  .folder-row,
+  .folder-list-row,
+  .folder-card,
+  .folder-column-row,
+  .file-breadcrumb-seg {
+    touch-action: manipulation;
+  }
+
+  /* Markdown 内容区：允许正常选文（阅读场景需要） */
+  .content-body,
+  .preview-pane {
+    user-select: text;
+  }
+}
+
