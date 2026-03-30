@@ -262,8 +262,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
             onCopy={(nodes) => setClipboard({ nodes, mode: 'copy' })}
             onCut={(nodes) => setClipboard({ nodes, mode: 'cut' })}
             onClearClipboard={() => setClipboard(null)}
-            onSwipeBack={handleSwipeBack}
-            onSwipeForward={handleSwipeForward}
+            onSwipeBack={navIndexRef.current > 0 ? handleSwipeBack : undefined}
+            onSwipeForward={navIndexRef.current < navStackRef.current.length - 1 ? handleSwipeForward : undefined}
             shareMode={!!window.__VMD_SHARE_TOKEN__}
           />
       </div>

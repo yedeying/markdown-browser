@@ -280,7 +280,12 @@ const ContentArea: FunctionalComponent<Props> = ({
       if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.6 || dt > 400) return
 
       if (dx > 0) {
-        onSwipeBack?.()
+        // 右滑：有历史则后退，没有历史（首页）则展开侧边栏
+        if (onSwipeBack) {
+          onSwipeBack()
+        } else {
+          onToggleSidebar?.()
+        }
       } else {
         onSwipeForward?.()
       }
