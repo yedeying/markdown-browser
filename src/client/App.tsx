@@ -1,5 +1,5 @@
 import type { FunctionalComponent } from 'preact'
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { useTheme } from './hooks/useTheme.js'
 import { useFileTree } from './hooks/useFileTree.js'
 import { useFileContent } from './hooks/useFileContent.js'
@@ -81,6 +81,9 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
   const [sidebarOpen, setSidebarOpen] = useState(false)
   // 剪贴板（跨文件夹复制/剪切）
   const [clipboard, setClipboard] = useState<ClipboardState | null>(null)
+  // 应用内导航栈（手势前进/后退，不依赖浏览器历史，避免退到登录页）
+  const navStackRef = useRef<FileNode[]>([])
+  const navIndexRef = useRef<number>(-1)
 
   const handleSSEEvent = useCallback((event: WatchEvent) => {
     if (event.type === 'tree-change') {
@@ -92,7 +95,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
 
   const watchConnected = useSSE('/api/watch', handleSSEEvent)
 
-  const handleSelect = useCallback((node: FileNode) => {
+  const handleSelect = useCallback((node: FileNode, fromSwipe = false) => {
     setSelectedNode(node)
     // path='' 是根节点，push 到 '/'
     const url = node.path ? `/${node.path}` : '/'
@@ -100,7 +103,15 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
     if (node.type === 'file') {
       selectFile(node.path)
     }
-    // 文件夹：直接用 tree 中已有的 children 数据，不调 API
+    // 手势触发时不推栈（已由 swipeBack/Forward 处理）
+    if (!fromSwipe) {
+      // 截断 forward 历史，推入新节点
+      const stack = navStackRef.current
+      const idx = navIndexRef.current
+      stack.splice(idx + 1)
+      stack.push(node)
+      navIndexRef.current = stack.length - 1
+    }
   }, [selectFile])
 
   const handleSave = useCallback(async (path: string, text: string): Promise<boolean> => {
@@ -110,6 +121,25 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
     }
     return ok
   }, [saveFile, setContent])
+
+  // 应用内手势后退（右滑）：在导航栈里向前走
+  const handleSwipeBack = useCallback(() => {
+    const idx = navIndexRef.current
+    if (idx <= 0) return
+    const prev = navStackRef.current[idx - 1]
+    navIndexRef.current = idx - 1
+    handleSelect(prev, true)
+  }, [handleSelect])
+
+  // 应用内手势前进（左滑）：在导航栈里向后走
+  const handleSwipeForward = useCallback(() => {
+    const stack = navStackRef.current
+    const idx = navIndexRef.current
+    if (idx >= stack.length - 1) return
+    const next = stack[idx + 1]
+    navIndexRef.current = idx + 1
+    handleSelect(next, true)
+  }, [handleSelect])
 
   const dirName = window.__VMD_DIR_NAME__ || 'Markdown 文件'
 
@@ -232,6 +262,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
             onCopy={(nodes) => setClipboard({ nodes, mode: 'copy' })}
             onCut={(nodes) => setClipboard({ nodes, mode: 'cut' })}
             onClearClipboard={() => setClipboard(null)}
+            onSwipeBack={handleSwipeBack}
+            onSwipeForward={handleSwipeForward}
             shareMode={!!window.__VMD_SHARE_TOKEN__}
           />
       </div>
