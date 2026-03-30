@@ -364,7 +364,8 @@ const ContentArea: FunctionalComponent<Props> = ({
       )
     }
 
-    if (loading) {
+    // filePath 有值但内容还没加载完（loading 或 content 尚为 null）时显示 skeleton
+    if (loading || content === null) {
       return (
         <div class="file-loading">
           <div class="file-loading-bars">
