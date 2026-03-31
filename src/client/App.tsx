@@ -264,6 +264,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
             onClearClipboard={() => setClipboard(null)}
             onSwipeBack={navIndexRef.current > 0 ? handleSwipeBack : undefined}
             onSwipeForward={navIndexRef.current < navStackRef.current.length - 1 ? handleSwipeForward : undefined}
+            hasNavHistory={navIndexRef.current > 0}
             shareMode={!!window.__VMD_SHARE_TOKEN__}
           />
       </div>

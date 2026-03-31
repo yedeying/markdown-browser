@@ -50,6 +50,8 @@ interface Props {
   // 应用内导航（手势前进/后退）
   onSwipeBack?: () => void
   onSwipeForward?: () => void
+  // 是否有导航历史（用于手势判断：首页右滑展开侧边栏，有历史时右滑后退）
+  hasNavHistory?: boolean
   // 分享模式（访客只读）
   shareMode?: boolean
 }
@@ -82,6 +84,7 @@ const ContentArea: FunctionalComponent<Props> = ({
   onClearClipboard,
   onSwipeBack,
   onSwipeForward,
+  hasNavHistory = false,
   shareMode = false,
 }) => {
   const isShareMode = shareMode || !!getSharePrefix()
@@ -280,9 +283,9 @@ const ContentArea: FunctionalComponent<Props> = ({
       if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.6 || dt > 400) return
 
       if (dx > 0) {
-        // 右滑：有历史则后退，没有历史（首页）则展开侧边栏
-        if (onSwipeBack) {
-          onSwipeBack()
+        // 右滑：有导航历史则后退，没有历史（首页）则展开侧边栏
+        if (hasNavHistory) {
+          onSwipeBack?.()
         } else {
           onToggleSidebar?.()
         }
