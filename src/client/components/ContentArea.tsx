@@ -47,11 +47,8 @@ interface Props {
   onCopy?: (nodes: FileNode[]) => void
   onCut?: (nodes: FileNode[]) => void
   onClearClipboard?: () => void
-  // 应用内导航（手势前进/后退）
-  onSwipeBack?: () => void
-  onSwipeForward?: () => void
-  // 是否有导航历史（用于手势判断：首页右滑展开侧边栏，有历史时右滑后退）
-  hasNavHistory?: boolean
+  // 应用内导航（手势处理，由父组件决定行为）
+  onSwipe?: (direction: 'left' | 'right') => void
   // 分享模式（访客只读）
   shareMode?: boolean
 }
@@ -82,9 +79,7 @@ const ContentArea: FunctionalComponent<Props> = ({
   onCopy,
   onCut,
   onClearClipboard,
-  onSwipeBack,
-  onSwipeForward,
-  hasNavHistory = false,
+  onSwipe,
   shareMode = false,
 }) => {
   const isShareMode = shareMode || !!getSharePrefix()
@@ -259,7 +254,7 @@ const ContentArea: FunctionalComponent<Props> = ({
     a.click()
   }, [filePath])
 
-  // 移动端左右滑手势：右滑后退，左滑前进（应用内导航，不触发浏览器历史）
+  // 移动端左右滑手势：右滑后退/展开侧边栏，左滑前进（由父组件决定行为）
   const swipeRef = useRef<{ x: number; y: number; t: number } | null>(null)
   const mainRef = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -283,14 +278,11 @@ const ContentArea: FunctionalComponent<Props> = ({
       if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.6 || dt > 400) return
 
       if (dx > 0) {
-        // 右滑：有导航历史则后退，没有历史（首页）则展开侧边栏
-        if (hasNavHistory) {
-          onSwipeBack?.()
-        } else {
-          onToggleSidebar?.()
-        }
+        // 右滑
+        onSwipe?.('right')
       } else {
-        onSwipeForward?.()
+        // 左滑
+        onSwipe?.('left')
       }
     }
 
@@ -300,7 +292,7 @@ const ContentArea: FunctionalComponent<Props> = ({
       el.removeEventListener('touchstart', onTouchStart)
       el.removeEventListener('touchend', onTouchEnd)
     }
-  }, [onSwipeBack, onSwipeForward])
+  }, [onSwipe])
 
   // 移动端更多菜单
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)

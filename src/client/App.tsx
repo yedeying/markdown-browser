@@ -84,6 +84,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
   // 应用内导航栈（手势前进/后退，不依赖浏览器历史，避免退到登录页）
   const navStackRef = useRef<FileNode[]>([])
   const navIndexRef = useRef<number>(-1)
+  // 导航历史状态（用于手势判断）
+  const [hasNavHistory, setHasNavHistory] = useState(false)
 
   const handleSSEEvent = useCallback((event: WatchEvent) => {
     if (event.type === 'tree-change') {
@@ -111,6 +113,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
       stack.splice(idx + 1)
       stack.push(node)
       navIndexRef.current = stack.length - 1
+      setHasNavHistory(stack.length - 1 > 0)
     }
   }, [selectFile])
 
@@ -125,21 +128,39 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
   // 应用内手势后退（右滑）：在导航栈里向前走
   const handleSwipeBack = useCallback(() => {
     const idx = navIndexRef.current
-    if (idx <= 0) return
+    if (idx <= 0) return false
     const prev = navStackRef.current[idx - 1]
     navIndexRef.current = idx - 1
+    setHasNavHistory(idx - 1 > 0)
     handleSelect(prev, true)
+    return true
   }, [handleSelect])
 
   // 应用内手势前进（左滑）：在导航栈里向后走
   const handleSwipeForward = useCallback(() => {
     const stack = navStackRef.current
     const idx = navIndexRef.current
-    if (idx >= stack.length - 1) return
+    if (idx >= stack.length - 1) return false
     const next = stack[idx + 1]
     navIndexRef.current = idx + 1
+    setHasNavHistory(idx + 1 > 0)
     handleSelect(next, true)
+    return true
   }, [handleSelect])
+
+  // 统一手势处理：右滑时，有历史则后退，无历史则展开侧边栏
+  const handleSwipe = useCallback((direction: 'left' | 'right') => {
+    if (direction === 'right') {
+      // 右滑：有历史则后退，无历史则展开侧边栏
+      const didGoBack = handleSwipeBack()
+      if (!didGoBack) {
+        setSidebarOpen(true)
+      }
+    } else {
+      // 左滑：前进
+      handleSwipeForward()
+    }
+  }, [handleSwipeBack, handleSwipeForward])
 
   const dirName = window.__VMD_DIR_NAME__ || 'Markdown 文件'
 
@@ -193,6 +214,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
     // 根路径：恢复根节点视图
     if (!path) {
       setSelectedNode(makeRootNode(tree, dirName))
+      setHasNavHistory(false)
       return
     }
 
@@ -232,41 +254,39 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
         searchResults={results}
         searchLoading={searchLoading}
         dirName={dirName}
-          open={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          treeLoading={treeLoading}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        treeLoading={treeLoading}
+      />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+        <ContentArea
+          filePath={currentPath}
+          content={content}
+          loading={loading}
+          error={error}
+          theme={theme}
+          onSave={handleSave}
+          watchConnected={watchConnected}
+          onNavigate={(path: string) => {
+            // navigate-file 内部触发，path 是文件路径
+            const node = findNodeByPath(tree, path) ?? { name: path.split('/').pop() || path, type: 'file' as const, path }
+            handleSelect(node)
+          }}
+          onToggleSidebar={() => setSidebarOpen(o => !o)}
+          themeToggle={<ThemeToggle theme={theme} onToggle={onThemeToggle} />}
+          selectedNode={
+            // 根节点（path=''）时动态带入最新 tree，避免 tree 更新后 children 过期
+            selectedNode?.path === '' ? makeRootNode(tree, dirName) : selectedNode
+          }
+          tree={tree}
+          onSelectNode={handleSelect}
+          clipboard={clipboard}
+          onCopy={(nodes) => setClipboard({ nodes, mode: 'copy' })}
+          onCut={(nodes) => setClipboard({ nodes, mode: 'cut' })}
+          onClearClipboard={() => setClipboard(null)}
+          onSwipe={handleSwipe}
+          shareMode={!!window.__VMD_SHARE_TOKEN__}
         />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-          <ContentArea
-            filePath={currentPath}
-            content={content}
-            loading={loading}
-            error={error}
-            theme={theme}
-            onSave={handleSave}
-            watchConnected={watchConnected}
-            onNavigate={(path: string) => {
-              // navigate-file 内部触发，path 是文件路径
-              const node = findNodeByPath(tree, path) ?? { name: path.split('/').pop() || path, type: 'file' as const, path }
-              handleSelect(node)
-            }}
-            onToggleSidebar={() => setSidebarOpen(o => !o)}
-            themeToggle={<ThemeToggle theme={theme} onToggle={onThemeToggle} />}
-            selectedNode={
-              // 根节点（path=''）时动态带入最新 tree，避免 tree 更新后 children 过期
-              selectedNode?.path === '' ? makeRootNode(tree, dirName) : selectedNode
-            }
-            tree={tree}
-            onSelectNode={handleSelect}
-            clipboard={clipboard}
-            onCopy={(nodes) => setClipboard({ nodes, mode: 'copy' })}
-            onCut={(nodes) => setClipboard({ nodes, mode: 'cut' })}
-            onClearClipboard={() => setClipboard(null)}
-            onSwipeBack={navIndexRef.current > 0 ? handleSwipeBack : undefined}
-            onSwipeForward={navIndexRef.current < navStackRef.current.length - 1 ? handleSwipeForward : undefined}
-            hasNavHistory={navIndexRef.current > 0}
-            shareMode={!!window.__VMD_SHARE_TOKEN__}
-          />
       </div>
     </div>
   )
