@@ -11,7 +11,7 @@ services:
       - "8197:8888"
     volumes:
       # 挂载本地 markdown 目录（支持编辑，去掉 :ro 即可写）
-      - ${VMD_WORKDIR:-/home/private}:/markdown
+      - ${VMD_WORKDIR:-/home/private/.hermes}:/markdown
     environment:
       DOCKER_CONTAINER: "true"
       TZ: Asia/Shanghai
