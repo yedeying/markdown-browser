@@ -4,6 +4,7 @@ import type { FileNode } from '../../types.js'
 import { getFileType } from '../utils/fileType.js'
 import { useLongPress } from '../hooks/useLongPress.js'
 import type { SelectionProps } from './FolderView.js'
+import { assetUrl } from '../utils/fsApi.js'
 
 function getNodeIcon(node: FileNode): string {
   if (node.type === 'folder') return '📁'
@@ -89,7 +90,7 @@ const FolderCard: FunctionalComponent<Props> = ({
       >
         {showThumb ? (
           <img
-            src={`/api/asset/${node.path}`}
+            src={assetUrl(node.path)}
             alt={node.name}
             onError={() => setImgError(true)}
           />

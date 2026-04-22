@@ -1,11 +1,12 @@
 import type { FunctionalComponent } from 'preact'
+import { assetUrl } from '../utils/fsApi.js'
 
 interface Props {
   filePath: string
 }
 
 const VideoViewer: FunctionalComponent<Props> = ({ filePath }) => {
-  const src = `/api/asset/${encodeURIComponent(filePath)}`
+  const src = assetUrl(filePath)
 
   return (
     <div class="video-viewer">

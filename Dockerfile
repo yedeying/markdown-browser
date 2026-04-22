@@ -25,16 +25,16 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
-# 创建默认 markdown 目录（挂载点）
-RUN mkdir -p /markdown
+# 默认工作区（多挂载模式读取 .vmd-config.json）
+RUN mkdir -p /workspace
 
 # 标记 Docker 环境，禁用浏览器自启
 ENV DOCKER_CONTAINER=true
 
 # 暴露端口
-EXPOSE 8197
+EXPOSE 8888
 
-# 默认启动命令：浏览 /markdown 目录
-# 注意：容器内绑定 0.0.0.0 以允许 Docker 端口转发，实际访问限制由 Docker 端口映射控制
+# 默认启动：多挂载模式，工作区在 /workspace
+# 注意：容器内绑定 0.0.0.0 以允许 Docker 端口转发
 ENTRYPOINT ["bun", "dist/cli.js"]
-CMD ["/markdown", "--port", "8888", "--host", "::"]
+CMD ["--workspace", "/workspace", "--port", "8888", "--host", "0.0.0.0"]

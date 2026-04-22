@@ -1,5 +1,5 @@
 import { useRef } from 'preact/hooks'
-import type { FunctionalComponent } from 'preact'
+import type { FunctionalComponent, ComponentChildren } from 'preact'
 import type { FileNode, SearchResult } from '../../types.js'
 import type { SearchType } from '../hooks/useSearch.js'
 import FileTree, { type FileTreeHandle } from './FileTree.js'
@@ -9,6 +9,8 @@ interface Props {
   tree: FileNode[]
   currentPath: string | null
   onSelect: (node: FileNode) => void
+  /** 文件夹展开时触发（用于懒加载 children） */
+  onExpandFolder?: (path: string) => void
   query: string
   onQueryChange: (q: string) => void
   searchType: SearchType
@@ -16,17 +18,19 @@ interface Props {
   searchResults: SearchResult[] | null
   searchLoading: boolean
   dirName: string
-  // 移动端抽屉控制
+  // 移动端抽屉
   open?: boolean
   onClose?: () => void
-  // 文件树初始加载中
   treeLoading?: boolean
+  /** 额外的 header 内容（如多挂载切换器） */
+  headerExtra?: ComponentChildren
 }
 
 const Sidebar: FunctionalComponent<Props> = ({
   tree,
   currentPath,
   onSelect,
+  onExpandFolder,
   query,
   onQueryChange,
   searchType,
@@ -37,23 +41,23 @@ const Sidebar: FunctionalComponent<Props> = ({
   open,
   onClose,
   treeLoading,
+  headerExtra,
 }) => {
   const treeRef = useRef<FileTreeHandle>(null)
 
   const handleSelect = (node: FileNode) => {
     onSelect(node)
-    // 移动端：选择文件/文件夹后自动收起抽屉
     onClose?.()
   }
 
   return (
     <>
-      {/* 移动端半透明遮罩，点击收起 Sidebar */}
       {open && (
         <div class="sidebar-overlay" onClick={onClose} />
       )}
       <aside class="sidebar" data-open={String(!!open)}>
         <div class="sidebar-header">
+          {headerExtra && <div style={{ marginBottom: '8px' }}>{headerExtra}</div>}
           <div class="sidebar-title">
             <span>📚</span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dirName}</span>
@@ -100,6 +104,7 @@ const Sidebar: FunctionalComponent<Props> = ({
               nodes={tree}
               currentPath={currentPath}
               onSelect={handleSelect}
+              onExpand={onExpandFolder}
               searchResults={searchResults && query ? searchResults : null}
               mobileMode={!!open}
             />

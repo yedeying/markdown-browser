@@ -17,20 +17,44 @@ export interface SearchResult {
   matches: SearchMatch[]
 }
 
+/**
+ * 单个挂载点配置
+ * alias: URL 标识符，仅允许 [a-zA-Z0-9_-]
+ * path:  宿主机或容器内绝对路径
+ */
+export interface MountConfig {
+  alias: string
+  name: string
+  path: string
+  readonly?: boolean
+}
+
+/**
+ * 持久化到 .vmd-config.json 的整体配置
+ */
+export interface VmdConfig {
+  mounts: MountConfig[]
+}
+
 export interface ServerConfig {
-  mode: 'dir' | 'single'
-  basePath: string     // 绝对路径
+  mode: 'dir' | 'single' | 'multi'
+  // dir / single 模式：单一路径
+  basePath?: string
+  // multi 模式：多挂载点
+  workspace?: string           // 工作区根目录（存放 .vmd-config.json）
+  mounts?: MountConfig[]       // 初始化挂载点
   port: number
-  host: string         // 绑定主机地址
-  distPath: string     // dist/client 绝对路径
-  password?: string    // 访问密码，未设置时跳过认证
-  sessionMaxAge?: number  // Cookie 有效期（秒），默认 7 天
+  host: string
+  distPath: string
+  password?: string
+  adminPassword?: string       // 管理员密码（管理挂载点配置用）
+  sessionMaxAge?: number
 }
 
 export interface AuthConfig {
   password: string
-  signingKey: Uint8Array  // HMAC-SHA256 32 字节密钥
-  maxAge: number          // Cookie 有效期（秒）
+  signingKey: Uint8Array
+  maxAge: number
 }
 
 export interface ShareToken {
@@ -45,5 +69,5 @@ export type WatchEventType = 'reload' | 'tree-change' | 'ping'
 
 export type WatchEvent =
   | { type: 'reload'; mtime: number }
-  | { type: 'tree-change' }
+  | { type: 'tree-change'; affectedPath?: string }
   | { type: 'ping' }

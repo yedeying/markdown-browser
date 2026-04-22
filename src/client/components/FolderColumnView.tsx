@@ -5,7 +5,7 @@ import { getFileType, getEditorLang } from '../utils/fileType.js'
 import { useLongPress } from '../hooks/useLongPress.js'
 import MarkdownPreview from './MarkdownPreview.js'
 import Editor from './Editor.js'
-import { apiFetch } from '../utils/fsApi.js'
+import { apiFetch, assetUrl } from '../utils/fsApi.js'
 
 function getNodeIcon(node: FileNode): string {
   if (node.type === 'folder') return '📁'
@@ -123,7 +123,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       return (
         <div class="col-preview-image">
           <img
-            src={`/api/asset/${encodeURIComponent(p.node.path)}`}
+            src={assetUrl(p.node.path)}
             alt={p.node.name}
           />
         </div>

@@ -60,6 +60,8 @@ interface FileTreeProps {
   nodes: FileNode[]
   currentPath: string | null
   onSelect: (node: FileNode) => void
+  /** 文件夹展开时触发（懒加载 children） */
+  onExpand?: (path: string) => void
   level?: number
   searchResults?: SearchResult[] | null
   mobileMode?: boolean
@@ -69,6 +71,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
   nodes,
   currentPath,
   onSelect,
+  onExpand,
   level = 0,
   searchResults,
   mobileMode = false,
@@ -92,6 +95,8 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
     for (let i = 0; i < parts.length - 1; i++) {
       path = path ? `${path}/${parts[i]}` : parts[i]
       newExpanded.add(path)
+      // 懒加载：触发每个祖先目录的 children 加载
+      onExpand?.(path)
     }
     if (newExpanded.size !== expanded.size) {
       setExpanded(newExpanded)
@@ -102,13 +107,15 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
   const toggleFolder = (node: FileNode) => {
     const next = new Set(expanded)
     if (next.has(node.path)) {
-      // 折叠：只移除当前节点
       next.delete(node.path)
     } else {
       // 展开：快展——同时展开所有单子目录链
       for (const p of collectCompactPaths(node)) {
         next.add(p)
+        onExpand?.(p)
       }
+      // 顶层展开也要触发懒加载（即使 children 为空时也需要）
+      onExpand?.(node.path)
     }
     setExpanded(next)
     saveExpanded(next)
@@ -202,6 +209,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
                   nodes={displayNode.children}
                   currentPath={currentPath}
                   onSelect={onSelect}
+                  onExpand={onExpand}
                   level={level + 1}
                   searchResults={searchResults}
                   mobileMode={mobileMode}

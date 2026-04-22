@@ -10,13 +10,17 @@ services:
     ports:
       - "8197:8888"
     volumes:
-      # 挂载本地 markdown 目录（支持编辑，去掉 :ro 即可写）
-      - ${VMD_WORKDIR:-/home/private/.hermes}:/markdown
+      # 挂载宿主机工作区（根目录）到容器 /workspace
+      # 容器内通过 .vmd-config.json 选择工作区内的子目录作为"挂载点"
+      # 兼容旧变量 VMD_WORKDIR
+      - ${VMD_WORKSPACE:-${VMD_WORKDIR:-/home/private}}:/workspace
     environment:
       DOCKER_CONTAINER: "true"
       TZ: Asia/Shanghai
-      # 访问密码从 .env 文件读取（.env 不入库）
+      # 访问密码（保护整站）
       VMD_PASSWORD: ${VMD_PASSWORD:-}
+      # 管理员密码（可选；用于在线编辑挂载点配置）
+      VMD_ADMIN_PASSWORD: ${VMD_ADMIN_PASSWORD:-}
     # 资源限制（可选）
     deploy:
       resources:

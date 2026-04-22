@@ -10,17 +10,24 @@ import ContentArea from './components/ContentArea.js'
 import SingleFileView from './components/SingleFileView.js'
 import ShareFileView from './components/ShareFileView.js'
 import ThemeToggle from './components/ThemeToggle.js'
+import MountLanding from './components/MountLanding.js'
+import AdminPanel from './components/AdminPanel.js'
+import MountSelector from './components/MountSelector.js'
+import { watchUrl } from './utils/fsApi.js'
 import type { FileNode, WatchEvent } from '../types.js'
 import type { ClipboardState } from './components/FolderView.js'
 
-// 模式由 window.__VMD_MODE__ 注入（'dir' | 'single'）
+// 模式由服务端注入（'dir' | 'single' | 'multi'）
 declare global {
   interface Window {
-    __VMD_MODE__: 'dir' | 'single'
+    __VMD_MODE__: 'dir' | 'single' | 'multi'
     __VMD_DIR_NAME__: string
     __VMD_SHARE_TOKEN__?: string
     __VMD_SHARE_TYPE__?: 'file' | 'folder'
     __VMD_SHARE_PATH__?: string
+    __VMD_MOUNTS__?: Array<{ alias: string; name: string }>
+    __VMD_CURRENT_MOUNT__?: string
+    __VMD_ADMIN_ENABLED__?: boolean
   }
 }
 
@@ -61,19 +68,127 @@ const App: FunctionalComponent = () => {
     )
   }
 
+  // 多挂载模式：根据 URL 分发
+  if (mode === 'multi') {
+    return <MultiModeApp theme={theme} onThemeToggle={toggle} />
+  }
+
   // Dir mode
   return <DirModeApp theme={theme} onThemeToggle={toggle} />
+}
+
+// ============================================================
+// 多挂载模式：landing / admin / mount
+// ============================================================
+
+interface MultiProps {
+  theme: 'dark' | 'light'
+  onThemeToggle: () => void
+}
+
+const MultiModeApp: FunctionalComponent<MultiProps> = ({ theme, onThemeToggle }) => {
+  const [route, setRoute] = useState(() => parseMultiRoute(window.location.pathname))
+
+  useEffect(() => {
+    const onPop = () => setRoute(parseMultiRoute(window.location.pathname))
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  const mounts = window.__VMD_MOUNTS__ || []
+  const adminEnabled = !!window.__VMD_ADMIN_ENABLED__
+
+  if (route.kind === 'admin') {
+    return (
+      <AdminPanel
+        theme={theme}
+        onThemeToggle={onThemeToggle}
+        adminEnabled={adminEnabled}
+        onNavigateHome={() => {
+          window.history.pushState({}, '', '/')
+          setRoute({ kind: 'landing' })
+        }}
+      />
+    )
+  }
+
+  if (route.kind === 'mount') {
+    // 设置当前挂载点供 fsApi 使用
+    window.__VMD_CURRENT_MOUNT__ = route.alias
+    const m = mounts.find(x => x.alias === route.alias)
+    if (!m) {
+      // 未知挂载点：回到 landing
+      return (
+        <MountLanding
+          mounts={mounts}
+          adminEnabled={adminEnabled}
+          theme={theme}
+          onThemeToggle={onThemeToggle}
+          errorMsg={`挂载点不存在: ${route.alias}`}
+          onOpenAdmin={() => {
+            window.history.pushState({}, '', '/admin')
+            setRoute({ kind: 'admin' })
+          }}
+        />
+      )
+    }
+    // 挂载点内部文件路径（去掉 /m/alias 前缀）
+    window.__VMD_DIR_NAME__ = m.name
+    return <DirModeApp theme={theme} onThemeToggle={onThemeToggle} mountAlias={route.alias} />
+  }
+
+  // landing
+  window.__VMD_CURRENT_MOUNT__ = undefined
+  return (
+    <MountLanding
+      mounts={mounts}
+      adminEnabled={adminEnabled}
+      theme={theme}
+      onThemeToggle={onThemeToggle}
+      onOpenAdmin={() => {
+        window.history.pushState({}, '', '/admin')
+        setRoute({ kind: 'admin' })
+      }}
+    />
+  )
+}
+
+type MultiRoute =
+  | { kind: 'landing' }
+  | { kind: 'admin' }
+  | { kind: 'mount'; alias: string; inner: string }
+
+function parseMultiRoute(pathname: string): MultiRoute {
+  if (pathname === '/' || pathname === '') return { kind: 'landing' }
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) return { kind: 'admin' }
+  const m = pathname.match(/^\/m\/([a-zA-Z0-9_-]+)(\/.*)?$/)
+  if (m) {
+    return { kind: 'mount', alias: m[1], inner: m[2] || '/' }
+  }
+  return { kind: 'landing' }
 }
 
 interface DirModeProps {
   theme: 'dark' | 'light'
   onThemeToggle: () => void
+  /** 多挂载模式下当前挂载点 alias，单挂载模式留空 */
+  mountAlias?: string
 }
 
-const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle }) => {
-  const { tree, loading: treeLoading, refresh } = useFileTree()
+const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, mountAlias }) => {
+  const { tree, loading: treeLoading, refresh, loadChildren } = useFileTree()
   const { content, loading, error, currentPath, loadFile, selectFile, saveFile, setContent } = useFileContent()
   const { query, setQuery, searchType, setSearchType, results, loading: searchLoading } = useSearch(tree)
+
+  // 多挂载模式：URL 前缀 /m/alias
+  const urlPrefix = mountAlias ? `/m/${mountAlias}` : ''
+  const buildUrl = (p: string) => `${urlPrefix}${p ? `/${p}` : '/'}`
+  const stripPrefix = (pathname: string) => {
+    if (urlPrefix && pathname.startsWith(urlPrefix)) {
+      return pathname.slice(urlPrefix.length).replace(/^\/+/, '')
+    }
+    return pathname.replace(/^\/+/, '')
+  }
 
   // selectedNode 记录当前选中项（可以是文件夹或文件）
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
@@ -89,25 +204,26 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
 
   const handleSSEEvent = useCallback((event: WatchEvent) => {
     if (event.type === 'tree-change') {
-      refresh()
+      refresh(event.affectedPath)
     } else if (event.type === 'reload' && currentPath) {
       loadFile(currentPath)
     }
   }, [currentPath, loadFile, refresh])
 
-  const watchConnected = useSSE('/api/watch', handleSSEEvent)
+  const watchConnected = useSSE(watchUrl(), handleSSEEvent)
 
   const handleSelect = useCallback((node: FileNode, fromSwipe = false) => {
     setSelectedNode(node)
-    // path='' 是根节点，push 到 '/'
-    const url = node.path ? `/${node.path}` : '/'
+    // path='' 是根节点
+    const url = buildUrl(node.path)
     window.history.pushState({ path: node.path, isFolder: node.type === 'folder' }, '', url)
     if (node.type === 'file') {
       selectFile(node.path)
+    } else if (node.type === 'folder' && node.path) {
+      // 懒加载：进入文件夹时预加载下一层
+      loadChildren(node.path)
     }
-    // 手势触发时不推栈（已由 swipeBack/Forward 处理）
     if (!fromSwipe) {
-      // 截断 forward 历史，推入新节点
       const stack = navStackRef.current
       const idx = navIndexRef.current
       stack.splice(idx + 1)
@@ -115,7 +231,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
       navIndexRef.current = stack.length - 1
       setHasNavHistory(stack.length - 1 > 0)
     }
-  }, [selectFile])
+  }, [selectFile, loadChildren, urlPrefix])
 
   const handleSave = useCallback(async (path: string, text: string): Promise<boolean> => {
     const ok = await saveFile(path, text)
@@ -165,53 +281,48 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
   const dirName = window.__VMD_DIR_NAME__ || 'Markdown 文件'
 
   // 页面初始加载：从 URL pathname 恢复文件或文件夹
-  // tree 加载完成后再恢复，否则文件夹节点找不到
   useEffect(() => {
-    const path = window.location.pathname.replace(/^\//, '')
+    const path = stripPrefix(window.location.pathname)
 
-    // 根路径（path=''）：等 tree 加载完后设置根节点（见下方 effect）
+    // 根路径：等 tree 加载完后设置根节点（见下方 effect）
     if (!path) return
 
-    // 先尝试从 tree 中找节点（文件夹场景）
     const node = findNodeByPath(tree, path)
     if (node) {
       setSelectedNode(node)
       if (node.type === 'file') selectFile(path)
-      window.history.replaceState({ path, isFolder: node.type === 'folder' }, '', `/${path}`)
+      else if (node.type === 'folder') loadChildren(path)
+      window.history.replaceState({ path, isFolder: node.type === 'folder' }, '', buildUrl(path))
     } else if (tree.length === 0) {
-      // tree 尚未加载，先 selectFile，等 tree 加载后若是文件夹会被覆盖
       selectFile(path)
-      window.history.replaceState({ path }, '', `/${path}`)
+      window.history.replaceState({ path }, '', buildUrl(path))
     } else {
       selectFile(path)
-      window.history.replaceState({ path }, '', `/${path}`)
+      window.history.replaceState({ path }, '', buildUrl(path))
     }
-  }, [tree.length > 0 ? 'loaded' : 'empty'])  // tree 从空到有内容时重新执行一次
+  }, [tree.length > 0 ? 'loaded' : 'empty'])
 
-  // tree 变化时同步 selectedNode（SSE 刷新后保持最新 children）
+  // tree 变化时同步 selectedNode
   useEffect(() => {
     if (tree.length === 0) return
-    const path = window.location.pathname.replace(/^\//, '')
+    const path = stripPrefix(window.location.pathname)
 
     if (!path) {
-      // 根路径：始终用最新 tree 更新根节点（保证 children 刷新）
       setSelectedNode(makeRootNode(tree, dirName))
       return
     }
 
-    // 非根路径：若当前是文件夹视图，用新 tree 中的节点替换（刷新 children）
     const node = findNodeByPath(tree, path)
     if (node?.type === 'folder') {
       setSelectedNode(node)
     }
   }, [tree])
 
-  // 处理浏览器前进/后退
+  // 浏览器前进/后退
   const handlePopState = useCallback((e: PopStateEvent) => {
-    const path = e.state?.path ?? window.location.pathname.replace(/^\//, '')
+    const path = e.state?.path ?? stripPrefix(window.location.pathname)
     const isFolder = e.state?.isFolder
 
-    // 根路径：恢复根节点视图
     if (!path) {
       setSelectedNode(makeRootNode(tree, dirName))
       setHasNavHistory(false)
@@ -226,7 +337,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
       const node = findNodeByPath(tree, path)
       if (node) setSelectedNode(node)
     }
-  }, [selectFile, tree, dirName])
+  }, [selectFile, tree, dirName, urlPrefix])
 
   useEffect(() => {
     window.addEventListener('popstate', handlePopState)
@@ -247,6 +358,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
         tree={tree}
         currentPath={selectedNode?.path ?? null}
         onSelect={handleSelect}
+        onExpandFolder={(path) => loadChildren(path)}
         query={query}
         onQueryChange={setQuery}
         searchType={searchType}
@@ -257,6 +369,15 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle })
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         treeLoading={treeLoading}
+        headerExtra={
+          mountAlias ? (
+            <MountSelector
+              currentAlias={mountAlias}
+              mounts={window.__VMD_MOUNTS__ || []}
+              adminEnabled={!!window.__VMD_ADMIN_ENABLED__}
+            />
+          ) : null
+        }
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         <ContentArea

@@ -7,6 +7,7 @@ import type { FileNode, SearchResult, AuthConfig } from '../../types.js'
 import { createDirWatcher } from '../watcher.js'
 import { createAuthMiddleware, createAuthRoutes } from '../auth.js'
 import { ShareStore, createShareApiRoutes, createSharePageRoutes } from '../share.js'
+import { treeCache } from '../tree-cache.js'
 
 const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.DS_Store'])
 
@@ -20,6 +21,11 @@ const TEXT_EXTS  = new Set(['.txt', '.log', '.csv', '.tsv', '.xml'])
 const BINARY_EXTS = new Set([...IMAGE_EXTS, ...VIDEO_EXTS])
 const SUPPORTED_EXTS = new Set([...MD_EXTS, ...CODE_EXTS, ...IMAGE_EXTS, ...VIDEO_EXTS, ...TEXT_EXTS])
 
+// 搜索约束
+const GREP_TIMEOUT_MS = 8_000
+const GREP_MAX_BYTES = 2 * 1024 * 1024  // 2MB
+const GREP_MAX_FILES = 200
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)}K`
@@ -27,7 +33,11 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1073741824).toFixed(1)}G`
 }
 
-function buildTree(dir: string, base: string): FileNode[] {
+/**
+ * 读取单层目录（不递归）
+ * 返回的 FileNode.path 是相对于 base 的路径
+ */
+function listDir(dir: string, base: string): FileNode[] {
   let entries: string[]
   try {
     entries = readdirSync(dir).sort()
@@ -50,15 +60,11 @@ function buildTree(dir: string, base: string): FileNode[] {
 
     if (stat.isDirectory()) {
       if (IGNORE_DIRS.has(name)) continue
-      const children = buildTree(fullPath, base)
-      if (children.length > 0) {
-        folders.push({
-          name,
-          type: 'folder',
-          path: relative(base, fullPath),
-          children,
-        })
-      }
+      folders.push({
+        name,
+        type: 'folder',
+        path: relative(base, fullPath),
+      })
     } else if (stat.isFile() && SUPPORTED_EXTS.has(extname(name).toLowerCase())) {
       files.push({
         name,
@@ -72,10 +78,59 @@ function buildTree(dir: string, base: string): FileNode[] {
   return [...folders, ...files]
 }
 
+/**
+ * 懒加载单层列表（带缓存）
+ */
+function listDirCached(scope: string, dir: string, base: string, relPath: string): FileNode[] {
+  const cached = treeCache.get(scope, relPath)
+  if (cached) return cached
+  const nodes = listDir(dir, base)
+  treeCache.set(scope, relPath, nodes)
+  return nodes
+}
+
+/**
+ * 递归构建树（到指定深度）
+ * depth = 0 相当于只返回当前目录一层（子节点不含 children）
+ * depth = Infinity 表示全量
+ */
+function buildTree(scope: string, dir: string, base: string, relPath = '', depth = Infinity): FileNode[] {
+  const nodes = listDirCached(scope, dir, base, relPath)
+  if (depth <= 0) return nodes
+
+  const result: FileNode[] = []
+  for (const node of nodes) {
+    if (node.type === 'folder') {
+      const childRel = node.path
+      const childAbs = join(base, childRel)
+      const children = buildTree(scope, childAbs, base, childRel, depth - 1)
+      // 与旧行为保持一致：跳过空文件夹
+      if (children.length > 0) {
+        result.push({ ...node, children })
+      }
+    } else {
+      result.push(node)
+    }
+  }
+  return result
+}
+
 export function createDirRouter(basePath: string, distPath: string, authConfig: AuthConfig | null = null) {
   const app = new Hono()
   const watcher = createDirWatcher(basePath)
   const shareStore = new ShareStore(basePath)
+  const cacheScope = `dir:${basePath}`
+
+  // watcher 事件触发时失效缓存
+  watcher.onEvent((e) => {
+    if (e.type === 'tree-change') {
+      if (e.affectedPath !== undefined) {
+        treeCache.invalidatePath(cacheScope, e.affectedPath)
+      } else {
+        treeCache.invalidateScope(cacheScope)
+      }
+    }
+  })
 
   // CORS headers for all responses
   app.use('*', async (c, next) => {
@@ -96,9 +151,35 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
     app.use('*', createAuthMiddleware(authConfig))
   }
 
-  // GET /api/files - 递归文件树
+  // GET /api/files - 文件树
+  // 兼容两种模式：
+  //   1. 无参数 / depth 省略  → 兼容老客户端，返回最大深度 3 层
+  //   2. ?path=<rel>&depth=1 → 懒加载单层
   app.get('/api/files', (c) => {
-    const tree = buildTree(basePath, basePath)
+    const relPath = (c.req.query('path') || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    const depthParam = c.req.query('depth')
+    const hasLazyParams = c.req.query('path') !== undefined || depthParam !== undefined
+
+    // 路径越界检查
+    const targetDir = relPath ? join(basePath, relPath) : basePath
+    try {
+      const realBase = realpathSync(basePath)
+      const realTarget = realpathSync(targetDir)
+      if (!realTarget.startsWith(realBase)) {
+        return c.json({ error: 'Forbidden' }, 403)
+      }
+    } catch {
+      return c.json({ error: 'Not found' }, 404)
+    }
+
+    if (hasLazyParams) {
+      const depth = depthParam ? Math.max(0, Math.min(10, parseInt(depthParam) || 0)) : 1
+      const tree = buildTree(cacheScope, targetDir, basePath, relPath, depth)
+      return c.json(tree)
+    }
+
+    // 旧行为兼容：默认返回根目录（深度 3，避免超大树一次性返回）
+    const tree = buildTree(cacheScope, basePath, basePath, '', 3)
     return c.json(tree)
   })
 
@@ -162,7 +243,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
     }
   })
 
-  // GET /api/search - 全文搜索
+  // GET /api/search - 搜索（name / content）
   app.get('/api/search', async (c) => {
     const q = c.req.query('q') || ''
     const type = c.req.query('type') || 'name'
@@ -172,57 +253,86 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
     const results: SearchResult[] = []
 
     if (type === 'name') {
-      // 文件名过滤（从树结构中提取）
-      function searchTree(nodes: FileNode[]) {
+      // 文件名搜索：全量遍历（经缓存；大目录首次有代价，后续查询快）
+      const full = buildTree(cacheScope, basePath, basePath, '', Infinity)
+      const lowerQ = q.toLowerCase()
+      function walk(nodes: FileNode[]) {
         for (const node of nodes) {
-          if (node.type === 'file' && node.name.toLowerCase().includes(q.toLowerCase())) {
+          if (results.length >= GREP_MAX_FILES) return
+          if (node.type === 'file' && node.name.toLowerCase().includes(lowerQ)) {
             results.push({ filePath: node.path, fileName: node.name, matches: [] })
           } else if (node.type === 'folder' && node.children) {
-            searchTree(node.children)
+            walk(node.children)
           }
         }
       }
-      searchTree(buildTree(basePath, basePath))
-    } else {
-      // 全文搜索：调用系统 grep
-      try {
-        const proc = Bun.spawn(
-          ['grep', '-r', '-i', '-n',
-            '--include=*.md', '--include=*.markdown',
-            '--include=*.txt', '--include=*.js', '--include=*.ts',
-            '--include=*.py', '--include=*.json', '--include=*.yaml',
-            '--include=*.yml', '--include=*.sh', '--include=*.css',
-            '--include=*.html', '--include=*.go', '--include=*.rs',
-            q, basePath],
-          { stdout: 'pipe', stderr: 'pipe' }
-        )
-        const output = await new Response(proc.stdout).text()
-        await proc.exited
+      walk(full)
+      return c.json(results)
+    }
 
-        // 解析 grep 输出：filepath:linenum:content
-        const fileMatches: Map<string, SearchResult> = new Map()
-        for (const line of output.split('\n')) {
-          if (!line.trim()) continue
-          const match = line.match(/^(.+?):(\d+):(.*)$/)
-          if (!match) continue
-          const [, filePath, lineNumStr, lineContent] = match
-          const relPath = relative(basePath, filePath)
-          const fileName = basename(filePath)
-          if (!fileMatches.has(relPath)) {
-            fileMatches.set(relPath, { filePath: relPath, fileName, matches: [] })
-          }
-          const entry = fileMatches.get(relPath)!
-          if (entry.matches.length < 3) {
-            entry.matches.push({
-              lineNumber: parseInt(lineNumStr),
-              lineContent: lineContent.trim().slice(0, 120),
-            })
-          }
-        }
-        results.push(...fileMatches.values())
-      } catch {
-        return c.json({ error: 'Search failed' }, 500)
+    // 全文搜索：grep + 超时 + 结果上限
+    try {
+      const proc = Bun.spawn(
+        ['grep', '-r', '-i', '-n',
+          '--exclude-dir=.git', '--exclude-dir=node_modules', '--exclude-dir=dist',
+          '--include=*.md', '--include=*.markdown',
+          '--include=*.txt', '--include=*.js', '--include=*.ts',
+          '--include=*.py', '--include=*.json', '--include=*.yaml',
+          '--include=*.yml', '--include=*.sh', '--include=*.css',
+          '--include=*.html', '--include=*.go', '--include=*.rs',
+          q, basePath],
+        { stdout: 'pipe', stderr: 'pipe' }
+      )
+
+      // 超时保护
+      const killTimer = setTimeout(() => {
+        try { proc.kill() } catch { /* ignore */ }
+      }, GREP_TIMEOUT_MS)
+
+      // 读取限定字节数
+      const chunks: Uint8Array[] = []
+      let total = 0
+      const reader = proc.stdout.getReader()
+      while (total < GREP_MAX_BYTES) {
+        const { value, done } = await reader.read()
+        if (done) break
+        chunks.push(value)
+        total += value.length
       }
+      try { reader.releaseLock() } catch { /* ignore */ }
+      try { proc.kill() } catch { /* ignore */ }
+      clearTimeout(killTimer)
+
+      // 拼接并解析
+      const buf = new Uint8Array(total)
+      let offset = 0
+      for (const ch of chunks) { buf.set(ch, offset); offset += ch.length }
+      const output = new TextDecoder().decode(buf)
+
+      const fileMatches: Map<string, SearchResult> = new Map()
+      for (const line of output.split('\n')) {
+        if (!line.trim()) continue
+        if (fileMatches.size >= GREP_MAX_FILES) break
+        const match = line.match(/^(.+?):(\d+):(.*)$/)
+        if (!match) continue
+        const [, filePath, lineNumStr, lineContent] = match
+        const relPath = relative(basePath, filePath)
+        const fileName = basename(filePath)
+        if (!fileMatches.has(relPath)) {
+          if (fileMatches.size >= GREP_MAX_FILES) break
+          fileMatches.set(relPath, { filePath: relPath, fileName, matches: [] })
+        }
+        const entry = fileMatches.get(relPath)!
+        if (entry.matches.length < 3) {
+          entry.matches.push({
+            lineNumber: parseInt(lineNumStr),
+            lineContent: lineContent.trim().slice(0, 120),
+          })
+        }
+      }
+      results.push(...fileMatches.values())
+    } catch {
+      return c.json({ error: 'Search failed' }, 500)
     }
 
     return c.json(results)

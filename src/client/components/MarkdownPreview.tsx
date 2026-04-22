@@ -22,6 +22,7 @@ import plaintext from 'highlight.js/lib/languages/plaintext'
 import mermaid from 'mermaid'
 import 'katex/dist/katex.min.css'
 import renderMathInElement from 'katex/dist/contrib/auto-render'
+import { assetUrl } from '../utils/fsApi.js'
 
 // 注册语言
 hljs.registerLanguage('javascript', javascript)
@@ -114,9 +115,9 @@ function buildRenderer(currentFilePath?: string): { renderer: Partial<Renderer>;
       return `<h${level} id="${id}">${text}</h${level}>`
     },
     image(href: string, title: string | null, text: string) {
-      // 相对路径转换为 /api/asset/ 代理
+      // 相对路径转换为 /api/asset/ 代理（自动带分享/挂载前缀）
       const src = href.startsWith('.')
-        ? `/api/asset/${resolveRelativePath(currentFilePath || '', href)}`
+        ? assetUrl(resolveRelativePath(currentFilePath || '', href))
         : href
       const titleAttr = title ? ` title="${title}"` : ''
       return `<img src="${src}" alt="${text}"${titleAttr} />`

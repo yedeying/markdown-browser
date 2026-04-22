@@ -4,22 +4,7 @@ import { apiFetch } from '../utils/fsApi.js'
 
 export type SearchType = 'name' | 'content'
 
-function filterByName(tree: FileNode[], query: string): SearchResult[] {
-  const results: SearchResult[] = []
-  function walk(nodes: FileNode[]) {
-    for (const node of nodes) {
-      if (node.type === 'file' && node.name.toLowerCase().includes(query.toLowerCase())) {
-        results.push({ filePath: node.path, fileName: node.name, matches: [] })
-      } else if (node.type === 'folder' && node.children) {
-        walk(node.children)
-      }
-    }
-  }
-  walk(tree)
-  return results
-}
-
-export function useSearch(tree: FileNode[]) {
+export function useSearch(_tree: FileNode[]) {
   const [query, setQuery] = useState('')
   const [searchType, setSearchType] = useState<SearchType>('name')
   const [results, setResults] = useState<SearchResult[] | null>(null)
@@ -32,27 +17,26 @@ export function useSearch(tree: FileNode[]) {
       return
     }
 
-    if (searchType === 'name') {
-      setResults(filterByName(tree, query))
-      return
-    }
-
-    // 全文搜索：防抖 400ms
+    // 无论 name 还是 content，懒加载模式下都走服务端，以获得全量结果
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     debounceTimer.current = setTimeout(async () => {
       setLoading(true)
       try {
-        const res = await apiFetch(`/api/search?q=${encodeURIComponent(query)}&type=content`)
+        const res = await apiFetch(`/api/search?q=${encodeURIComponent(query)}&type=${searchType}`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
-        setResults(data)
+        setResults(Array.isArray(data) ? data : [])
       } catch {
         setResults([])
       } finally {
         setLoading(false)
       }
-    }, 400)
-  }, [query, searchType, tree])
+    }, 250)
+
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    }
+  }, [query, searchType])
 
   return { query, setQuery, searchType, setSearchType, results, loading }
 }

@@ -1,4 +1,5 @@
 import type { FunctionalComponent } from 'preact'
+import { assetUrl } from '../utils/fsApi.js'
 
 interface Props {
   filePath: string
@@ -6,7 +7,7 @@ interface Props {
 
 const ImageViewer: FunctionalComponent<Props> = ({ filePath }) => {
   const fileName = filePath.split('/').pop() || filePath
-  const src = `/api/asset/${encodeURIComponent(filePath)}`
+  const src = assetUrl(filePath)
 
   return (
     <div class="image-viewer">

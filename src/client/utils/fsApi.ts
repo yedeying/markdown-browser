@@ -4,23 +4,88 @@ type FsResult<T = Record<string, unknown>> =
   | ({ ok: true } & T)
   | { ok: false; error: string }
 
+// 通过 unknown 中转以兼容 App.tsx 里的 declare global interface Window 声明
+type VmdWindow = Window & {
+  __VMD_MODE__?: 'dir' | 'single' | 'multi'
+  __VMD_SHARE_TOKEN__?: string
+  __VMD_CURRENT_MOUNT__?: string
+}
+
+function w(): VmdWindow {
+  return window as unknown as VmdWindow
+}
+
 /** 分享模式下的 API 前缀，例如 /share/abc123 */
 export function getSharePrefix(): string {
-  const token = (window as Window & { __VMD_SHARE_TOKEN__?: string }).__VMD_SHARE_TOKEN__
+  const token = w().__VMD_SHARE_TOKEN__
   return token ? `/share/${token}` : ''
 }
 
-/** fetch 封装：遇到 401 自动跳转登录页；分享模式自动加前缀 */
+/** 多挂载模式下的路径前缀，例如 /m/work */
+export function getMountPrefix(): string {
+  const win = w()
+  if (win.__VMD_MODE__ === 'multi' && win.__VMD_CURRENT_MOUNT__) {
+    return `/m/${win.__VMD_CURRENT_MOUNT__}`
+  }
+  return ''
+}
+
+/**
+ * 综合前缀：
+ * - 分享模式优先（分享链接不属于任何挂载点）
+ * - 多挂载模式使用 /m/<alias>
+ * - 单文件/单目录模式无前缀
+ *
+ * 注：管理 API（/api/admin/*, /api/mounts）不走挂载前缀
+ */
+export function getApiPrefix(url: string): string {
+  const share = getSharePrefix()
+  if (share) return share
+  if (
+    url.startsWith('/api/admin/') ||
+    url === '/api/admin/status' ||
+    url === '/api/mounts'
+  ) return ''
+  return getMountPrefix()
+}
+
+/** fetch 封装：遇到 401 自动跳转登录页；自动加前缀 */
 export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
-  const prefix = getSharePrefix()
+  const prefix = getApiPrefix(url)
   const fullUrl = prefix && url.startsWith('/api/') ? prefix + url : url
   const res = await fetch(fullUrl, init)
   if (res.status === 401) {
+    const code = res.headers.get('x-auth-code')
+    // 管理员 401 不跳转，让前端表单处理
+    if (code === 'ADMIN_AUTH_REQUIRED' || url.startsWith('/api/admin/')) {
+      return res
+    }
     window.location.href = `/login?returnTo=${encodeURIComponent(window.location.href)}`
-    // 返回一个永不 resolve 的 Promise，避免后续代码继续执行
     return new Promise(() => {})
   }
   return res
+}
+
+/** 生成静态资源 URL（img src / video src 等，不经过 fetch 封装） */
+export function assetUrl(path: string): string {
+  const share = getSharePrefix()
+  if (share) return `${share}/api/asset/${encodeURI(path)}`
+  const mount = getMountPrefix()
+  return `${mount}/api/asset/${encodeURI(path)}`
+}
+
+/** 生成下载 URL */
+export function downloadUrl(path: string): string {
+  const share = getSharePrefix()
+  if (share) return `${share}/api/download/${encodeURI(path)}`
+  const mount = getMountPrefix()
+  return `${mount}/api/download/${encodeURI(path)}`
+}
+
+/** 生成 SSE watch URL */
+export function watchUrl(): string {
+  const prefix = getMountPrefix()
+  return `${prefix}/api/watch`
 }
 
 async function post<T = Record<string, unknown>>(url: string, body: unknown): Promise<FsResult<T>> {

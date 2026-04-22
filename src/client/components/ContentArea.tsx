@@ -9,7 +9,7 @@ import FolderView, { type ClipboardState } from './FolderView.js'
 import { getFileType, getEditorLang } from '../utils/fileType.js'
 import type { FileNode } from '../../types.js'
 import ShareDialog from './ShareDialog.js'
-import { getSharePrefix } from '../utils/fsApi.js'
+import { getSharePrefix, downloadUrl } from '../utils/fsApi.js'
 
 /** 在 tree 中按 path 查找 FileNode */
 function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
@@ -241,13 +241,10 @@ const ContentArea: FunctionalComponent<Props> = ({
   // 分享弹窗
   const [shareDialogOpen, setShareDialogOpen] = useState(false)
 
-  // 下载当前文件（分享模式）
+  // 下载当前文件
   const handleDownload = useCallback(() => {
     if (!filePath) return
-    const prefix = getSharePrefix()
-    const url = prefix
-      ? `${prefix}/api/download/${encodeURI(filePath)}`
-      : `/api/download/${encodeURI(filePath)}`
+    const url = downloadUrl(filePath)
     const a = document.createElement('a')
     a.href = url
     a.download = filePath.split('/').pop() || 'file'
