@@ -239,25 +239,63 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
   // 管理 API
   createAdminRoutes(app, mountManager, adminAuth)
 
-  // /m/:alias/* → 分发到对应子 app
+  /**
+   * 判断给定的 (stripped) 路径是否属于子 app 应该处理的 API/资源请求。
+   * SPA 页面请求（/, /file/xxx, /folder/xxx 等）必须由主 app 返回注入了
+   * __VMD_MODE__=multi 的 index.html，否则前端拿不到当前挂载 alias。
+   */
+  function isMountApiPath(p: string): boolean {
+    return (
+      p.startsWith('/api/') ||
+      p === '/api' ||
+      p.startsWith('/assets/') ||       // 静态资源（其实走主 app 也能出）
+      p.startsWith('/share/')            // 分享子路径（由子 app share store 处理）
+    )
+  }
+
+  function renderMountSpa(mountAlias: string): Response | null {
+    const rendered = renderMultiIndex(config.distPath, {
+      mountAlias,
+      mounts: mountManager.list().map(m => ({ alias: m.alias, name: m.name })),
+      adminEnabled: !!adminAuth,
+    })
+    if (!rendered) return null
+    return new Response(rendered, {
+      status: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    })
+  }
+
+  // /m/:alias/* → API 请求转发到子 app；SPA 页面请求返回注入多挂载配置的 index.html
   app.all('/m/:alias/*', (c) => {
     const alias = c.req.param('alias')
     const inst = instances.get(alias)
     if (!inst) return c.json({ error: `Mount not found: ${alias}` }, 404)
 
-    // 构造新 Request，去掉 /m/:alias 前缀
     const url = new URL(c.req.url)
     const strippedPath = url.pathname.replace(new RegExp(`^/m/${alias}`), '') || '/'
+
+    // SPA 页面请求：注入 multi 配置返回 index.html
+    if (c.req.method === 'GET' && !isMountApiPath(strippedPath)) {
+      const resp = renderMountSpa(alias)
+      if (resp) return resp
+    }
+
+    // API / 资源请求：转发到子 app
     const newUrl = new URL(strippedPath + url.search, url.origin)
     const newReq = new Request(newUrl, c.req.raw)
     return inst.router.app.fetch(newReq)
   })
 
-  // /m/:alias 根（无尾部斜杠）
+  // /m/:alias 无尾部斜杠：统一当作 SPA 入口
   app.all('/m/:alias', (c) => {
     const alias = c.req.param('alias')
     const inst = instances.get(alias)
     if (!inst) return c.json({ error: `Mount not found: ${alias}` }, 404)
+    if (c.req.method === 'GET') {
+      const resp = renderMountSpa(alias)
+      if (resp) return resp
+    }
     const url = new URL(c.req.url)
     const newUrl = new URL('/' + url.search, url.origin)
     const newReq = new Request(newUrl, c.req.raw)
