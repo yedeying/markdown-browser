@@ -63,7 +63,6 @@ function patchIndexHtml(distPath: string, config: ServerConfig) {
 function renderMultiIndex(distPath: string, payload: {
   mountAlias?: string
   mounts: Array<{ alias: string; name: string }>
-  adminEnabled: boolean
 }): string | null {
   const indexPath = join(distPath, 'index.html')
   try {
@@ -73,7 +72,6 @@ function renderMultiIndex(distPath: string, payload: {
     const vars: string[] = [
       `window.__VMD_MODE__="multi"`,
       `window.__VMD_MOUNTS__=${JSON.stringify(payload.mounts)}`,
-      `window.__VMD_ADMIN_ENABLED__=${payload.adminEnabled}`,
     ]
     if (payload.mountAlias) {
       vars.push(`window.__VMD_CURRENT_MOUNT__=${JSON.stringify(payload.mountAlias)}`)
@@ -146,16 +144,6 @@ export async function startServer(config: ServerConfig) {
 async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | null, port: number) {
   const mountManager = new MountManager(config.workspace!, config.mounts || [])
 
-  // 管理员密码（可选）
-  let adminAuth: AuthConfig | null = null
-  if (config.adminPassword) {
-    adminAuth = {
-      password: config.adminPassword,
-      signingKey: generateSigningKey(),
-      maxAge: config.sessionMaxAge ?? 7 * 24 * 3600,
-    }
-  }
-
   // 每个挂载点一个子 app 实例（带独立 watcher / shareStore）
   interface MountInstance {
     alias: string
@@ -210,21 +198,16 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
   })
   app.options('*', (c) => c.text('', 204))
 
-  // 认证（访问密码）路由；admin 自有鉴权
+  // 认证（访问密码）路由
   if (authConfig) {
     const { createAuthRoutes, createAuthMiddleware } = await import('./auth.js')
     createAuthRoutes(app, authConfig)
     // 访问密码白名单：
-    // - 公共挂载列表（landing 页需要）
-    // - admin 自有鉴权的所有端点
-    // - landing 页自身（/ 和 /admin）不强制登录，但挂载点内容仍需访问密码保护
+    // - 公共挂载列表（landing 页需要；即使未登录也能看见挂载点名，但点进去会被拦截）
+    // - 挂载点管理状态（供前端判断是否有管理能力）
     app.use('*', async (c, next) => {
       const p = c.req.path
-      if (
-        p === '/api/mounts' ||
-        p.startsWith('/api/admin/') ||
-        p === '/api/admin'
-      ) return next()
+      if (p === '/api/mounts' || p === '/api/admin/status') return next()
       return createAuthMiddleware(authConfig!)(c, next)
     })
   }
@@ -236,8 +219,8 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
     })
   })
 
-  // 管理 API
-  createAdminRoutes(app, mountManager, adminAuth)
+  // 挂载点管理 API（复用访问密码鉴权；无密码模式下公开）
+  createAdminRoutes(app, mountManager, authConfig)
 
   /**
    * 判断给定的 (stripped) 路径是否属于子 app 应该处理的 API/资源请求。
@@ -257,7 +240,6 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
     const rendered = renderMultiIndex(config.distPath, {
       mountAlias,
       mounts: mountManager.list().map(m => ({ alias: m.alias, name: m.name })),
-      adminEnabled: !!adminAuth,
     })
     if (!rendered) return null
     return new Response(rendered, {
@@ -328,7 +310,6 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
     // SPA fallback：返回注入 multi 配置的 index.html
     const rendered = renderMultiIndex(config.distPath, {
       mounts: mountManager.list().map(m => ({ alias: m.alias, name: m.name })),
-      adminEnabled: !!adminAuth,
     })
     if (rendered) {
       c.header('Content-Type', 'text/html; charset=utf-8')
@@ -343,7 +324,7 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
     fetch: app.fetch,
   })
 
-  printBanner(config, authConfig, port, mountManager.list(), !!adminAuth)
+  printBanner(config, authConfig, port, mountManager.list())
   openBrowser(`http://localhost:${port}`)
 
   const shutdown = () => {
@@ -364,11 +345,10 @@ function printBanner(
   authConfig: AuthConfig | null,
   port: number,
   mounts?: MountConfig[],
-  adminEnabled?: boolean,
 ) {
   const url = `http://localhost:${port}`
   console.log(`\x1b[36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`)
-  console.log(`\x1b[32m✓ vmd 服务器已启动\x1b[0m`)
+  console.log(`\x1b[32m✓ Markdown Browser 已启动\x1b[0m`)
   console.log(`\x1b[0m  URL: \x1b[34m${url}\x1b[0m`)
   if (config.mode === 'multi') {
     console.log(`\x1b[0m  工作区: \x1b[33m${config.workspace}\x1b[0m`)
@@ -378,12 +358,7 @@ function printBanner(
         console.log(`    \x1b[36m${m.alias}\x1b[0m → ${m.path}`)
       }
     } else {
-      console.log(`\x1b[33m  ⚠ 没有挂载点，请登录管理面板添加\x1b[0m`)
-    }
-    if (adminEnabled) {
-      console.log(`\x1b[32m  管理: 已启用（/admin）\x1b[0m`)
-    } else {
-      console.log(`\x1b[33m  管理: 未启用（设置 VMD_ADMIN_PASSWORD 以启用在线编辑）\x1b[0m`)
+      console.log(`\x1b[33m  ⚠ 没有挂载点，登录后在管理面板添加\x1b[0m`)
     }
   } else if (config.mode === 'dir') {
     console.log(`\x1b[0m  目录: \x1b[33m${config.basePath}\x1b[0m`)

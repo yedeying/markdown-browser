@@ -17,10 +17,8 @@ services:
     environment:
       DOCKER_CONTAINER: "true"
       TZ: Asia/Shanghai
-      # 访问密码（保护整站）
+      # 访问密码（保护整站；登录用户即可管理挂载点）
       VMD_PASSWORD: ${VMD_PASSWORD:-}
-      # 管理员密码（可选；用于在线编辑挂载点配置）
-      VMD_ADMIN_PASSWORD: ${VMD_ADMIN_PASSWORD:-}
     # 资源限制（可选）
     deploy:
       resources:

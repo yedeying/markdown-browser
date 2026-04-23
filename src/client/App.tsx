@@ -27,7 +27,6 @@ declare global {
     __VMD_SHARE_PATH__?: string
     __VMD_MOUNTS__?: Array<{ alias: string; name: string }>
     __VMD_CURRENT_MOUNT__?: string
-    __VMD_ADMIN_ENABLED__?: boolean
   }
 }
 
@@ -96,14 +95,12 @@ const MultiModeApp: FunctionalComponent<MultiProps> = ({ theme, onThemeToggle })
   }, [])
 
   const mounts = window.__VMD_MOUNTS__ || []
-  const adminEnabled = !!window.__VMD_ADMIN_ENABLED__
 
   if (route.kind === 'admin') {
     return (
       <AdminPanel
         theme={theme}
         onThemeToggle={onThemeToggle}
-        adminEnabled={adminEnabled}
         onNavigateHome={() => {
           window.history.pushState({}, '', '/')
           setRoute({ kind: 'landing' })
@@ -121,7 +118,6 @@ const MultiModeApp: FunctionalComponent<MultiProps> = ({ theme, onThemeToggle })
       return (
         <MountLanding
           mounts={mounts}
-          adminEnabled={adminEnabled}
           theme={theme}
           onThemeToggle={onThemeToggle}
           errorMsg={`挂载点不存在: ${route.alias}`}
@@ -142,7 +138,6 @@ const MultiModeApp: FunctionalComponent<MultiProps> = ({ theme, onThemeToggle })
   return (
     <MountLanding
       mounts={mounts}
-      adminEnabled={adminEnabled}
       theme={theme}
       onThemeToggle={onThemeToggle}
       onOpenAdmin={() => {
@@ -278,7 +273,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     }
   }, [handleSwipeBack, handleSwipeForward])
 
-  const dirName = window.__VMD_DIR_NAME__ || 'Markdown 文件'
+  const dirName = window.__VMD_DIR_NAME__ || 'Markdown Browser'
 
   // 页面初始加载：从 URL pathname 恢复文件或文件夹
   useEffect(() => {
@@ -374,7 +369,6 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
             <MountSelector
               currentAlias={mountAlias}
               mounts={window.__VMD_MOUNTS__ || []}
-              adminEnabled={!!window.__VMD_ADMIN_ENABLED__}
             />
           ) : null
         }

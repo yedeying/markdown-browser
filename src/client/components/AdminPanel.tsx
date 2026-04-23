@@ -12,7 +12,7 @@ interface Mount {
 
 interface AdminStatus {
   enabled: boolean
-  loggedIn?: boolean
+  requiresLogin: boolean
   workspace?: string
   configPath?: string
 }
@@ -20,21 +20,16 @@ interface AdminStatus {
 interface Props {
   theme: 'dark' | 'light'
   onThemeToggle: () => void
-  adminEnabled: boolean
   onNavigateHome: () => void
 }
 
-const AdminPanel: FunctionalComponent<Props> = ({ theme, onThemeToggle, adminEnabled, onNavigateHome }) => {
+const AdminPanel: FunctionalComponent<Props> = ({ theme, onThemeToggle, onNavigateHome }) => {
   const [status, setStatus] = useState<AdminStatus | null>(null)
   const [mounts, setMounts] = useState<Mount[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [needsLogin, setNeedsLogin] = useState(false)
 
-  // 登录
-  const [pw, setPw] = useState('')
-  const [loginError, setLoginError] = useState('')
-
-  // 新增 / 编辑
   const [editing, setEditing] = useState<{ mode: 'add' | 'edit'; form: Mount } | null>(null)
 
   const refreshStatus = useCallback(async () => {
@@ -51,15 +46,16 @@ const AdminPanel: FunctionalComponent<Props> = ({ theme, onThemeToggle, adminEna
 
   const refreshMounts = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
-      const res = await apiFetch('/api/admin/mounts')
+      const res = await fetch('/api/admin/mounts')
       if (res.status === 401) {
-        setStatus(s => s ? { ...s, loggedIn: false } : s)
+        setNeedsLogin(true)
         return
       }
       const data = await res.json() as { mounts: Mount[] }
       setMounts(data.mounts || [])
-      setError(null)
+      setNeedsLogin(false)
     } catch (e) {
       setError(String(e))
     } finally {
@@ -68,39 +64,9 @@ const AdminPanel: FunctionalComponent<Props> = ({ theme, onThemeToggle, adminEna
   }, [])
 
   useEffect(() => {
-    (async () => {
-      const s = await refreshStatus()
-      if (s?.loggedIn) await refreshMounts()
-    })()
+    refreshStatus()
+    refreshMounts()
   }, [])
-
-  const handleLogin = async (e: Event) => {
-    e.preventDefault()
-    setLoginError('')
-    try {
-      const res = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pw }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.ok) {
-        setLoginError(data.error || '登录失败')
-        return
-      }
-      setPw('')
-      await refreshStatus()
-      await refreshMounts()
-    } catch (e) {
-      setLoginError(String(e))
-    }
-  }
-
-  const handleLogout = async () => {
-    await fetch('/api/admin/logout', { method: 'POST' })
-    await refreshStatus()
-    setMounts([])
-  }
 
   const handleSave = async () => {
     if (!editing) return
@@ -149,46 +115,20 @@ const AdminPanel: FunctionalComponent<Props> = ({ theme, onThemeToggle, adminEna
     }
   }
 
-  // ============================================================
-  // 渲染
-  // ============================================================
-
-  if (!adminEnabled) {
+  // 未登录：提示到首页登录
+  if (needsLogin) {
     return (
       <div class="admin-wrap">
-        {renderHeader(onNavigateHome, theme, onThemeToggle, null, handleLogout)}
+        {renderHeader(onNavigateHome, theme, onThemeToggle)}
         <main class="admin-main">
           <div class="admin-empty">
             <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
-            <h2>管理功能未启用</h2>
-            <p>请在启动时设置管理员密码：</p>
-            <pre style={{ textAlign: 'left' }}>{`vmd --workspace <dir> --admin-password <pw>
-# 或
-VMD_ADMIN_PASSWORD=<pw> vmd --workspace <dir>`}</pre>
+            <h2>需要登录</h2>
+            <p>请先在首页输入访问密码登录，然后返回此页。</p>
+            <button class="admin-primary" style={{ marginTop: 16 }} onClick={() => {
+              window.location.href = `/login?returnTo=${encodeURIComponent('/admin')}`
+            }}>前往登录</button>
           </div>
-        </main>
-        {styleBlock}
-      </div>
-    )
-  }
-
-  if (!status?.loggedIn) {
-    return (
-      <div class="admin-wrap">
-        {renderHeader(onNavigateHome, theme, onThemeToggle, null, handleLogout)}
-        <main class="admin-main">
-          <form class="admin-login" onSubmit={handleLogin}>
-            <h2>管理员登录</h2>
-            <input
-              type="password"
-              placeholder="管理员密码"
-              value={pw}
-              autoFocus
-              onInput={(e) => setPw((e.target as HTMLInputElement).value)}
-            />
-            {loginError && <div class="admin-err">{loginError}</div>}
-            <button type="submit">登录</button>
-          </form>
         </main>
         {styleBlock}
       </div>
@@ -197,7 +137,7 @@ VMD_ADMIN_PASSWORD=<pw> vmd --workspace <dir>`}</pre>
 
   return (
     <div class="admin-wrap">
-      {renderHeader(onNavigateHome, theme, onThemeToggle, status, handleLogout)}
+      {renderHeader(onNavigateHome, theme, onThemeToggle)}
       <main class="admin-main">
         <div class="admin-toolbar">
           <h2>挂载点管理</h2>
@@ -301,18 +241,15 @@ function renderHeader(
   onNavigateHome: () => void,
   theme: 'dark' | 'light',
   onThemeToggle: () => void,
-  status: AdminStatus | null,
-  onLogout: () => void,
 ) {
   return (
     <header class="admin-header">
       <div class="admin-title">
         <span style={{ fontSize: '20px' }}>⚙</span>
-        <span>vmd 管理后台</span>
+        <span>Markdown Browser · 管理后台</span>
       </div>
       <div class="admin-actions">
         <button class="admin-btn" onClick={onNavigateHome}>🏠 首页</button>
-        {status?.loggedIn && <button class="admin-btn" onClick={onLogout}>退出登录</button>}
         <ThemeToggle theme={theme} onToggle={onThemeToggle} />
       </div>
     </header>
@@ -360,19 +297,6 @@ const styleBlock = (
     .admin-loading, .admin-empty { text-align: center; padding: 40px; color: var(--text-muted); }
     .admin-footer { margin-top: 20px; padding: 12px; font-size: 12px; color: var(--text-muted); background: var(--bg-card); border-radius: 6px; border: 1px solid var(--border); }
     .admin-footer div { margin: 4px 0; }
-    .admin-login {
-      max-width: 360px; margin: 60px auto; display: flex; flex-direction: column; gap: 12px;
-      padding: 24px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
-    }
-    .admin-login h2 { text-align: center; font-size: 18px; margin: 0 0 4px; }
-    .admin-login input {
-      padding: 9px 12px; font-size: 14px; border: 1px solid var(--border); border-radius: 6px;
-      background: var(--bg); color: var(--text); outline: none;
-    }
-    .admin-login input:focus { border-color: var(--accent, #3b82f6); }
-    .admin-login button {
-      padding: 10px; border: none; border-radius: 6px; background: var(--accent, #3b82f6); color: #fff; cursor: pointer; font-size: 14px;
-    }
     .admin-modal-bg {
       position: fixed; inset: 0; background: rgba(0,0,0,0.4);
       display: flex; align-items: center; justify-content: center; z-index: 500;

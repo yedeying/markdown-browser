@@ -289,7 +289,7 @@ function renderLoginPage(returnTo: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>登录 - vmd</title>
+  <title>登录 · Markdown Browser</title>
   <style>
     :root {
       --bg: #ffffff;
@@ -389,7 +389,7 @@ function renderLoginPage(returnTo: string): string {
 </head>
 <body>
   <div class="card">
-    <div class="logo">vmd</div>
+    <div class="logo">Markdown Browser</div>
     <div class="subtitle">请输入访问密码</div>
     <form id="form">
       <label for="pw">密码</label>

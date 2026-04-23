@@ -459,7 +459,7 @@ function renderExpiredPage(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>链接已过期 - vmd</title>
+  <title>链接已过期 · Markdown Browser</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {

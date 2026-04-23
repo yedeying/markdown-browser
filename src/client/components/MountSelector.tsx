@@ -9,14 +9,13 @@ interface Mount {
 interface Props {
   currentAlias: string
   mounts: Mount[]
-  adminEnabled: boolean
 }
 
 /**
  * 多挂载模式下显示在 sidebar 顶部的切换器
  * 点击后弹出其他挂载点 + 返回首页 + 管理入口
  */
-const MountSelector: FunctionalComponent<Props> = ({ currentAlias, mounts, adminEnabled }) => {
+const MountSelector: FunctionalComponent<Props> = ({ currentAlias, mounts }) => {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const cur = mounts.find(m => m.alias === currentAlias)
@@ -68,7 +67,7 @@ const MountSelector: FunctionalComponent<Props> = ({ currentAlias, mounts, admin
           <button class="ms-item" onClick={() => go('/admin')}>
             <span class="ms-item-icon">⚙</span>
             <span class="ms-item-body">
-              <span class="ms-item-name">{adminEnabled ? '管理挂载点' : '管理（未启用）'}</span>
+              <span class="ms-item-name">管理挂载点</span>
             </span>
           </button>
         </div>

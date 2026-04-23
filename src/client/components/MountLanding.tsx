@@ -8,7 +8,6 @@ interface Mount {
 
 interface Props {
   mounts: Mount[]
-  adminEnabled: boolean
   theme: 'dark' | 'light'
   onThemeToggle: () => void
   onOpenAdmin: () => void
@@ -17,7 +16,6 @@ interface Props {
 
 const MountLanding: FunctionalComponent<Props> = ({
   mounts,
-  adminEnabled,
   theme,
   onThemeToggle,
   onOpenAdmin,
@@ -28,11 +26,11 @@ const MountLanding: FunctionalComponent<Props> = ({
       <header class="landing-header">
         <div class="landing-title">
           <span style={{ fontSize: '22px' }}>📚</span>
-          <span>vmd Markdown 工作区</span>
+          <span>Markdown Browser</span>
         </div>
         <div class="landing-actions">
           <button class="landing-btn" onClick={onOpenAdmin}>
-            {adminEnabled ? '⚙ 管理挂载点' : '⚙ 管理（未启用）'}
+            ⚙ 管理挂载点
           </button>
           <ThemeToggle theme={theme} onToggle={onThemeToggle} />
         </div>
@@ -45,11 +43,7 @@ const MountLanding: FunctionalComponent<Props> = ({
           <div class="landing-empty">
             <div class="landing-empty-icon">📂</div>
             <h2>暂无挂载点</h2>
-            <p>
-              {adminEnabled
-                ? '点击右上角「管理挂载点」，添加第一个目录开始使用'
-                : '管理功能未启用，请在启动命令中设置 --admin-password 或环境变量 VMD_ADMIN_PASSWORD'}
-            </p>
+            <p>点击右上角「管理挂载点」，添加第一个目录开始使用</p>
           </div>
         ) : (
           <div class="landing-grid">

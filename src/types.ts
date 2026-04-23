@@ -47,8 +47,7 @@ export interface ServerConfig {
   host: string
   distPath: string
   password?: string
-  adminPassword?: string       // 管理员密码（管理挂载点配置用）
-  sessionMaxAge?: number
+  sessionMaxAge?: number        // Cookie 有效期（秒），默认 7 天
 }
 
 export interface AuthConfig {
