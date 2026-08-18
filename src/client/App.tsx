@@ -179,10 +179,20 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   const urlPrefix = mountAlias ? `/m/${mountAlias}` : ''
   const buildUrl = (p: string) => `${urlPrefix}${p ? `/${p}` : '/'}`
   const stripPrefix = (pathname: string) => {
-    if (urlPrefix && pathname.startsWith(urlPrefix)) {
-      return pathname.slice(urlPrefix.length).replace(/^\/+/, '')
+    let raw = pathname
+    if (urlPrefix && raw.startsWith(urlPrefix)) {
+      raw = raw.slice(urlPrefix.length).replace(/^\/+/, '')
+    } else {
+      raw = raw.replace(/^\/+/, '')
     }
-    return pathname.replace(/^\/+/, '')
+    // window.location.pathname 保持浏览器 URL 编码（中文 → %E9...），
+    // 若不先解码，后续 loadFile 的 encodeURI 会二次编码（% → %25），
+    // 服务端 decodeURIComponent 后仍是非中文字面量 → 404 → 直出空白。
+    try {
+      return decodeURIComponent(raw)
+    } catch {
+      return raw
+    }
   }
 
   // selectedNode 记录当前选中项（可以是文件夹或文件）
