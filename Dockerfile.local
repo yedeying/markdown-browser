@@ -1,6 +1,8 @@
 # 本地构建部署（配合 build.sh）：宿主机已构建好 dist/，直接打包，
 # 跳过容器内编译，解决 Docker 构建 OOM 问题
-FROM oven/bun:slim
+# 注意：bun 版本必须固定为 1.3.11——bun 1.3.14 在本机环境
+# （机械盘 + overlay + 大挂载目录）启动会卡死（D state 磁盘 I/O）
+FROM oven/bun:1.3.11-slim
 
 WORKDIR /app
 

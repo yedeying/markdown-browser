@@ -1,5 +1,5 @@
 # 多阶段构建：stage 1 - 构建阶段
-FROM oven/bun:latest as builder
+FROM oven/bun:1.3.11 as builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ RUN bun x vite build
 RUN bun build src/cli.ts --outdir dist --target bun
 
 # 多阶段构建：stage 2 - 运行阶段（slim 基础镜像）
-FROM oven/bun:slim
+FROM oven/bun:1.3.11-slim
 
 WORKDIR /app
 
