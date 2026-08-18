@@ -1,0 +1,17 @@
+.git
+.github
+.vscode
+.DS_Store
+*.log
+npm-debug.log*
+.env
+.env.local
+docs
+tests
+playwright.config.ts
+mcp-server
+bun.lock
+Dockerfile
+Dockerfile.local
+.dockerignore
+.dockerignore.local

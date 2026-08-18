@@ -1,0 +1,23 @@
+# 本地构建部署（配合 build.sh）：宿主机已构建好 dist/，直接打包，
+# 跳过容器内编译，解决 Docker 构建 OOM 问题
+FROM oven/bun:slim
+
+WORKDIR /app
+
+# 复制宿主机构建产物与依赖
+COPY node_modules ./node_modules
+COPY dist ./dist
+COPY index.html ./index.html
+
+# 默认工作区（多挂载模式读取 .vmd-config.json）
+RUN mkdir -p /workspace
+
+# 标记 Docker 环境，禁用浏览器自启
+ENV DOCKER_CONTAINER=true
+
+# 暴露端口
+EXPOSE 8888
+
+# 默认启动：多挂载模式，工作区在 /workspace
+ENTRYPOINT ["bun", "dist/cli.js"]
+CMD ["--workspace", "/workspace", "--port", "8888", "--host", "0.0.0.0"]
