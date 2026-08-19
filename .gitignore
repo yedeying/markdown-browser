@@ -9,3 +9,4 @@ generated-image-*.png
 mcp-server/node_modules/
 mcp-server/dist/
 .claude/
+.worktrees
