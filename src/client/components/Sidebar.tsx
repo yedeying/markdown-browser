@@ -4,6 +4,7 @@ import type { FileNode, SearchResult } from '../../types.js'
 import type { SearchType } from '../hooks/useSearch.js'
 import FileTree, { type FileTreeHandle } from './FileTree.js'
 import SearchBar from './SearchBar.js'
+import Icon from './ui/Icon.js'
 
 interface Props {
   tree: FileNode[]
@@ -59,7 +60,7 @@ const Sidebar: FunctionalComponent<Props> = ({
         <div class="sidebar-header">
           {headerExtra && <div style={{ marginBottom: '8px' }}>{headerExtra}</div>}
           <div class="sidebar-title">
-            <span>📚</span>
+            <Icon name="book" size={16} aria-hidden="true" />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dirName}</span>
           </div>
           <SearchBar
@@ -77,7 +78,7 @@ const Sidebar: FunctionalComponent<Props> = ({
             style={{ paddingLeft: '8px' }}
             onClick={() => handleSelect({ name: dirName, type: 'folder', path: '', children: [] })}
           >
-            <span class="folder-icon">🏠</span>
+            <Icon name="home" size={15} class="folder-icon" aria-hidden="true" />
             <span class="folder-name" style={{ fontSize: '13px', flex: 1 }}>{dirName}</span>
             <button
               class="sidebar-collapse-btn"

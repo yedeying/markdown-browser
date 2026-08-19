@@ -2,6 +2,10 @@ import type { FunctionalComponent } from 'preact'
 import {
   Folder,
   File,
+  FileText,
+  FileCode,
+  FileImage,
+  FileVideoCamera,
   Sun,
   Moon,
   Home,
@@ -17,6 +21,10 @@ import {
 export type IconName =
   | 'folder'
   | 'file'
+  | 'file-text'
+  | 'file-code'
+  | 'file-image'
+  | 'file-video'
   | 'sun'
   | 'moon'
   | 'home'
@@ -31,6 +39,10 @@ export type IconName =
 const ICONS = {
   folder: Folder,
   file: File,
+  'file-text': FileText,
+  'file-code': FileCode,
+  'file-image': FileImage,
+  'file-video': FileVideoCamera,
   sun: Sun,
   moon: Moon,
   home: Home,

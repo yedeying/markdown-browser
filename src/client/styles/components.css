@@ -85,6 +85,7 @@
   align-items: center;
   gap: 5px;
   font-size: 13px;
+  min-height: var(--tree-row-height);
 }
 
 .folder-row:hover {
@@ -183,6 +184,7 @@
   align-items: center;
   gap: 7px;
   transition: background 0.15s;
+  min-height: var(--tree-row-height);
 }
 
 .file-row:hover {
@@ -194,9 +196,15 @@
   color: var(--active-text);
 }
 
+.folder-icon,
 .file-icon {
-  font-size: 14px;
   flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.folder-row.active .folder-icon,
+.file-row.active .file-icon {
+  color: var(--active-text);
 }
 
 .file-info {
@@ -1128,6 +1136,144 @@
 @media (max-width: 768px) {
   .file-loading { padding: 24px 20px; }
 }
+
+/* ================================
+   挂载点着陆页（MountLanding）
+   ================================ */
+
+.landing-wrap {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+}
+
+.landing-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--header-bg);
+}
+
+.landing-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.landing-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.landing-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.landing-btn:hover {
+  background: var(--hover);
+}
+
+.landing-error {
+  margin: 16px 24px;
+  padding: 10px 14px;
+  background: rgba(239, 68, 68, 0.1);
+  border-left: 3px solid var(--danger);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.landing-main {
+  flex: 1;
+  padding: 24px;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.landing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.landing-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+
+.landing-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.landing-card-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.landing-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.landing-card-name {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.landing-card-alias {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.landing-empty {
+  text-align: center;
+  padding: 64px 24px;
+  color: var(--text-muted);
+}
+
+.landing-empty-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+  color: var(--text-muted);
+}
+
+.landing-empty h2 { font-size: 18px; margin-bottom: 8px; color: var(--text); }
+.landing-empty p { font-size: 14px; max-width: 480px; margin: 0 auto; line-height: 1.6; }
 
 /* ================================
    移动端默认行为限制

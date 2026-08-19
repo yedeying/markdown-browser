@@ -10,6 +10,7 @@ import { getFileType, getEditorLang } from '../utils/fileType.js'
 import type { FileNode } from '../../types.js'
 import ShareDialog from './ShareDialog.js'
 import { getSharePrefix, downloadUrl } from '../utils/fsApi.js'
+import Icon from './ui/Icon.js'
 
 /** 在 tree 中按 path 查找 FileNode */
 function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
@@ -458,7 +459,10 @@ const ContentArea: FunctionalComponent<Props> = ({
     return (
       <div class="editor-view">
         <div class="editor-pane">
-          <div class="pane-header">📝 Markdown 源码</div>
+          <div class="pane-header">
+            <Icon name="file-text" size={14} aria-hidden="true" />
+            Markdown 源码
+          </div>
           <div class="editor-wrapper">
             <Editor
               ref={editorRef}
@@ -470,7 +474,10 @@ const ContentArea: FunctionalComponent<Props> = ({
           </div>
         </div>
         <div class="editor-pane">
-          <div class="pane-header">👁 实时预览</div>
+          <div class="pane-header">
+            <Icon name="eye" size={14} aria-hidden="true" />
+            实时预览
+          </div>
           <div class="preview-pane" ref={previewPaneRef}>
             <MarkdownPreview
               markdown={editContent}
@@ -488,11 +495,15 @@ const ContentArea: FunctionalComponent<Props> = ({
       <div class="content-header">
         <div class="current-file">
           {/* 移动端汉堡菜单按钮 */}
-          <button class="hamburger-btn" onClick={onToggleSidebar} aria-label="菜单">☰</button>
+          <button class="hamburger-btn" onClick={onToggleSidebar} aria-label="菜单">
+            <Icon name="menu" size={18} aria-hidden="true" />
+          </button>
           {displayName ? (
             <>
               {!isFolderView && unsaved && <span style={{ color: 'var(--warning)' }}>● </span>}
-              {isFolderView && <span style={{ marginRight: '4px' }}>📁 </span>}
+              {isFolderView && (
+                <Icon name="folder" size={14} class="current-file-icon" aria-hidden="true" />
+              )}
               {displayName}
               {!isFolderView && watchConnected !== undefined && (
                 <span

@@ -1,4 +1,5 @@
 import type { FunctionalComponent } from 'preact'
+import Icon from './ui/Icon.js'
 
 interface Props {
   theme: 'dark' | 'light'
@@ -8,7 +9,7 @@ interface Props {
 const ThemeToggle: FunctionalComponent<Props> = ({ theme, onToggle }) => {
   return (
     <button class="btn" onClick={onToggle} title={`切换到${theme === 'dark' ? '亮色' : '暗色'}主题`}>
-      {theme === 'dark' ? '☀️' : '🌙'}
+      <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={15} aria-hidden="true" />
     </button>
   )
 }

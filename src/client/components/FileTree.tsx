@@ -3,15 +3,16 @@ import type { Ref } from 'preact'
 import { forwardRef } from 'preact/compat'
 import type { FileNode, SearchResult } from '../../types.js'
 import { getFileType } from '../utils/fileType.js'
+import Icon, { type IconName } from './ui/Icon.js'
 
-function getFileIcon(name: string): string {
+function getFileIcon(name: string): IconName {
   switch (getFileType(name)) {
-    case 'markdown':    return '📝'
-    case 'image':       return '🖼'
-    case 'video':       return '🎬'
-    case 'code':        return '📄'
-    case 'text':        return '📃'
-    default:            return '📎'
+    case 'markdown':    return 'file-text'
+    case 'image':       return 'file-image'
+    case 'video':       return 'file-video'
+    case 'code':        return 'file-code'
+    case 'text':        return 'file-text'
+    default:            return 'file'
   }
 }
 
@@ -178,7 +179,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
                 }}
               >
                 <span class={`folder-toggle ${isExpanded ? 'expanded' : ''}`}>▶</span>
-                <span class="folder-icon">📁</span>
+                <Icon name="folder" size={15} class="folder-icon" aria-hidden="true" />
                 <span class="folder-name" style={{ fontSize: '13px', flex: 1 }}>
                   {compactChain.map((n, i) => (
                     <>
@@ -230,7 +231,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
             data-testid={`tree-node-${node.path.replace(/\//g, '-')}`}
             onClick={() => onSelect(node)}
           >
-            <span class="file-icon">{getFileIcon(node.name)}</span>
+            <Icon name={getFileIcon(node.name)} size={15} class="file-icon" aria-hidden="true" />
             <div class="file-info">
               <div class="file-name">{node.name}</div>
               <div class="file-meta">{node.size}</div>
