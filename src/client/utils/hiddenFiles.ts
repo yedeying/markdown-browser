@@ -4,6 +4,15 @@ export function isDotfile(name: string): boolean {
   return name.startsWith('.')
 }
 
+/**
+ * 判断一个相对路径是否应视为隐藏：只要任意路径分段是点文件/点文件夹即为隐藏。
+ * 例如 ".private/plain-name.md" 中文件名本身不是点文件，但父目录 ".private" 是，
+ * 因此整条路径仍应视为隐藏，避免搜索结果泄露隐藏目录下的文件。
+ */
+export function isHiddenPath(path: string): boolean {
+  return path.split('/').some(seg => seg !== '' && isDotfile(seg))
+}
+
 export function filterVisible<T extends { name: string }>(nodes: T[], showHidden: boolean): T[] {
   return showHidden ? nodes : nodes.filter(n => !isDotfile(n.name))
 }

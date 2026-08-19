@@ -5,7 +5,7 @@ import type { SearchType } from '../hooks/useSearch.js'
 import FileTree, { type FileTreeHandle } from './FileTree.js'
 import SearchBar from './SearchBar.js'
 import Icon from './ui/Icon.js'
-import { filterTree, isDotfile } from '../utils/hiddenFiles.js'
+import { filterTree, isHiddenPath } from '../utils/hiddenFiles.js'
 import { getSidebarWidth, setSidebarWidth } from '../utils/prefs.js'
 
 interface Props {
@@ -89,7 +89,7 @@ const Sidebar: FunctionalComponent<Props> = ({
 
   const visibleTree = filterTree(tree, showHidden)
   const visibleSearchResults = searchResults
-    ? (showHidden ? searchResults : searchResults.filter(r => !isDotfile(r.fileName)))
+    ? (showHidden ? searchResults : searchResults.filter(r => !isHiddenPath(r.filePath)))
     : searchResults
 
   return (

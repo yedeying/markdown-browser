@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import { isDotfile, filterVisible, filterTree } from './hiddenFiles.ts'
+import { isDotfile, filterVisible, filterTree, isHiddenPath } from './hiddenFiles.ts'
 
 test('isDotfile detects leading dot', () => {
   expect(isDotfile('.hidden-note.md')).toBe(true)
@@ -20,6 +20,24 @@ test('filterVisible keeps dotfiles when showHidden=true', () => {
 
 test('filterVisible returns empty array when all nodes are dotfiles and hidden', () => {
   expect(filterVisible([{ name: '.a' }, { name: '.b' }], false)).toEqual([])
+})
+
+test('isHiddenPath flags a dotfile leaf', () => {
+  expect(isHiddenPath('.hidden-note.md')).toBe(true)
+  expect(isHiddenPath('notes/.hidden.md')).toBe(true)
+})
+
+test('isHiddenPath flags a plain filename nested inside a dot-directory', () => {
+  // The bug this guards against: the leaf name alone ("plain-name.md") is not
+  // a dotfile, but the parent directory (".private") is — the whole path
+  // must still be treated as hidden so search results don't leak it.
+  expect(isHiddenPath('.private/plain-name.md')).toBe(true)
+  expect(isHiddenPath('notes/.secret/plain-name.md')).toBe(true)
+})
+
+test('isHiddenPath returns false for fully visible paths', () => {
+  expect(isHiddenPath('notes/daily.md')).toBe(false)
+  expect(isHiddenPath('README.md')).toBe(false)
 })
 
 interface Node { name: string; children?: Node[] }

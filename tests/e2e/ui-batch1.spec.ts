@@ -89,3 +89,17 @@ test('2f: hidden files toggle', async ({ page }) => {
   await expect(page.locator('[data-testid="tree-node-.hidden-note.md"]')).toHaveCount(0)
   await expect(page.locator('[data-testid="folder-list"]')).not.toContainText('.hidden-note.md')
 })
+
+test('2f-bugfix: name search does not leak a plain-named file nested inside a dot-directory', async ({ page }) => {
+  await page.goto('/')
+
+  // "plain-name.md" itself is not a dotfile, but its parent ".private/" is —
+  // with hidden files off, the search must not silently count this as a match
+  // (previously the sidebar only checked isDotfile(fileName), leaking it).
+  await page.fill('.search-input', 'plain-name')
+  await expect(page.getByText('无匹配结果')).toBeVisible()
+
+  // Enabling "show hidden" surfaces the match again.
+  await page.click('[data-testid="toggle-hidden-files"]')
+  await expect(page.getByText('无匹配结果')).not.toBeVisible()
+})
