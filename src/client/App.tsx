@@ -405,6 +405,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
           }
           tree={tree}
           onSelectNode={handleSelect}
+          loadChildren={loadChildren}
           clipboard={clipboard}
           onCopy={(nodes) => setClipboard({ nodes, mode: 'copy' })}
           onCut={(nodes) => setClipboard({ nodes, mode: 'cut' })}

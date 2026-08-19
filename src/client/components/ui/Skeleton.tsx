@@ -15,7 +15,7 @@ const FILE_LINE_WIDTHS = [0.6, 1, 0.75, 0.9, 0.5, 0.8, 0.65, 0.95, 0.7, 0.55, 0.
 const Skeleton: FunctionalComponent<Props> = ({ variant }) => {
   if (variant === 'folder') {
     return (
-      <div class="tree-skeleton">
+      <div class="tree-skeleton" data-testid="folder-skeleton">
         {FOLDER_ROW_WIDTHS.map((w, i) => (
           <div key={i} class="tree-skeleton-row" style={{ paddingLeft: `${8 + (i % 3) * 12}px` }}>
             <div class="tree-skeleton-icon" />

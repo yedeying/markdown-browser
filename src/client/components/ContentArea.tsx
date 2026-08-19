@@ -11,6 +11,7 @@ import type { FileNode } from '../../types.js'
 import ShareDialog from './ShareDialog.js'
 import { getSharePrefix, downloadUrl } from '../utils/fsApi.js'
 import Icon from './ui/Icon.js'
+import Skeleton from './ui/Skeleton.js'
 
 /** 在 tree 中按 path 查找 FileNode */
 function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
@@ -43,6 +44,8 @@ interface Props {
   selectedNode?: FileNode | null
   tree?: FileNode[]
   onSelectNode?: (node: FileNode) => void
+  /** 懒加载：文件夹 children 未就绪时触发拉取 */
+  loadChildren?: (path: string) => void
   // 剪贴板（App 级别管理）
   clipboard?: ClipboardState | null
   onCopy?: (nodes: FileNode[]) => void
@@ -76,6 +79,7 @@ const ContentArea: FunctionalComponent<Props> = ({
   selectedNode,
   tree,
   onSelectNode,
+  loadChildren,
   clipboard,
   onCopy,
   onCut,
@@ -319,7 +323,17 @@ const ContentArea: FunctionalComponent<Props> = ({
 
   const fileName = filePath ? filePath.split('/').pop() : null
   const isFolderView = selectedNode?.type === 'folder'
+  // 懒加载文件夹：children 未就绪（非空文件夹的首次进入）时先显示骨架屏，
+  // 避免把"还没加载"误判为"空文件夹"
+  const folderChildrenReady = !isFolderView || selectedNode!.children != null
   const displayName = isFolderView ? selectedNode!.name : fileName
+
+  // 文件夹 children 未就绪时触发懒加载（App 侧通常已在 onSelect 时触发，这里作为兜底）
+  useEffect(() => {
+    if (isFolderView && selectedNode!.children == null && selectedNode!.path) {
+      loadChildren?.(selectedNode!.path)
+    }
+  }, [isFolderView, selectedNode?.path, selectedNode?.children, loadChildren])
 
   // 文件视图面包屑：解析 filePath 的父级路径段
   const fileBreadcrumbs = (() => {
@@ -342,6 +356,10 @@ const ContentArea: FunctionalComponent<Props> = ({
   const renderContent = () => {
     // 文件夹视图优先
     if (selectedNode?.type === 'folder') {
+      // children 未就绪（懒加载进行中）：显示骨架屏，不误判为空文件夹
+      if (!folderChildrenReady) {
+        return <Skeleton variant="folder" />
+      }
       return (
         <FolderView
           node={selectedNode}

@@ -298,6 +298,7 @@ const MarkdownPreview: FunctionalComponent<Props> = ({ markdown, contentRef, cla
     <div
       ref={containerRef}
       class={`markdown-body ${className || ''}`}
+      data-testid="markdown-preview"
     />
   )
 }
