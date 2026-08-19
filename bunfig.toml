@@ -1,0 +1,4 @@
+[test]
+# 只跑 src 下的单元测试；tests/e2e/*.spec.ts 由 `bunx playwright test` 运行，
+# 被 bun test 收集到会直接报 "Playwright Test did not expect test() to be called here"。
+root = "src"

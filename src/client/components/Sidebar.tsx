@@ -6,7 +6,7 @@ import FileTree, { type FileTreeHandle } from './FileTree.js'
 import SearchBar from './SearchBar.js'
 import Icon from './ui/Icon.js'
 import { filterTree, isHiddenPath } from '../utils/hiddenFiles.js'
-import { getSidebarWidth, setSidebarWidth } from '../utils/prefs.js'
+import { clampSidebarWidth, getSidebarWidth, setSidebarWidth } from '../utils/prefs.js'
 
 interface Props {
   tree: FileNode[]
@@ -56,6 +56,8 @@ const Sidebar: FunctionalComponent<Props> = ({
 
   // ── 宽度拖拽调整（200–480px），初始值从 localStorage 读取 ──
   const [width, setWidth] = useState<number>(() => getSidebarWidth())
+  // 拖拽过程中读最新宽度（回调是 memo 过的，闭包里的 width 会过期）
+  const widthRef = useRef(width)
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
 
   useEffect(() => {
@@ -65,11 +67,14 @@ const Sidebar: FunctionalComponent<Props> = ({
   const handlePointerMove = useCallback((e: PointerEvent) => {
     const drag = dragRef.current
     if (!drag) return
-    const next = setSidebarWidth(drag.startWidth + (e.clientX - drag.startX))
+    // 拖拽中只更新 UI；落盘留到 pointerup，避免每帧写 localStorage
+    const next = clampSidebarWidth(drag.startWidth + (e.clientX - drag.startX))
+    widthRef.current = next
     setWidth(next)
   }, [])
 
   const handlePointerUp = useCallback(() => {
+    if (dragRef.current) setSidebarWidth(widthRef.current)
     dragRef.current = null
     window.removeEventListener('pointermove', handlePointerMove)
     window.removeEventListener('pointerup', handlePointerUp)
@@ -77,7 +82,7 @@ const Sidebar: FunctionalComponent<Props> = ({
 
   const handleResizeStart = (e: PointerEvent) => {
     e.preventDefault()
-    dragRef.current = { startX: e.clientX, startWidth: width }
+    dragRef.current = { startX: e.clientX, startWidth: widthRef.current }
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
   }

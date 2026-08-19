@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'preact/hooks'
-import { apiFetch } from '../utils/fsApi.js'
+import { apiFetch, withHidden } from '../utils/fsApi.js'
 import { getFileType } from '../utils/fileType.js'
 
 export function useFileContent() {
@@ -12,10 +12,11 @@ export function useFileContent() {
   const selfSaveAt = useRef<number>(0)
   const SELF_SAVE_IGNORE_WINDOW = 2000 // ms
 
-  const loadFile = useCallback(async (path: string, { ignoreSelfSave = false } = {}) => {
+  /** 返回值：是否真的执行了加载（false = 被 self-save 窗口抑制，调用方据此放弃后续动作） */
+  const loadFile = useCallback(async (path: string, { ignoreSelfSave = false } = {}): Promise<boolean> => {
     // 如果是 SSE 触发的 reload，且距上次 self-save 不足 2s，则忽略（避免屏闪）
     if (!ignoreSelfSave && Date.now() - selfSaveAt.current < SELF_SAVE_IGNORE_WINDOW) {
-      return
+      return false
     }
     // 图片/视频等二进制类型不走文本内容拉取：直接设置 currentPath，
     // ContentArea 据此路由到 ImageViewer/VideoViewer，无需等待（也不会有）content
@@ -25,12 +26,12 @@ export function useFileContent() {
       setContent('')
       setError(null)
       setLoading(false)
-      return
+      return true
     }
     setLoading(true)
     setError(null)
     try {
-      const res = await apiFetch(`/api/file/${encodeURI(path)}`)
+      const res = await apiFetch(withHidden(`/api/file/${encodeURI(path)}`))
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const text = await res.text()
       setContent(text)
@@ -41,6 +42,7 @@ export function useFileContent() {
     } finally {
       setLoading(false)
     }
+    return true
   }, [])
 
   // 主动加载（文件选择、导航等），强制忽略 self-save 窗口

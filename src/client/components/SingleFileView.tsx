@@ -4,7 +4,6 @@ import ContentArea from './ContentArea.js'
 import { useSSE } from '../hooks/useSSE.js'
 import type { WatchEvent } from '../../types.js'
 import { apiFetch } from '../utils/fsApi.js'
-import { showToast } from './ui/Toast.js'
 
 interface Props {
   theme: 'dark' | 'light'

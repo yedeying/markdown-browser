@@ -20,6 +20,7 @@ import {
   Book,
   Check,
   Ellipsis,
+  TriangleAlert,
 } from 'lucide-preact'
 
 export type IconName =
@@ -43,6 +44,7 @@ export type IconName =
   | 'book'
   | 'check'
   | 'more'
+  | 'alert'
 
 const ICONS = {
   folder: Folder,
@@ -65,6 +67,7 @@ const ICONS = {
   book: Book,
   check: Check,
   more: Ellipsis,
+  alert: TriangleAlert,
 } as const
 
 interface Props {

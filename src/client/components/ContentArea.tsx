@@ -12,6 +12,7 @@ import ShareDialog from './ShareDialog.js'
 import { getSharePrefix, downloadUrl } from '../utils/fsApi.js'
 import Icon from './ui/Icon.js'
 import Skeleton from './ui/Skeleton.js'
+import EmptyState from './ui/EmptyState.js'
 import ExternalUpdateBanner from './ui/ExternalUpdateBanner.js'
 import { showToast } from './ui/Toast.js'
 import { getScroll, setScroll } from '../utils/scrollMemory.js'
@@ -38,8 +39,15 @@ interface Props {
   theme: 'dark' | 'light'
   onSave?: (path: string, content: string) => Promise<boolean>
   onSSEEvent?: (cb: () => void) => void
-  /** SSE 检测到磁盘文件变化、且当前无未保存改动时，由 App 触发的静默重载（重新 loadFile） */
-  onSilentReload?: () => void
+  /**
+   * SSE 检测到磁盘文件变化、且当前无未保存改动时，由 App 触发的静默重载（重新 loadFile）。
+   * 返回 false 表示重载被抑制（例如刚刚自己保存过），此时不应再等待恢复滚动位置。
+   */
+  onSilentReload?: () => void | boolean | Promise<boolean>
+  /** 文件夹 children 懒加载失败的错误信息（避免骨架屏永久 shimmer） */
+  folderLoadError?: string | null
+  /** 重试加载文件夹 children */
+  onRetryLoadChildren?: (path: string) => void
   watchConnected?: boolean
   onNavigate?: (path: string) => void
   themeToggle?: ComponentChildren
@@ -72,6 +80,8 @@ const ContentArea: FunctionalComponent<Props> = ({
   theme,
   onSave,
   onSilentReload,
+  folderLoadError = null,
+  onRetryLoadChildren,
   watchConnected,
   onNavigate,
   themeToggle,
@@ -99,8 +109,9 @@ const ContentArea: FunctionalComponent<Props> = ({
   const [saving, setSaving] = useState(false)
   // SSE 检测到磁盘变化、但本地有未保存编辑时：不静默覆盖，弹出提示条让用户选择
   const [externalUpdatePending, setExternalUpdatePending] = useState(false)
-  // 静默重载后，等 content 到达再恢复滚动位置（rAF + 一次重试）
-  const restoreScrollPendingRef = useRef(false)
+  // 待恢复滚动位置的文件路径（打开文件 / 静默重载都会置位）；
+  // 记路径而不是布尔值，这样切到别的文件时上一个待恢复请求会自动失效。
+  const restoreScrollForRef = useRef<string | null>(null)
   const contentBodyRef = useRef<HTMLDivElement>(null)
   const tocRef = useRef<HTMLElement | null>(null)
   const previewContentRef = useRef<HTMLElement | null>(null)
@@ -109,7 +120,8 @@ const ContentArea: FunctionalComponent<Props> = ({
   // 防止滚动事件互相触发死循环
   const scrollingFrom = useRef<'editor' | 'preview' | null>(null)
 
-  // 文件切换时重置视图模式和滚动
+  // 文件切换时重置视图模式和滚动；本次会话内若记过该文件的滚动位置，
+  // 内容渲染完成后由下方 effect 恢复（不只是 SSE 重载后才恢复）
   useEffect(() => {
     setUnsaved(false)
     setExternalUpdatePending(false)
@@ -117,6 +129,7 @@ const ContentArea: FunctionalComponent<Props> = ({
     if (contentBodyRef.current) {
       contentBodyRef.current.scrollTop = 0
     }
+    restoreScrollForRef.current = filePath
   }, [filePath])
 
   // content 首次加载完成时初始化编辑框（异步加载后才有内容）
@@ -155,6 +168,8 @@ const ContentArea: FunctionalComponent<Props> = ({
     setSaving(false)
     if (ok) {
       setUnsaved(false)
+      // 本地内容已落盘，外部变更提示条不再适用
+      setExternalUpdatePending(false)
       showToast('保存成功', 'success')
     } else {
       showToast('保存失败', 'error')
@@ -196,14 +211,19 @@ const ContentArea: FunctionalComponent<Props> = ({
   // - 无未保存改动（预览 / 编辑但已保存）→ 静默重载并恢复滚动位置
   // - 有未保存改动 → 不覆盖，弹出提示条让用户选择
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handler = async (e: Event) => {
       const { path } = (e as CustomEvent<{ path: string }>).detail
       if (!filePath || path !== filePath) return
       if (unsaved) {
         setExternalUpdatePending(true)
       } else {
-        restoreScrollPendingRef.current = true
-        onSilentReload?.()
+        restoreScrollForRef.current = filePath
+        const reloaded = await onSilentReload?.()
+        // 重载被抑制（self-save 窗口内）：撤回待恢复标记，
+        // 否则它会残留到下一次无关的 content 变化上
+        if (reloaded === false && restoreScrollForRef.current === filePath) {
+          restoreScrollForRef.current = null
+        }
       }
     }
     window.addEventListener('vmd:file-reload', handler)
@@ -211,25 +231,36 @@ const ContentArea: FunctionalComponent<Props> = ({
   }, [filePath, unsaved, onSilentReload])
 
   // 提示条：加载新版本 —— 主动放弃本地未保存编辑，重载磁盘内容
-  const handleExternalReload = useCallback(() => {
+  const handleExternalReload = useCallback(async () => {
     setExternalUpdatePending(false)
     setUnsaved(false)
-    restoreScrollPendingRef.current = true
-    onSilentReload?.()
-  }, [onSilentReload])
+    restoreScrollForRef.current = filePath
+    const reloaded = await onSilentReload?.()
+    if (reloaded === false && restoreScrollForRef.current === filePath) {
+      restoreScrollForRef.current = null
+    }
+  }, [filePath, onSilentReload])
 
   // 提示条：忽略 —— 保留本地未保存编辑，不重载
   const handleDismissExternalUpdate = useCallback(() => {
     setExternalUpdatePending(false)
   }, [])
 
-  // 静默重载后 content 到达时恢复滚动位置（rAF + 一次重试，等待预览重新排版）
+  // 内容渲染完成后恢复滚动位置（rAF + 一次重试，等待预览重新排版）。
+  // 覆盖两种场景：会话内重新打开同一文件、SSE 静默重载。
   useEffect(() => {
-    if (!restoreScrollPendingRef.current) return
-    restoreScrollPendingRef.current = false
-    if (!filePath) return
-    const target = getScroll(filePath)
-    if (target == null) return
+    const pendingPath = restoreScrollForRef.current
+    if (!pendingPath) return
+    // 已经切到别的文件：待恢复请求作废
+    if (pendingPath !== filePath) {
+      restoreScrollForRef.current = null
+      return
+    }
+    // 内容尚未到达，等下一次 content 变化
+    if (content === null) return
+    restoreScrollForRef.current = null
+    const target = getScroll(pendingPath)
+    if (!target) return
     const apply = () => {
       if (contentBodyRef.current) contentBodyRef.current.scrollTop = target
     }
@@ -237,21 +268,37 @@ const ContentArea: FunctionalComponent<Props> = ({
       apply()
       requestAnimationFrame(apply)
     })
-  }, [content])
+  }, [content, filePath])
 
-  // 预览模式下滚动位置持久化（防抖），供静默重载后恢复
+  // 预览模式下滚动位置持久化（防抖）。
+  // 卸载/切文件时 flush 一次，避免最后 200ms 内的滚动被丢掉。
   useEffect(() => {
     const el = contentBodyRef.current
     if (!el || viewMode !== 'preview' || !filePath) return
     let timer: ReturnType<typeof setTimeout>
-    const handleScroll = () => {
+    let dirty = false
+    const persist = () => {
+      dirty = false
+      setScroll(filePath, el.scrollTop)
+    }
+    const flush = () => {
+      if (!dirty) return
       clearTimeout(timer)
-      timer = setTimeout(() => setScroll(filePath, el.scrollTop), 200)
+      persist()
+    }
+    const handleScroll = () => {
+      dirty = true
+      clearTimeout(timer)
+      timer = setTimeout(persist, 200)
     }
     el.addEventListener('scroll', handleScroll, { passive: true })
+    // 关闭标签页 / 切后台也要落盘（pagehide 在移动端比 beforeunload 可靠）
+    window.addEventListener('pagehide', flush)
     return () => {
+      flush()
       clearTimeout(timer)
       el.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('pagehide', flush)
     }
   }, [viewMode, filePath])
 
@@ -427,6 +474,25 @@ const ContentArea: FunctionalComponent<Props> = ({
     if (selectedNode?.type === 'folder') {
       // children 未就绪（懒加载进行中）：显示骨架屏，不误判为空文件夹
       if (!folderChildrenReady) {
+        // 加载失败：给出错误与重试入口，而不是永久 shimmer
+        if (folderLoadError) {
+          return (
+            <EmptyState
+              icon={<Icon name="alert" size={28} aria-hidden="true" />}
+              title="加载文件夹失败"
+              description={folderLoadError}
+              action={
+                <button
+                  class="btn"
+                  data-testid="folder-load-retry"
+                  onClick={() => onRetryLoadChildren?.(selectedNode!.path)}
+                >
+                  重试
+                </button>
+              }
+            />
+          )
+        }
         return <Skeleton variant="folder" />
       }
       return (

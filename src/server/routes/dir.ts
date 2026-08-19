@@ -33,11 +33,21 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1073741824).toFixed(1)}G`
 }
 
+/** 请求是否显式要求包含点文件：仅 ?showHidden=1，其它一切取值都按“不显示”处理 */
+export function wantsHidden(showHiddenParam: string | undefined): boolean {
+  return showHiddenParam === '1'
+}
+
+/** 相对路径中是否存在点开头的分段（.private/plain-name.md 也算隐藏） */
+export function hasHiddenSegment(relPath: string): boolean {
+  return relPath.replace(/\\/g, '/').split('/').some(seg => seg !== '' && seg.startsWith('.'))
+}
+
 /**
  * 读取单层目录（不递归）
  * 返回的 FileNode.path 是相对于 base 的路径
  */
-function listDir(dir: string, base: string): FileNode[] {
+function listDir(dir: string, base: string, showHidden: boolean): FileNode[] {
   let entries: string[]
   try {
     entries = readdirSync(dir).sort()
@@ -49,8 +59,9 @@ function listDir(dir: string, base: string): FileNode[] {
   const files: FileNode[] = []
 
   for (const name of entries) {
-    // 点文件/点文件夹不在此处过滤：是否显示由客户端 vmd_show_hidden 偏好决定
-    // （.git 等仍通过下方 IGNORE_DIRS 硬性排除）。
+    // 默认不返回点文件/点文件夹：客户端必须显式带 ?showHidden=1 才能看到，
+    // 否则 ~/.docker/config.json 之类的敏感文件会对所有客户端可见（且可经 /api/file 读取）。
+    if (!showHidden && name.startsWith('.')) continue
     const fullPath = join(dir, name)
     let stat
     try {
@@ -82,10 +93,10 @@ function listDir(dir: string, base: string): FileNode[] {
 /**
  * 懒加载单层列表（带缓存）
  */
-function listDirCached(scope: string, dir: string, base: string, relPath: string): FileNode[] {
+function listDirCached(scope: string, dir: string, base: string, relPath: string, showHidden: boolean): FileNode[] {
   const cached = treeCache.get(scope, relPath)
   if (cached) return cached
-  const nodes = listDir(dir, base)
+  const nodes = listDir(dir, base, showHidden)
   treeCache.set(scope, relPath, nodes)
   return nodes
 }
@@ -95,8 +106,8 @@ function listDirCached(scope: string, dir: string, base: string, relPath: string
  * depth = 0 相当于只返回当前目录一层（子节点不含 children）
  * depth = Infinity 表示全量
  */
-function buildTree(scope: string, dir: string, base: string, relPath = '', depth = Infinity): FileNode[] {
-  const nodes = listDirCached(scope, dir, base, relPath)
+function buildTree(scope: string, dir: string, base: string, relPath = '', depth = Infinity, showHidden = false): FileNode[] {
+  const nodes = listDirCached(scope, dir, base, relPath, showHidden)
   if (depth <= 0) return nodes
 
   const result: FileNode[] = []
@@ -104,7 +115,7 @@ function buildTree(scope: string, dir: string, base: string, relPath = '', depth
     if (node.type === 'folder') {
       const childRel = node.path
       const childAbs = join(base, childRel)
-      const children = buildTree(scope, childAbs, base, childRel, depth - 1)
+      const children = buildTree(scope, childAbs, base, childRel, depth - 1, showHidden)
       // 与旧行为保持一致：跳过空文件夹
       if (children.length > 0) {
         result.push({ ...node, children })
@@ -121,14 +132,19 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   const watcher = createDirWatcher(basePath)
   const shareStore = new ShareStore(basePath)
   const cacheScope = `dir:${basePath}`
+  // 含点文件的列表单独缓存，避免 showHidden=1 的响应污染默认（不含点文件）的缓存
+  const hiddenCacheScope = `${cacheScope}#hidden`
+  const scopeFor = (showHidden: boolean) => (showHidden ? hiddenCacheScope : cacheScope)
 
   // watcher 事件触发时失效缓存
   watcher.onEvent((e) => {
     if (e.type === 'tree-change') {
       if (e.affectedPath !== undefined) {
         treeCache.invalidatePath(cacheScope, e.affectedPath)
+        treeCache.invalidatePath(hiddenCacheScope, e.affectedPath)
       } else {
         treeCache.invalidateScope(cacheScope)
+        treeCache.invalidateScope(hiddenCacheScope)
       }
     }
   })
@@ -156,10 +172,17 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   // 兼容两种模式：
   //   1. 无参数 / depth 省略  → 兼容老客户端，返回最大深度 3 层
   //   2. ?path=<rel>&depth=1 → 懒加载单层
+  // 点文件仅在 ?showHidden=1 时列出（默认既不列出也不向下递归）
   app.get('/api/files', (c) => {
     const relPath = (c.req.query('path') || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
     const depthParam = c.req.query('depth')
     const hasLazyParams = c.req.query('path') !== undefined || depthParam !== undefined
+    const showHidden = wantsHidden(c.req.query('showHidden'))
+
+    // 未开启显示隐藏文件时，连点目录本身也不可列举
+    if (!showHidden && hasHiddenSegment(relPath)) {
+      return c.json({ error: 'Not found' }, 404)
+    }
 
     // 路径越界检查
     const targetDir = relPath ? join(basePath, relPath) : basePath
@@ -175,12 +198,12 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
 
     if (hasLazyParams) {
       const depth = depthParam ? Math.max(0, Math.min(10, parseInt(depthParam) || 0)) : 1
-      const tree = buildTree(cacheScope, targetDir, basePath, relPath, depth)
+      const tree = buildTree(scopeFor(showHidden), targetDir, basePath, relPath, depth, showHidden)
       return c.json(tree)
     }
 
     // 旧行为兼容：默认返回根目录（深度 3，避免超大树一次性返回）
-    const tree = buildTree(cacheScope, basePath, basePath, '', 3)
+    const tree = buildTree(scopeFor(showHidden), basePath, basePath, '', 3, showHidden)
     return c.json(tree)
   })
 
@@ -188,6 +211,11 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   app.get('/api/file/*', (c) => {
     const relPath = c.req.path.replace('/api/file/', '')
     const filePath = join(basePath, decodeURIComponent(relPath))
+
+    // 纵深防御：列表/搜索默认不返回点路径，直接猜路径也读不到
+    if (!wantsHidden(c.req.query('showHidden')) && hasHiddenSegment(decodeURIComponent(relPath))) {
+      return c.json({ error: 'File not found' }, 404)
+    }
 
     try {
       const realBase = realpathSync(basePath)
@@ -248,6 +276,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   app.get('/api/search', async (c) => {
     const q = c.req.query('q') || ''
     const type = c.req.query('type') || 'name'
+    const showHidden = wantsHidden(c.req.query('showHidden'))
 
     if (!q.trim()) return c.json([])
 
@@ -255,7 +284,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
 
     if (type === 'name') {
       // 文件名搜索：全量遍历（经缓存；大目录首次有代价，后续查询快）
-      const full = buildTree(cacheScope, basePath, basePath, '', Infinity)
+      const full = buildTree(scopeFor(showHidden), basePath, basePath, '', Infinity, showHidden)
       const lowerQ = q.toLowerCase()
       function walk(nodes: FileNode[]) {
         for (const node of nodes) {
@@ -318,6 +347,8 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         if (!match) continue
         const [, filePath, lineNumStr, lineContent] = match
         const relPath = relative(basePath, filePath)
+        // grep 会进入点目录：默认不显示隐藏文件时在此剔除
+        if (!showHidden && hasHiddenSegment(relPath)) continue
         const fileName = basename(filePath)
         if (!fileMatches.has(relPath)) {
           if (fileMatches.size >= GREP_MAX_FILES) break
@@ -343,6 +374,10 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   app.get('/api/asset/*', (c) => {
     const relPath = c.req.path.replace('/api/asset/', '')
     const filePath = join(basePath, decodeURIComponent(relPath))
+
+    if (!wantsHidden(c.req.query('showHidden')) && hasHiddenSegment(decodeURIComponent(relPath))) {
+      return c.json({ error: 'File not found' }, 404)
+    }
 
     try {
       const realBase = realpathSync(basePath)

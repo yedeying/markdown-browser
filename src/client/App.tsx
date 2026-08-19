@@ -172,9 +172,20 @@ interface DirModeProps {
 }
 
 const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, mountAlias }) => {
-  const { tree, loading: treeLoading, refresh, loadChildren } = useFileTree()
+  // 隐藏文件（点文件）显隐，默认隐藏；侧边栏与文件夹视图共享同一状态。
+  // 服务端默认不返回点文件，因此这个开关也是 tree / search 请求的参数。
+  const [showHidden, setShowHiddenState] = useState<boolean>(() => getShowHidden())
+  const handleToggleShowHidden = useCallback(() => {
+    setShowHiddenState(prev => {
+      const next = !prev
+      setShowHidden(next)
+      return next
+    })
+  }, [])
+
+  const { tree, loading: treeLoading, childErrors, refresh, loadChildren } = useFileTree(showHidden)
   const { content, loading, error, currentPath, loadFile, selectFile, saveFile, setContent } = useFileContent()
-  const { query, setQuery, searchType, setSearchType, results, loading: searchLoading } = useSearch(tree)
+  const { query, setQuery, searchType, setSearchType, results, loading: searchLoading } = useSearch(tree, showHidden)
 
   // 多挂载模式：URL 前缀 /m/alias
   const urlPrefix = mountAlias ? `/m/${mountAlias}` : ''
@@ -200,15 +211,6 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
   // 移动端 Sidebar 抽屉开关
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  // 隐藏文件（点文件）显隐，默认隐藏；侧边栏与文件夹视图共享同一状态
-  const [showHidden, setShowHiddenState] = useState<boolean>(() => getShowHidden())
-  const handleToggleShowHidden = useCallback(() => {
-    setShowHiddenState(prev => {
-      const next = !prev
-      setShowHidden(next)
-      return next
-    })
-  }, [])
   // 剪贴板（跨文件夹复制/剪切）
   const [clipboard, setClipboard] = useState<ClipboardState | null>(null)
   // 应用内导航栈（手势前进/后退，不依赖浏览器历史，避免退到登录页）
@@ -248,6 +250,13 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
       setHasNavHistory(stack.length - 1 > 0)
     }
   }, [selectFile, loadChildren, urlPrefix])
+
+  // SSE 静默重载：返回是否真的重载了（self-save 窗口内会被抑制），
+  // ContentArea 据此决定是否还要恢复滚动位置
+  const handleSilentReload = useCallback(async (): Promise<boolean> => {
+    if (!currentPath) return false
+    return await loadFile(currentPath)
+  }, [currentPath, loadFile])
 
   const handleSave = useCallback(async (path: string, text: string): Promise<boolean> => {
     const ok = await saveFile(path, text)
@@ -404,7 +413,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
           error={error}
           theme={theme}
           onSave={handleSave}
-          onSilentReload={() => currentPath && loadFile(currentPath)}
+          onSilentReload={handleSilentReload}
           watchConnected={watchConnected}
           onNavigate={(path: string) => {
             // navigate-file 内部触发，path 是文件路径
@@ -420,6 +429,10 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
           tree={tree}
           onSelectNode={handleSelect}
           loadChildren={loadChildren}
+          folderLoadError={
+            selectedNode?.type === 'folder' ? childErrors[selectedNode.path] ?? null : null
+          }
+          onRetryLoadChildren={(path: string) => { void loadChildren(path, true) }}
           clipboard={clipboard}
           onCopy={(nodes) => setClipboard({ nodes, mode: 'copy' })}
           onCut={(nodes) => setClipboard({ nodes, mode: 'cut' })}

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
 import type { SearchResult, FileNode } from '../../types.js'
-import { apiFetch } from '../utils/fsApi.js'
+import { apiFetch, withHidden } from '../utils/fsApi.js'
 
 export type SearchType = 'name' | 'content'
 
-export function useSearch(_tree: FileNode[]) {
+/** showHidden 变化时重新查询：服务端默认不搜索点路径 */
+export function useSearch(_tree: FileNode[], showHidden = false) {
   const [query, setQuery] = useState('')
   const [searchType, setSearchType] = useState<SearchType>('name')
   const [results, setResults] = useState<SearchResult[] | null>(null)
@@ -22,7 +23,7 @@ export function useSearch(_tree: FileNode[]) {
     debounceTimer.current = setTimeout(async () => {
       setLoading(true)
       try {
-        const res = await apiFetch(`/api/search?q=${encodeURIComponent(query)}&type=${searchType}`)
+        const res = await apiFetch(withHidden(`/api/search?q=${encodeURIComponent(query)}&type=${searchType}`, showHidden))
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
         setResults(Array.isArray(data) ? data : [])
@@ -36,7 +37,7 @@ export function useSearch(_tree: FileNode[]) {
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current)
     }
-  }, [query, searchType])
+  }, [query, searchType, showHidden])
 
   return { query, setQuery, searchType, setSearchType, results, loading }
 }

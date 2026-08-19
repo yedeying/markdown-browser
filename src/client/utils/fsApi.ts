@@ -1,5 +1,7 @@
 /** 前端文件管理 API 封装 */
 
+import { getShowHidden } from './prefs.js'
+
 type FsResult<T = Record<string, unknown>> =
   | ({ ok: true } & T)
   | { ok: false; error: string }
@@ -49,6 +51,16 @@ export function getApiPrefix(url: string): string {
   return getMountPrefix()
 }
 
+/**
+ * 给读取类 API 附加 showHidden=1。
+ * 服务端默认不列出、也不返回点路径下的内容，所以开启"显示隐藏文件"后
+ * 每个读取请求都必须显式带上这个标记。
+ */
+export function withHidden(url: string, showHidden: boolean = getShowHidden()): string {
+  if (!showHidden) return url
+  return `${url}${url.includes('?') ? '&' : '?'}showHidden=1`
+}
+
 /** fetch 封装：遇到 401 自动跳转登录页；自动加前缀 */
 export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   const prefix = getApiPrefix(url)
@@ -71,7 +83,7 @@ export function assetUrl(path: string): string {
   const share = getSharePrefix()
   if (share) return `${share}/api/asset/${encodeURI(path)}`
   const mount = getMountPrefix()
-  return `${mount}/api/asset/${encodeURI(path)}`
+  return withHidden(`${mount}/api/asset/${encodeURI(path)}`)
 }
 
 /** 生成下载 URL */
@@ -79,7 +91,7 @@ export function downloadUrl(path: string): string {
   const share = getSharePrefix()
   if (share) return `${share}/api/download/${encodeURI(path)}`
   const mount = getMountPrefix()
-  return `${mount}/api/download/${encodeURI(path)}`
+  return withHidden(`${mount}/api/download/${encodeURI(path)}`)
 }
 
 /** 生成 SSE watch URL */

@@ -48,6 +48,28 @@ test('2a: folder skeleton shows during lazy children load, then folder-view repl
   await expect(page.locator('.folder-breadcrumb, .current-file').first()).toContainText('notes')
 })
 
+test('2a-failure: a failed folder children load shows an error with retry, not an endless skeleton', async ({ page }) => {
+  // notes/sub 的 children 只能通过 path=notes（或 path=notes/sub）的请求拿到，
+  // 两个都打掉就能造出"懒加载失败"的状态。
+  let blocked = true
+  await page.route(
+    (url) => url.pathname === '/api/files' && ['notes', 'notes/sub'].includes(url.searchParams.get('path') ?? ''),
+    async (route) => (blocked ? route.abort('failed') : route.continue()),
+  )
+
+  await page.goto('/')
+  await page.click('[data-testid="tree-node-notes"]')
+  await page.click('[data-testid="tree-node-notes-sub"]')
+
+  await expect(page.locator('[data-testid="folder-load-retry"]')).toBeVisible()
+  await expect(page.locator('[data-testid="folder-skeleton"]')).not.toBeVisible()
+
+  blocked = false
+  await page.click('[data-testid="folder-load-retry"]')
+  await expect(page.locator('[data-testid="folder-view"]')).toBeVisible()
+  await expect(page.locator('[data-testid="folder-load-retry"]')).toHaveCount(0)
+})
+
 test('2h: deep link to image opens ImageViewer', async ({ page }) => {
   await page.goto('/images/photo.png')
   await expect(page.locator('.image-viewer img, [data-testid="image-viewer"]').first()).toBeVisible({ timeout: 10000 })
@@ -88,6 +110,38 @@ test('2f: hidden files toggle', async ({ page }) => {
   await page.click('[data-testid="toggle-hidden-files"]')
   await expect(page.locator('[data-testid="tree-node-.hidden-note.md"]')).toHaveCount(0)
   await expect(page.locator('[data-testid="folder-list"]')).not.toContainText('.hidden-note.md')
+})
+
+test('2f-server: the API itself hides dotfiles unless showHidden=1', async ({ request }) => {
+  // 客户端过滤不算数：默认响应里根本不能出现点路径，否则任何客户端
+  // （curl / 老版本前端）都能拿到 .docker/config.json 之类的文件。
+  const listing = await request.get('/api/files?path=&depth=3')
+  expect(listing.ok()).toBeTruthy()
+  const listingText = await listing.text()
+  expect(listingText).not.toContain('.hidden-note.md')
+  expect(listingText).not.toContain('.private')
+  expect(listingText).toContain('README.md')
+
+  expect((await request.get('/api/files?path=.private&depth=1')).status()).toBe(404)
+  expect((await request.get('/api/file/.hidden-note.md')).status()).toBe(404)
+  expect((await request.get('/api/file/.private/plain-name.md')).status()).toBe(404)
+  expect(await (await request.get('/api/search?q=plain-name&type=name')).json()).toEqual([])
+
+  // 显式开启后同样的请求可用
+  const shownListing = await request.get('/api/files?path=&depth=3&showHidden=1')
+  expect(await shownListing.text()).toContain('.hidden-note.md')
+  expect((await request.get('/api/file/.private/plain-name.md?showHidden=1')).status()).toBe(200)
+  const shownSearch = await request.get('/api/search?q=plain-name&type=name&showHidden=1')
+  expect((await shownSearch.json() as unknown[]).length).toBeGreaterThan(0)
+})
+
+test('2f-server: opening a hidden file still works once the toggle is on', async ({ page }) => {
+  await page.goto('/')
+  await page.click('[data-testid="toggle-hidden-files"]')
+
+  // 树是重新从服务端拉的（不是本地过滤），点开后内容请求也必须带上 showHidden=1
+  await page.click('[data-testid="tree-node-.hidden-note.md"]')
+  await expect(page.locator('[data-testid="markdown-preview"]')).toContainText('Hidden Note')
 })
 
 test('2f-bugfix: name search does not leak a plain-named file nested inside a dot-directory', async ({ page }) => {
