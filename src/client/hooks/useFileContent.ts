@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'preact/hooks'
 import { apiFetch } from '../utils/fsApi.js'
+import { getFileType } from '../utils/fileType.js'
 
 export function useFileContent() {
   const [content, setContent] = useState<string | null>(null)
@@ -14,6 +15,16 @@ export function useFileContent() {
   const loadFile = useCallback(async (path: string, { ignoreSelfSave = false } = {}) => {
     // 如果是 SSE 触发的 reload，且距上次 self-save 不足 2s，则忽略（避免屏闪）
     if (!ignoreSelfSave && Date.now() - selfSaveAt.current < SELF_SAVE_IGNORE_WINDOW) {
+      return
+    }
+    // 图片/视频等二进制类型不走文本内容拉取：直接设置 currentPath，
+    // ContentArea 据此路由到 ImageViewer/VideoViewer，无需等待（也不会有）content
+    const ft = getFileType(path)
+    if (ft === 'image' || ft === 'video') {
+      setCurrentPath(path)
+      setContent('')
+      setError(null)
+      setLoading(false)
       return
     }
     setLoading(true)

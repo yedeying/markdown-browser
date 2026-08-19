@@ -298,10 +298,10 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
       if (node.type === 'file') selectFile(path)
       else if (node.type === 'folder') loadChildren(path)
       window.history.replaceState({ path, isFolder: node.type === 'folder' }, '', buildUrl(path))
-    } else if (tree.length === 0) {
-      selectFile(path)
-      window.history.replaceState({ path }, '', buildUrl(path))
     } else {
+      // 深链接目标不在已加载的 tree 中（例如图片/视频文件，或所在文件夹尚未懒加载展开）：
+      // 合成一个文件节点，保证 selectedNode 非空，selectFile 仍会按路径正常加载
+      setSelectedNode({ name: path.split('/').pop() || path, type: 'file', path })
       selectFile(path)
       window.history.replaceState({ path }, '', buildUrl(path))
     }
@@ -339,8 +339,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
       if (node) setSelectedNode(node)
     } else {
       selectFile(path)
-      const node = findNodeByPath(tree, path)
-      if (node) setSelectedNode(node)
+      const node = findNodeByPath(tree, path) ?? { name: path.split('/').pop() || path, type: 'file' as const, path }
+      setSelectedNode(node)
     }
   }, [selectFile, tree, dirName, urlPrefix])
 

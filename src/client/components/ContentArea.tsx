@@ -385,6 +385,16 @@ const ContentArea: FunctionalComponent<Props> = ({
       )
     }
 
+    // 图片/视频不依赖文本 content，必须在 loading/content-null 骨架屏之前路由，
+    // 否则二进制文件永远拿不到 content 字符串，会卡在骨架屏（深链接打开图片/视频的已知 bug）
+    if (fileType === 'image') {
+      return <ImageViewer filePath={filePath} />
+    }
+
+    if (fileType === 'video') {
+      return <VideoViewer filePath={filePath} />
+    }
+
     // filePath 有值但内容还没加载完（loading 或 content 尚为 null）时显示 skeleton
     if (loading || content === null) {
       return (
@@ -405,16 +415,6 @@ const ContentArea: FunctionalComponent<Props> = ({
           <div class="empty-state-text">加载失败: {error}</div>
         </div>
       )
-    }
-
-    // 图片预览
-    if (fileType === 'image') {
-      return <ImageViewer filePath={filePath} />
-    }
-
-    // 视频播放
-    if (fileType === 'video') {
-      return <VideoViewer filePath={filePath} />
     }
 
     // 不支持的文件类型

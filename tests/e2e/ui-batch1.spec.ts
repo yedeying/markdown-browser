@@ -47,3 +47,9 @@ test('2a: folder skeleton shows during lazy children load, then folder-view repl
   await expect(page.locator('[data-testid="markdown-preview"]')).not.toBeVisible()
   await expect(page.locator('.folder-breadcrumb, .current-file').first()).toContainText('notes')
 })
+
+test('2h: deep link to image opens ImageViewer', async ({ page }) => {
+  await page.goto('/images/photo.png')
+  await expect(page.locator('.image-viewer img, [data-testid="image-viewer"]').first()).toBeVisible({ timeout: 10000 })
+  await expect(page.locator('[data-testid="markdown-preview"]')).toHaveCount(0)
+})

@@ -10,7 +10,7 @@ const ImageViewer: FunctionalComponent<Props> = ({ filePath }) => {
   const src = assetUrl(filePath)
 
   return (
-    <div class="image-viewer">
+    <div class="image-viewer" data-testid="image-viewer">
       <img src={src} alt={fileName} title={fileName} />
     </div>
   )
