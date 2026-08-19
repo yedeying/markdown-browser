@@ -17,6 +17,7 @@
         "highlight.js": "^11.10.0",
         "hono": "^4.4.0",
         "katex": "^0.16.11",
+        "lucide-preact": "^1.32.0",
         "marked": "^12.0.0",
         "marked-highlight": "^2.1.0",
         "mermaid": "^11.3.0",
@@ -492,6 +493,8 @@
     "lodash-es": ["lodash-es@4.17.23", "https://mirrors.tencent.com/npm/lodash-es/-/lodash-es-4.17.23.tgz", {}, "sha512-kVI48u3PZr38HdYz98UmfPnXl2DXrpdctLrFLCd3kOx1xUkOmpFPx7gCWWM5MPkL/fD8zb+Ph0QzjGFs4+hHWg=="],
 
     "lru-cache": ["lru-cache@5.1.1", "https://mirrors.tencent.com/npm/lru-cache/-/lru-cache-5.1.1.tgz", { "dependencies": { "yallist": "^3.0.2" } }, "sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w=="],
+
+    "lucide-preact": ["lucide-preact@1.32.0", "https://mirrors.tencent.com/npm/lucide-preact/-/lucide-preact-1.32.0.tgz", { "peerDependencies": { "preact": "^10.27.2" } }, "sha512-Mb0YyVC185VdQMWzvOkcadKyhqUzyiWLmJsduYuxE2Jbab/UU9gHmgzcU6U0E/gR/YW4Q60+QZMGSlMxU26MAw=="],
 
     "magic-string": ["magic-string@0.30.21", "https://mirrors.tencent.com/npm/magic-string/-/magic-string-0.30.21.tgz", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ=="],
 
