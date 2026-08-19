@@ -1,0 +1,108 @@
+/* ============================================================
+   Design tokens — dual theme (dark default / light)
+   Adapted from DESIGN.md (Cursor cream/orange) for a reading
+   tool: dark theme keeps the existing GitHub-dark-ish density,
+   light theme adopts the DESIGN.md warm cream canvas + orange
+   accent. Legacy variable names are kept as aliases so existing
+   component rules keep working unmodified.
+   ============================================================ */
+
+:root {
+  /* Structural tokens (theme-independent) */
+  --sidebar-width: 280px;
+  --tree-row-height: 32px;
+}
+
+:root,
+:root[data-theme="dark"] {
+  /* ---- New named tokens ---- */
+  --canvas: #0d1117;
+  --canvas-soft: #010409;
+  --surface: #161b22;
+  --surface-strong: #21262d;
+  --ink: #f0f6fc;
+  --body-text: #c9d1d9;
+  --muted: #8b949e;
+  --hairline: #30363d;
+  --hairline-soft: #30363d;
+  --hairline-strong: #454c56;
+
+  --accent: #ff7b47;
+  --accent-active: #e8632e;
+  --on-accent: #ffffff;
+
+  --color-link: #58a6ff;
+  --color-hover: #1f2428;
+  --color-scrollbar: #30363d;
+  --color-success: #238636;
+  --color-warning: #9e6a03;
+  --color-danger: #b62324;
+
+  /* ---- Legacy aliases (kept so existing rules keep working) ---- */
+  --bg: var(--canvas);
+  --bg-secondary: var(--canvas-soft);
+  --text: var(--body-text);
+  --text-muted: var(--muted);
+  --border: var(--hairline);
+  --link: var(--color-link);
+  --code-bg: var(--surface);
+  --heading: var(--ink);
+  --th-bg: var(--surface-strong);
+  --hover: var(--color-hover);
+  --sidebar-bg: var(--canvas-soft);
+  --header-bg: var(--surface);
+  --active-bg: var(--accent);
+  --active-text: var(--on-accent);
+  --scrollbar-bg: var(--color-scrollbar);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --danger: var(--color-danger);
+
+  /* highlight.js theme */
+  --hljs-theme: url('https://unpkg.com/@highlightjs/cdn-assets@11.10.0/styles/github-dark.min.css');
+}
+
+:root[data-theme="light"] {
+  /* ---- New named tokens (DESIGN.md cream/orange) ---- */
+  --canvas: #f7f7f4;
+  --canvas-soft: #fafaf7;
+  --surface: #ffffff;
+  --surface-strong: #e6e5e0;
+  --ink: #26251e;
+  --body-text: #5a5852;
+  --muted: #807d72;
+  --hairline: #e6e5e0;
+  --hairline-soft: #efeee8;
+  --hairline-strong: #cfcdc4;
+
+  --accent: #f54e00;
+  --accent-active: #d04200;
+  --on-accent: #ffffff;
+
+  --color-link: #0969da;
+  --color-hover: #f3f4f6;
+  --color-scrollbar: #d0d7de;
+  --color-success: #1a7f37;
+  --color-warning: #9a6700;
+  --color-danger: #cf222e;
+
+  /* ---- Legacy aliases ---- */
+  --bg: var(--canvas);
+  --bg-secondary: #f6f8fa;
+  --text: var(--body-text);
+  --text-muted: var(--muted);
+  --border: var(--hairline);
+  --link: var(--color-link);
+  --code-bg: #f6f8fa;
+  --heading: var(--ink);
+  --th-bg: #f6f8fa;
+  --hover: var(--color-hover);
+  --sidebar-bg: #f6f8fa;
+  --header-bg: #f6f8fa;
+  --active-bg: var(--accent);
+  --active-text: var(--on-accent);
+  --scrollbar-bg: var(--color-scrollbar);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --danger: var(--color-danger);
+}

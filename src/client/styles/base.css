@@ -1,0 +1,49 @@
+/* ============================
+   字体引入
+   ============================ */
+
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/jetbrains-mono/400.css';
+
+/* ============================
+   全局重置
+   ============================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  /* 移除点击蓝色高亮 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+  height: 100vh;
+  overflow: hidden;
+  /* 防止页面整体弹性滚动 */
+  overscroll-behavior: none;
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+code, pre, .cm-editor {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ============================
+   滚动条
+   ============================ */
+
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-bg); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }

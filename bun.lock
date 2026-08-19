@@ -12,6 +12,8 @@
         "@codemirror/state": "^6.4.0",
         "@codemirror/theme-one-dark": "^6.1.0",
         "@codemirror/view": "^6.34.0",
+        "@fontsource/ibm-plex-sans": "^5.3.0",
+        "@fontsource/jetbrains-mono": "^5.3.0",
         "highlight.js": "^11.10.0",
         "hono": "^4.4.0",
         "katex": "^0.16.11",
@@ -156,6 +158,10 @@
     "@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.21.5", "https://mirrors.tencent.com/npm/@esbuild/win32-ia32/-/win32-ia32-0.21.5.tgz", { "os": "win32", "cpu": "ia32" }, "sha512-SWXFF1CL2RVNMaVs+BBClwtfZSvDgtL//G/smwAc5oVK/UPu2Gu9tIaRgFmYFFKrmg3SyAjSrElf0TiJ1v8fYA=="],
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.21.5", "https://mirrors.tencent.com/npm/@esbuild/win32-x64/-/win32-x64-0.21.5.tgz", { "os": "win32", "cpu": "x64" }, "sha512-tQd/1efJuzPC6rCFwEvLtci/xNFcTZknmXs98FYDfGE4wP9ClFV98nyKrzJKVPMhdDnjzLhdUyMX4PsQAPjwIw=="],
+
+    "@fontsource/ibm-plex-sans": ["@fontsource/ibm-plex-sans@5.3.0", "https://mirrors.tencent.com/npm/@fontsource/ibm-plex-sans/-/ibm-plex-sans-5.3.0.tgz", {}, "sha512-CbE4CbbEEZJX860XyUiRpsksXIQR8Rp2XDva2VO53NJox9tVNtusrysd2x5YkUEY3ErQ66W1IiiQL8/wihhw5w=="],
+
+    "@fontsource/jetbrains-mono": ["@fontsource/jetbrains-mono@5.3.0", "https://mirrors.tencent.com/npm/@fontsource/jetbrains-mono/-/jetbrains-mono-5.3.0.tgz", {}, "sha512-fqDfB5I9f1p1TV486aUgB9t8zP84P0O1FtQR5Ol9vjwPy+S+EIGlVYm1cvj2W5shcZMTg2nZFdVMoH5wFu8a1A=="],
 
     "@iconify/types": ["@iconify/types@2.0.0", "https://mirrors.tencent.com/npm/@iconify/types/-/types-2.0.0.tgz", {}, "sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg=="],
 
