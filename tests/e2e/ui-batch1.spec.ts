@@ -53,3 +53,39 @@ test('2h: deep link to image opens ImageViewer', async ({ page }) => {
   await expect(page.locator('.image-viewer img, [data-testid="image-viewer"]').first()).toBeVisible({ timeout: 10000 })
   await expect(page.locator('[data-testid="markdown-preview"]')).toHaveCount(0)
 })
+
+test('2e: sort preference survives reload', async ({ page }) => {
+  await page.goto('/')
+  await page.click('[data-testid="tree-node-notes"]')
+  await expect(page.locator('[data-testid="folder-list"]')).toBeVisible()
+
+  // Default sort field is 'name' — switch to 'size' so persistence is actually
+  // observable after reload (reverting to the default would also show "sorted"
+  // on name, so we deliberately pick a non-default field).
+  await page.click('[data-sort="size"]')
+  await expect(page.locator('[data-sort="size"]')).toHaveClass(/sorted/)
+  await expect(page.locator('[data-sort="name"]')).not.toHaveClass(/sorted/)
+
+  await page.reload()
+  await page.click('[data-testid="tree-node-notes"]')
+  await expect(page.locator('[data-sort="size"]')).toHaveClass(/sorted/)
+})
+
+test('2f: hidden files toggle', async ({ page }) => {
+  await page.goto('/')
+
+  // Hidden by default.
+  await expect(page.locator('[data-testid="tree-node-.hidden-note.md"]')).toHaveCount(0)
+
+  await page.click('[data-testid="toggle-hidden-files"]')
+  await expect(page.locator('[data-testid="tree-node-.hidden-note.md"]')).toBeVisible()
+
+  // Toggle preference persists across reload.
+  await page.reload()
+  await expect(page.locator('[data-testid="tree-node-.hidden-note.md"]')).toBeVisible()
+
+  // Toggling back off hides it again (both in sidebar tree and folder view).
+  await page.click('[data-testid="toggle-hidden-files"]')
+  await expect(page.locator('[data-testid="tree-node-.hidden-note.md"]')).toHaveCount(0)
+  await expect(page.locator('[data-testid="folder-list"]')).not.toContainText('.hidden-note.md')
+})

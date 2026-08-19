@@ -10,6 +10,9 @@ import ContextModal, { type ModalMode } from './ContextModal.js'
 import BottomSheet from './BottomSheet.js'
 import ShareDialog from './ShareDialog.js'
 import { fsApi } from '../utils/fsApi.js'
+import { filterVisible } from '../utils/hiddenFiles.js'
+import { sortNodes } from '../utils/sortNodes.js'
+import { getSort, setSort, type SortField, type SortOrder } from '../utils/prefs.js'
 
 type FolderViewMode = 'list' | 'grid' | 'column'
 type CardSize = 's' | 'm' | 'l'
@@ -65,6 +68,8 @@ interface Props {
   onClearClipboard?: () => void
   // 分享模式（访客无写权限）
   shareMode?: boolean
+  /** 是否显示隐藏文件（点文件），默认隐藏 */
+  showHidden?: boolean
 }
 
 const FolderView: FunctionalComponent<Props> = ({
@@ -78,6 +83,7 @@ const FolderView: FunctionalComponent<Props> = ({
   onCut,
   onClearClipboard,
   shareMode = false,
+  showHidden = false,
 }) => {
   // 分享弹窗
   const [shareTarget, setShareTarget] = useState<FileNode | null>(null)
@@ -87,6 +93,19 @@ const FolderView: FunctionalComponent<Props> = ({
   const [cardSize, setCardSize] = useState<CardSize>(() =>
     loadPref<CardSize>(CARD_SIZE_KEY, 'm', ['s', 'm', 'l'])
   )
+
+  // ── 排序偏好（跨列表/网格/列视图共享，持久化到 vmd_sort）──────
+  const [sortPref, setSortPref] = useState(() => getSort())
+  const handleSortChange = useCallback((field: SortField) => {
+    setSortPref(prev => {
+      const next: { field: SortField; order: SortOrder } =
+        prev.field === field
+          ? { field, order: prev.order === 'asc' ? 'desc' : 'asc' }
+          : { field, order: 'asc' }
+      setSort(next)
+      return next
+    })
+  }, [])
 
   // ── 多选状态 ──────────────────────────────────────────────
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
@@ -109,7 +128,8 @@ const FolderView: FunctionalComponent<Props> = ({
   // ── loading 防重入 ─────────────────────────────────────────
   const [busy, setBusy] = useState(false)
 
-  const children = node.children || []
+  // 隐藏文件过滤 + 排序（列表/网格/列视图共用同一份处理后的列表，保持一致）
+  const children = sortNodes(filterVisible(node.children || [], showHidden), sortPref.field, sortPref.order)
   const dirName = window.__VMD_DIR_NAME__ || '文件库'
 
   // 切换文件夹时清空选中
@@ -514,6 +534,9 @@ const FolderView: FunctionalComponent<Props> = ({
           onSelect={onSelect}
           selectionProps={selectionProps}
           onBgContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, node }) }}
+          sortField={sortPref.field}
+          sortOrder={sortPref.order}
+          onSortChange={handleSortChange}
         />
       ) : viewMode === 'grid' ? (
         <FolderGridView
@@ -532,6 +555,9 @@ const FolderView: FunctionalComponent<Props> = ({
           theme={theme}
           onContextMenu={handleContextMenu}
           onLongPress={handleLongPress}
+          showHidden={showHidden}
+          sortField={sortPref.field}
+          sortOrder={sortPref.order}
         />
       )}
 

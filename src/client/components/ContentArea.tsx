@@ -59,6 +59,8 @@ interface Props {
   onSwipe?: (direction: 'left' | 'right') => void
   // 分享模式（访客只读）
   shareMode?: boolean
+  /** 是否显示隐藏文件（点文件），默认隐藏 */
+  showHidden?: boolean
 }
 
 function showToast(message: string, type: 'success' | 'error') {
@@ -91,6 +93,7 @@ const ContentArea: FunctionalComponent<Props> = ({
   onClearClipboard,
   onSwipe,
   shareMode = false,
+  showHidden = false,
 }) => {
   const isShareMode = shareMode || !!getSharePrefix()
   const fileType = filePath ? getFileType(filePath) : 'markdown'
@@ -445,6 +448,7 @@ const ContentArea: FunctionalComponent<Props> = ({
           onCut={onCut}
           onClearClipboard={onClearClipboard}
           shareMode={isShareMode}
+          showHidden={showHidden}
         />
       )
     }

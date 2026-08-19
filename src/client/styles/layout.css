@@ -9,13 +9,50 @@
 }
 
 .sidebar {
-  width: 280px;
+  position: relative;
+  width: var(--sidebar-width, 280px);
   flex-shrink: 0;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 侧边栏宽度拖拽手柄（右边缘）*/
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  touch-action: none;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background: var(--accent, rgba(100, 130, 255, 0.35));
+}
+
+.sidebar-hidden-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.sidebar-hidden-toggle-btn:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 
 .sidebar-header {
@@ -270,6 +307,9 @@
     width: 280px !important;
   }
   .sidebar[data-open="true"] { transform: translateX(0); }
+
+  /* 移动端抽屉宽度固定，不支持拖拽调整 */
+  .sidebar-resize-handle { display: none; }
 
   /* 遮罩层 */
   .sidebar-overlay {

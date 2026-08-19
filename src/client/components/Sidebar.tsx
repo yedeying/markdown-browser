@@ -1,10 +1,12 @@
-import { useRef } from 'preact/hooks'
+import { useRef, useState, useEffect, useCallback } from 'preact/hooks'
 import type { FunctionalComponent, ComponentChildren } from 'preact'
 import type { FileNode, SearchResult } from '../../types.js'
 import type { SearchType } from '../hooks/useSearch.js'
 import FileTree, { type FileTreeHandle } from './FileTree.js'
 import SearchBar from './SearchBar.js'
 import Icon from './ui/Icon.js'
+import { filterTree, isDotfile } from '../utils/hiddenFiles.js'
+import { getSidebarWidth, setSidebarWidth } from '../utils/prefs.js'
 
 interface Props {
   tree: FileNode[]
@@ -25,6 +27,9 @@ interface Props {
   treeLoading?: boolean
   /** 额外的 header 内容（如多挂载切换器） */
   headerExtra?: ComponentChildren
+  /** 是否显示隐藏文件（点文件），默认隐藏 */
+  showHidden: boolean
+  onToggleShowHidden: () => void
 }
 
 const Sidebar: FunctionalComponent<Props> = ({
@@ -43,25 +48,71 @@ const Sidebar: FunctionalComponent<Props> = ({
   onClose,
   treeLoading,
   headerExtra,
+  showHidden,
+  onToggleShowHidden,
 }) => {
   const treeRef = useRef<FileTreeHandle>(null)
+  const asideRef = useRef<HTMLElement>(null)
+
+  // ── 宽度拖拽调整（200–480px），初始值从 localStorage 读取 ──
+  const [width, setWidth] = useState<number>(() => getSidebarWidth())
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+  useEffect(() => {
+    asideRef.current?.style.setProperty('--sidebar-width', `${width}px`)
+  }, [width])
+
+  const handlePointerMove = useCallback((e: PointerEvent) => {
+    const drag = dragRef.current
+    if (!drag) return
+    const next = setSidebarWidth(drag.startWidth + (e.clientX - drag.startX))
+    setWidth(next)
+  }, [])
+
+  const handlePointerUp = useCallback(() => {
+    dragRef.current = null
+    window.removeEventListener('pointermove', handlePointerMove)
+    window.removeEventListener('pointerup', handlePointerUp)
+  }, [handlePointerMove])
+
+  const handleResizeStart = (e: PointerEvent) => {
+    e.preventDefault()
+    dragRef.current = { startX: e.clientX, startWidth: width }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+  }
 
   const handleSelect = (node: FileNode) => {
     onSelect(node)
     onClose?.()
   }
 
+  const visibleTree = filterTree(tree, showHidden)
+  const visibleSearchResults = searchResults
+    ? (showHidden ? searchResults : searchResults.filter(r => !isDotfile(r.fileName)))
+    : searchResults
+
   return (
     <>
       {open && (
         <div class="sidebar-overlay" onClick={onClose} />
       )}
-      <aside class="sidebar" data-open={String(!!open)}>
+      <aside class="sidebar" data-open={String(!!open)} ref={asideRef}>
         <div class="sidebar-header">
           {headerExtra && <div style={{ marginBottom: '8px' }}>{headerExtra}</div>}
           <div class="sidebar-title">
             <Icon name="book" size={16} aria-hidden="true" />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dirName}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{dirName}</span>
+            <button
+              class="sidebar-hidden-toggle-btn"
+              data-testid="toggle-hidden-files"
+              aria-label={showHidden ? '隐藏点文件' : '显示隐藏文件'}
+              aria-pressed={showHidden}
+              title={showHidden ? '隐藏点文件' : '显示隐藏文件'}
+              onClick={onToggleShowHidden}
+            >
+              <Icon name={showHidden ? 'eye' : 'eye-off'} size={15} aria-hidden="true" />
+            </button>
           </div>
           <SearchBar
             query={query}
@@ -95,22 +146,27 @@ const Sidebar: FunctionalComponent<Props> = ({
                 </div>
               ))}
             </div>
-          ) : searchResults && searchResults.length === 0 && query ? (
+          ) : visibleSearchResults && visibleSearchResults.length === 0 && query ? (
             <div style={{ color: 'var(--text-muted)', fontSize: '13px', padding: '12px 8px', textAlign: 'center' }}>
               无匹配结果
             </div>
           ) : (
             <FileTree
               ref={treeRef}
-              nodes={tree}
+              nodes={visibleTree}
               currentPath={currentPath}
               onSelect={handleSelect}
               onExpand={onExpandFolder}
-              searchResults={searchResults && query ? searchResults : null}
+              searchResults={visibleSearchResults && query ? visibleSearchResults : null}
               mobileMode={!!open}
             />
           )}
         </div>
+        <div
+          class="sidebar-resize-handle"
+          data-testid="sidebar-resize-handle"
+          onPointerDown={handleResizeStart}
+        />
       </aside>
     </>
   )

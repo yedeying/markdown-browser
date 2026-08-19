@@ -14,6 +14,7 @@ import MountLanding from './components/MountLanding.js'
 import AdminPanel from './components/AdminPanel.js'
 import MountSelector from './components/MountSelector.js'
 import { watchUrl } from './utils/fsApi.js'
+import { getShowHidden, setShowHidden } from './utils/prefs.js'
 import type { FileNode, WatchEvent } from '../types.js'
 import type { ClipboardState } from './components/FolderView.js'
 
@@ -199,6 +200,15 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
   // 移动端 Sidebar 抽屉开关
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // 隐藏文件（点文件）显隐，默认隐藏；侧边栏与文件夹视图共享同一状态
+  const [showHidden, setShowHiddenState] = useState<boolean>(() => getShowHidden())
+  const handleToggleShowHidden = useCallback(() => {
+    setShowHiddenState(prev => {
+      const next = !prev
+      setShowHidden(next)
+      return next
+    })
+  }, [])
   // 剪贴板（跨文件夹复制/剪切）
   const [clipboard, setClipboard] = useState<ClipboardState | null>(null)
   // 应用内导航栈（手势前进/后退，不依赖浏览器历史，避免退到登录页）
@@ -375,6 +385,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         treeLoading={treeLoading}
+        showHidden={showHidden}
+        onToggleShowHidden={handleToggleShowHidden}
         headerExtra={
           mountAlias ? (
             <MountSelector
@@ -414,6 +426,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
           onClearClipboard={() => setClipboard(null)}
           onSwipe={handleSwipe}
           shareMode={!!window.__VMD_SHARE_TOKEN__}
+          showHidden={showHidden}
         />
       </div>
     </div>

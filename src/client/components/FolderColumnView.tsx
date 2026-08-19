@@ -6,6 +6,9 @@ import { useLongPress } from '../hooks/useLongPress.js'
 import MarkdownPreview from './MarkdownPreview.js'
 import Editor from './Editor.js'
 import { apiFetch, assetUrl } from '../utils/fsApi.js'
+import { filterVisible } from '../utils/hiddenFiles.js'
+import { sortNodes } from '../utils/sortNodes.js'
+import type { SortField, SortOrder } from '../utils/prefs.js'
 
 function getNodeIcon(node: FileNode): string {
   if (node.type === 'folder') return '📁'
@@ -33,6 +36,10 @@ interface Props {
   theme: 'dark' | 'light'
   onContextMenu: (node: FileNode, e: MouseEvent) => void
   onLongPress: (node: FileNode) => void
+  /** 是否显示隐藏文件（点文件），默认隐藏 */
+  showHidden?: boolean
+  sortField?: SortField
+  sortOrder?: SortOrder
 }
 
 const FolderColumnView: FunctionalComponent<Props> = ({
@@ -42,6 +49,9 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   theme,
   onContextMenu,
   onLongPress,
+  showHidden = false,
+  sortField = 'name',
+  sortOrder = 'asc',
 }) => {
   const [columnStack, setColumnStack] = useState<FileNode[]>([rootNode])
   const [selectedInCol, setSelectedInCol] = useState<Record<number, string>>({})
@@ -168,7 +178,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       {/* 左侧：目录列（固定宽度，横向滚动） */}
       <div class="folder-columns-wrap" ref={wrapRef}>
         {columnStack.map((folderNode, colIndex) => {
-          const children = folderNode.children || []
+          const children = sortNodes(filterVisible(folderNode.children || [], showHidden), sortField, sortOrder)
           return (
             <div key={`${folderNode.path}-${colIndex}`} class="folder-column">
               <div class="folder-column-header">{folderNode.name}/</div>

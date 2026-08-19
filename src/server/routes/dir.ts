@@ -49,7 +49,8 @@ function listDir(dir: string, base: string): FileNode[] {
   const files: FileNode[] = []
 
   for (const name of entries) {
-    if (name.startsWith('.')) continue
+    // 点文件/点文件夹不在此处过滤：是否显示由客户端 vmd_show_hidden 偏好决定
+    // （.git 等仍通过下方 IGNORE_DIRS 硬性排除）。
     const fullPath = join(dir, name)
     let stat
     try {
