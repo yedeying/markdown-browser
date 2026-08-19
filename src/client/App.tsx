@@ -211,7 +211,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     if (event.type === 'tree-change') {
       refresh(event.affectedPath)
     } else if (event.type === 'reload' && currentPath) {
-      loadFile(currentPath)
+      // 是否静默重载还是提示冲突由 ContentArea 根据 unsaved/viewMode 决定
+      window.dispatchEvent(new CustomEvent('vmd:file-reload', { detail: { path: currentPath } }))
     }
   }, [currentPath, loadFile, refresh])
 
@@ -391,6 +392,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
           error={error}
           theme={theme}
           onSave={handleSave}
+          onSilentReload={() => currentPath && loadFile(currentPath)}
           watchConnected={watchConnected}
           onNavigate={(path: string) => {
             // navigate-file 内部触发，path 是文件路径

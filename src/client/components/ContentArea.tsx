@@ -12,6 +12,8 @@ import ShareDialog from './ShareDialog.js'
 import { getSharePrefix, downloadUrl } from '../utils/fsApi.js'
 import Icon from './ui/Icon.js'
 import Skeleton from './ui/Skeleton.js'
+import ExternalUpdateBanner from './ui/ExternalUpdateBanner.js'
+import { getScroll, setScroll } from '../utils/scrollMemory.js'
 
 /** 在 tree 中按 path 查找 FileNode */
 function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
@@ -35,6 +37,8 @@ interface Props {
   theme: 'dark' | 'light'
   onSave?: (path: string, content: string) => Promise<boolean>
   onSSEEvent?: (cb: () => void) => void
+  /** SSE 检测到磁盘文件变化、且当前无未保存改动时，由 App 触发的静默重载（重新 loadFile） */
+  onSilentReload?: () => void
   watchConnected?: boolean
   onNavigate?: (path: string) => void
   themeToggle?: ComponentChildren
@@ -72,6 +76,7 @@ const ContentArea: FunctionalComponent<Props> = ({
   error,
   theme,
   onSave,
+  onSilentReload,
   watchConnected,
   onNavigate,
   themeToggle,
@@ -96,6 +101,10 @@ const ContentArea: FunctionalComponent<Props> = ({
   const [editContent, setEditContent] = useState(content || '')
   const [unsaved, setUnsaved] = useState(false)
   const [saving, setSaving] = useState(false)
+  // SSE 检测到磁盘变化、但本地有未保存编辑时：不静默覆盖，弹出提示条让用户选择
+  const [externalUpdatePending, setExternalUpdatePending] = useState(false)
+  // 静默重载后，等 content 到达再恢复滚动位置（rAF + 一次重试）
+  const restoreScrollPendingRef = useRef(false)
   const contentBodyRef = useRef<HTMLDivElement>(null)
   const tocRef = useRef<HTMLElement | null>(null)
   const previewContentRef = useRef<HTMLElement | null>(null)
@@ -107,6 +116,7 @@ const ContentArea: FunctionalComponent<Props> = ({
   // 文件切换时重置视图模式和滚动
   useEffect(() => {
     setUnsaved(false)
+    setExternalUpdatePending(false)
     setViewMode(isMarkdown ? 'preview' : (isEditable ? 'code-only' : 'preview'))
     if (contentBodyRef.current) {
       contentBodyRef.current.scrollTop = 0
@@ -185,6 +195,69 @@ const ContentArea: FunctionalComponent<Props> = ({
     window.addEventListener('navigate-file', handler)
     return () => window.removeEventListener('navigate-file', handler)
   }, [onNavigate])
+
+  // SSE 磁盘文件变化事件（由 App 转发）：
+  // - 无未保存改动（预览 / 编辑但已保存）→ 静默重载并恢复滚动位置
+  // - 有未保存改动 → 不覆盖，弹出提示条让用户选择
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { path } = (e as CustomEvent<{ path: string }>).detail
+      if (!filePath || path !== filePath) return
+      if (unsaved) {
+        setExternalUpdatePending(true)
+      } else {
+        restoreScrollPendingRef.current = true
+        onSilentReload?.()
+      }
+    }
+    window.addEventListener('vmd:file-reload', handler)
+    return () => window.removeEventListener('vmd:file-reload', handler)
+  }, [filePath, unsaved, onSilentReload])
+
+  // 提示条：加载新版本 —— 主动放弃本地未保存编辑，重载磁盘内容
+  const handleExternalReload = useCallback(() => {
+    setExternalUpdatePending(false)
+    setUnsaved(false)
+    restoreScrollPendingRef.current = true
+    onSilentReload?.()
+  }, [onSilentReload])
+
+  // 提示条：忽略 —— 保留本地未保存编辑，不重载
+  const handleDismissExternalUpdate = useCallback(() => {
+    setExternalUpdatePending(false)
+  }, [])
+
+  // 静默重载后 content 到达时恢复滚动位置（rAF + 一次重试，等待预览重新排版）
+  useEffect(() => {
+    if (!restoreScrollPendingRef.current) return
+    restoreScrollPendingRef.current = false
+    if (!filePath) return
+    const target = getScroll(filePath)
+    if (target == null) return
+    const apply = () => {
+      if (contentBodyRef.current) contentBodyRef.current.scrollTop = target
+    }
+    requestAnimationFrame(() => {
+      apply()
+      requestAnimationFrame(apply)
+    })
+  }, [content])
+
+  // 预览模式下滚动位置持久化（防抖），供静默重载后恢复
+  useEffect(() => {
+    const el = contentBodyRef.current
+    if (!el || viewMode !== 'preview' || !filePath) return
+    let timer: ReturnType<typeof setTimeout>
+    const handleScroll = () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => setScroll(filePath, el.scrollTop), 200)
+    }
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      clearTimeout(timer)
+      el.removeEventListener('scroll', handleScroll)
+    }
+  }, [viewMode, filePath])
 
   // 双栏编辑模式的滚动同步（编辑器 ↔ 预览，按百分比）
   useEffect(() => {
@@ -632,6 +705,13 @@ const ContentArea: FunctionalComponent<Props> = ({
           )}
         </div>
       </div>
+
+      {externalUpdatePending && (
+        <ExternalUpdateBanner
+          onReload={handleExternalReload}
+          onDismiss={handleDismissExternalUpdate}
+        />
+      )}
 
       {/* 文件视图面包屑 */}
       {fileBreadcrumbs && onSelectNode && (
