@@ -13,6 +13,7 @@ import { fsApi } from '../utils/fsApi.js'
 import { filterVisible } from '../utils/hiddenFiles.js'
 import { sortNodes } from '../utils/sortNodes.js'
 import { getSort, setSort, type SortField, type SortOrder } from '../utils/prefs.js'
+import { showToast } from './ui/Toast.js'
 
 type FolderViewMode = 'list' | 'grid' | 'column'
 type CardSize = 's' | 'm' | 'l'
@@ -31,14 +32,6 @@ function loadPref<T extends string>(key: string, fallback: T, valid: T[]): T {
 
 function savePref(key: string, value: string) {
   try { localStorage.setItem(key, value) } catch {}
-}
-
-function showToast(message: string, type: 'success' | 'error') {
-  const toast = document.createElement('div')
-  toast.className = `toast ${type}`
-  toast.textContent = message
-  document.body.appendChild(toast)
-  setTimeout(() => toast.remove(), 2200)
 }
 
 export interface ClipboardState {

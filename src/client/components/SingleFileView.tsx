@@ -4,17 +4,10 @@ import ContentArea from './ContentArea.js'
 import { useSSE } from '../hooks/useSSE.js'
 import type { WatchEvent } from '../../types.js'
 import { apiFetch } from '../utils/fsApi.js'
+import { showToast } from './ui/Toast.js'
 
 interface Props {
   theme: 'dark' | 'light'
-}
-
-function showToast(message: string, type: 'success' | 'error') {
-  const toast = document.createElement('div')
-  toast.className = `toast ${type}`
-  toast.textContent = message
-  document.body.appendChild(toast)
-  setTimeout(() => toast.remove(), 2200)
 }
 
 const SingleFileView: FunctionalComponent<Props> = ({ theme }) => {

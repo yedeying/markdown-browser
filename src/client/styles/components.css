@@ -810,15 +810,12 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  font-size: 18px;
-  font-weight: bold;
   background: none;
   border: none;
   cursor: pointer;
   color: var(--text);
   border-radius: 6px;
   flex-shrink: 0;
-  letter-spacing: -1px;
 }
 .header-more-btn:hover { background: var(--hover); }
 

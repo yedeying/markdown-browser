@@ -13,6 +13,7 @@ import { getSharePrefix, downloadUrl } from '../utils/fsApi.js'
 import Icon from './ui/Icon.js'
 import Skeleton from './ui/Skeleton.js'
 import ExternalUpdateBanner from './ui/ExternalUpdateBanner.js'
+import { showToast } from './ui/Toast.js'
 import { getScroll, setScroll } from '../utils/scrollMemory.js'
 
 /** 在 tree 中按 path 查找 FileNode */
@@ -61,14 +62,6 @@ interface Props {
   shareMode?: boolean
   /** 是否显示隐藏文件（点文件），默认隐藏 */
   showHidden?: boolean
-}
-
-function showToast(message: string, type: 'success' | 'error') {
-  const toast = document.createElement('div')
-  toast.className = `toast ${type}`
-  toast.textContent = message
-  document.body.appendChild(toast)
-  setTimeout(() => toast.remove(), 2200)
 }
 
 const ContentArea: FunctionalComponent<Props> = ({
@@ -672,7 +665,10 @@ const ContentArea: FunctionalComponent<Props> = ({
                     class="header-more-btn"
                     onClick={() => setMoreMenuOpen(o => !o)}
                     aria-label="更多操作"
-                  >···</button>
+                    title="更多"
+                  >
+                    <Icon name="more" size={18} aria-hidden="true" />
+                  </button>
                   {moreMenuOpen && (
                     <div class="header-dropdown">
                       {(viewMode === 'edit' || viewMode === 'code-only') && (

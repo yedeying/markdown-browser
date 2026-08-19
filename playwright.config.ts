@@ -4,7 +4,7 @@ import { defineConfig, devices } from '@playwright/test'
  * Playwright E2E 测试配置
  *
  * 使用前需要先启动 vmd 服务，指向 tests/fixtures/docs 目录：
- *   ~/.bun/bin/bun run src/cli.ts tests/fixtures/docs --port 8899
+ *   ~/.bun/bin/bun run build && ~/.bun/bin/bun dist/cli.js tests/fixtures/docs --port 8899
  *
  * 或使用 webServer 配置自动启动（见下方注释）
  */
@@ -28,11 +28,14 @@ export default defineConfig({
     },
   ],
 
-  // 自动启动 vmd 服务（指向 fixtures）
+  // 自动启动 vmd 服务（指向 fixtures）。使用 dist/cli.js（构建产物）而非 src/cli.ts 直跑：
+  // 后者的 import.meta.dir 指向 src/，会把 distPath 解析成 src/client（源码目录，恰好存在，
+  // existsSync 检查骗过去但里面是未打包的 TSX），导致服务"看起来启动成功"却输出坏页面 —— 这是
+  // e2e 偶发失败的根因之一。先 build 再跑 dist/cli.js 才是构建产物应有的运行方式。
   webServer: {
-    command: `${process.env.HOME}/.bun/bin/bun run src/cli.ts tests/fixtures/docs --port 8899`,
+    command: `${process.env.HOME}/.bun/bin/bun run build && ${process.env.HOME}/.bun/bin/bun dist/cli.js tests/fixtures/docs --port 8899`,
     url: 'http://localhost:8899',
     reuseExistingServer: !process.env.CI,
-    timeout: 30000,
+    timeout: 120000,
   },
 })

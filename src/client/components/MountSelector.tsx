@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
+import Icon from './ui/Icon.js'
 
 interface Mount {
   alias: string
@@ -38,9 +39,9 @@ const MountSelector: FunctionalComponent<Props> = ({ currentAlias, mounts }) => 
   return (
     <div class="mount-selector" ref={menuRef}>
       <button class="mount-selector-btn" onClick={() => setOpen(o => !o)}>
-        <span class="ms-icon">🗂</span>
+        <Icon name="folder-open" size={14} class="ms-icon" aria-hidden="true" />
         <span class="ms-name">{cur?.name || currentAlias}</span>
-        <span class="ms-chev">▾</span>
+        <Icon name="chevron-down" size={12} class="ms-chev" aria-hidden="true" />
       </button>
       {open && (
         <div class="mount-selector-menu">
@@ -51,21 +52,21 @@ const MountSelector: FunctionalComponent<Props> = ({ currentAlias, mounts }) => 
               class={`ms-item ${m.alias === currentAlias ? 'active' : ''}`}
               onClick={() => { if (m.alias !== currentAlias) go(`/m/${m.alias}/`) }}
             >
-              <span class="ms-item-icon">📁</span>
+              <Icon name="folder" size={14} class="ms-item-icon" aria-hidden="true" />
               <span class="ms-item-body">
                 <span class="ms-item-name">{m.name}</span>
                 <span class="ms-item-alias">/m/{m.alias}</span>
               </span>
-              {m.alias === currentAlias && <span class="ms-check">✓</span>}
+              {m.alias === currentAlias && <Icon name="check" size={14} class="ms-check" aria-hidden="true" />}
             </button>
           ))}
           <div class="ms-divider" />
           <button class="ms-item" onClick={() => go('/')}>
-            <span class="ms-item-icon">🏠</span>
+            <Icon name="home" size={14} class="ms-item-icon" aria-hidden="true" />
             <span class="ms-item-body"><span class="ms-item-name">返回首页</span></span>
           </button>
           <button class="ms-item" onClick={() => go('/admin')}>
-            <span class="ms-item-icon">⚙</span>
+            <Icon name="settings" size={14} class="ms-item-icon" aria-hidden="true" />
             <span class="ms-item-body">
               <span class="ms-item-name">管理挂载点</span>
             </span>
@@ -88,7 +89,7 @@ const MountSelector: FunctionalComponent<Props> = ({ currentAlias, mounts }) => 
           font-size: 12px;
         }
         .mount-selector-btn:hover { background: var(--bg-hover, rgba(0,0,0,0.05)); }
-        .ms-icon { font-size: 14px; }
+        .ms-icon { flex-shrink: 0; color: var(--text-muted); }
         .ms-name {
           flex: 1;
           text-align: left;
@@ -96,7 +97,7 @@ const MountSelector: FunctionalComponent<Props> = ({ currentAlias, mounts }) => 
           text-overflow: ellipsis;
           white-space: nowrap;
         }
-        .ms-chev { font-size: 10px; opacity: 0.7; }
+        .ms-chev { flex-shrink: 0; opacity: 0.7; }
         .mount-selector-menu {
           position: absolute;
           top: calc(100% + 4px);
@@ -133,12 +134,12 @@ const MountSelector: FunctionalComponent<Props> = ({ currentAlias, mounts }) => 
           text-align: left;
         }
         .ms-item:hover { background: var(--bg-hover, rgba(0,0,0,0.06)); }
-        .ms-item.active { background: var(--accent-bg, rgba(59, 130, 246, 0.1)); }
-        .ms-item-icon { font-size: 14px; }
+        .ms-item.active { background: var(--active-bg, rgba(59, 130, 246, 0.1)); }
+        .ms-item-icon { flex-shrink: 0; color: var(--text-muted); }
         .ms-item-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
         .ms-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ms-item-alias { font-size: 11px; color: var(--text-muted); font-family: ui-monospace, monospace; }
-        .ms-check { color: var(--accent, #3b82f6); font-weight: bold; }
+        .ms-check { flex-shrink: 0; color: var(--accent); }
         .ms-divider { height: 1px; background: var(--border); margin: 4px 0; }
       `}</style>
     </div>

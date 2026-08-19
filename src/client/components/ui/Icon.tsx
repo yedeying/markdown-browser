@@ -1,6 +1,7 @@
 import type { FunctionalComponent } from 'preact'
 import {
   Folder,
+  FolderOpen,
   File,
   FileText,
   FileCode,
@@ -12,14 +13,18 @@ import {
   Settings,
   Menu,
   ChevronRight,
+  ChevronDown,
   Eye,
   EyeOff,
   Image,
   Book,
+  Check,
+  Ellipsis,
 } from 'lucide-preact'
 
 export type IconName =
   | 'folder'
+  | 'folder-open'
   | 'file'
   | 'file-text'
   | 'file-code'
@@ -31,13 +36,17 @@ export type IconName =
   | 'settings'
   | 'menu'
   | 'chevron-right'
+  | 'chevron-down'
   | 'eye'
   | 'eye-off'
   | 'image'
   | 'book'
+  | 'check'
+  | 'more'
 
 const ICONS = {
   folder: Folder,
+  'folder-open': FolderOpen,
   file: File,
   'file-text': FileText,
   'file-code': FileCode,
@@ -49,10 +58,13 @@ const ICONS = {
   settings: Settings,
   menu: Menu,
   'chevron-right': ChevronRight,
+  'chevron-down': ChevronDown,
   eye: Eye,
   'eye-off': EyeOff,
   image: Image,
   book: Book,
+  check: Check,
+  more: Ellipsis,
 } as const
 
 interface Props {
