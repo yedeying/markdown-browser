@@ -8,8 +8,18 @@ import { createDirWatcher } from '../watcher.js'
 import { createAuthMiddleware, createAuthRoutes } from '../auth.js'
 import { ShareStore, createShareApiRoutes, createSharePageRoutes } from '../share.js'
 import { treeCache } from '../tree-cache.js'
+import { hasReservedSegment, isReservedFilename } from '../reserved-files.js'
 
 const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.DS_Store'])
+
+// 服务端托管文件（.vmd-config.json 等）决定启动根目录和分享令牌，
+// 一旦能经通用文件接口改写，客户端就能改写服务端行为。
+const RESERVED_ERROR = '服务端托管文件不可通过文件接口访问'
+
+/** 任意一个路径命中服务端托管文件 */
+function anyReserved(...paths: Array<string | undefined | null>): boolean {
+  return paths.some(p => typeof p === 'string' && hasReservedSegment(p))
+}
 
 const MD_EXTS    = new Set(['.md', '.markdown'])
 const CODE_EXTS  = new Set(['.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.htm', '.py', '.json',
@@ -59,6 +69,8 @@ function listDir(dir: string, base: string, showHidden: boolean): FileNode[] {
   const files: FileNode[] = []
 
   for (const name of entries) {
+    // 服务端托管文件不属于用户内容，showHidden 也不该把它露出来
+    if (isReservedFilename(name)) continue
     // 默认不返回点文件/点文件夹：客户端必须显式带 ?showHidden=1 才能看到，
     // 否则 ~/.docker/config.json 之类的敏感文件会对所有客户端可见（且可经 /api/file 读取）。
     if (!showHidden && name.startsWith('.')) continue
@@ -212,6 +224,11 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
     const relPath = c.req.path.replace('/api/file/', '')
     const filePath = join(basePath, decodeURIComponent(relPath))
 
+    // 挂载点路径和分享令牌本身就是敏感信息：当作不存在
+    if (hasReservedSegment(decodeURIComponent(relPath))) {
+      return c.json({ error: 'File not found' }, 404)
+    }
+
     // 纵深防御：列表/搜索默认不返回点路径，直接猜路径也读不到
     if (!wantsHidden(c.req.query('showHidden')) && hasHiddenSegment(decodeURIComponent(relPath))) {
       return c.json({ error: 'File not found' }, 404)
@@ -234,6 +251,10 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   app.post('/api/save/*', async (c) => {
     const relPath = c.req.path.replace('/api/save/', '')
     const filePath = join(basePath, decodeURIComponent(relPath))
+
+    if (hasReservedSegment(decodeURIComponent(relPath))) {
+      return c.json({ error: RESERVED_ERROR }, 403)
+    }
 
     const ext = extname(decodeURIComponent(relPath)).toLowerCase()
     if (BINARY_EXTS.has(ext)) {
@@ -347,6 +368,8 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         if (!match) continue
         const [, filePath, lineNumStr, lineContent] = match
         const relPath = relative(basePath, filePath)
+        // grep 的 --include=*.json 会命中服务端托管文件，内容不能外泄
+        if (hasReservedSegment(relPath)) continue
         // grep 会进入点目录：默认不显示隐藏文件时在此剔除
         if (!showHidden && hasHiddenSegment(relPath)) continue
         const fileName = basename(filePath)
@@ -374,6 +397,10 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   app.get('/api/asset/*', (c) => {
     const relPath = c.req.path.replace('/api/asset/', '')
     const filePath = join(basePath, decodeURIComponent(relPath))
+
+    if (hasReservedSegment(decodeURIComponent(relPath))) {
+      return c.json({ error: 'File not found' }, 404)
+    }
 
     if (!wantsHidden(c.req.query('showHidden')) && hasHiddenSegment(decodeURIComponent(relPath))) {
       return c.json({ error: 'File not found' }, 404)
@@ -464,6 +491,10 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       if (!Array.isArray(paths) || paths.length === 0) {
         return c.json({ ok: false, error: 'paths required' }, 400)
       }
+      // 整批先校验再动手，避免拒绝之前已经删掉了前几个
+      if (anyReserved(...paths)) {
+        return c.json({ ok: false, error: RESERVED_ERROR }, 403)
+      }
       let deleted = 0
       for (const p of paths) {
         const abs = assertSafe(p, basePath)
@@ -481,6 +512,10 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
     try {
       const { path: p, newName } = await c.req.json() as { path: string; newName: string }
       if (!p || !newName) return c.json({ ok: false, error: 'path and newName required' }, 400)
+      // 改名两端都要挡：既不能把托管文件改走，也不能把普通文件改成托管文件名
+      if (anyReserved(p, newName)) {
+        return c.json({ ok: false, error: RESERVED_ERROR }, 403)
+      }
       // 安全：newName 不允许路径分隔符或 ..
       if (/[/\\]|\.\.\./.test(newName)) {
         return c.json({ ok: false, error: 'Invalid name' }, 400)
@@ -502,6 +537,10 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       const { paths, dest } = await c.req.json() as { paths: string[]; dest: string }
       if (!Array.isArray(paths) || !dest) {
         return c.json({ ok: false, error: 'paths and dest required' }, 400)
+      }
+      // 目标文件名沿用源文件名，挡住源路径即挡住了目标
+      if (anyReserved(...paths, dest)) {
+        return c.json({ ok: false, error: RESERVED_ERROR }, 403)
       }
       const destAbs = assertSafe(dest, basePath)
       // 确保目标目录存在
@@ -537,6 +576,9 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       if (!Array.isArray(paths) || !dest) {
         return c.json({ ok: false, error: 'paths and dest required' }, 400)
       }
+      if (anyReserved(...paths, dest)) {
+        return c.json({ ok: false, error: RESERVED_ERROR }, 403)
+      }
       const destAbs = assertSafe(dest, basePath)
       await fsp.mkdir(destAbs, { recursive: true })
       let copied = 0
@@ -558,6 +600,9 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
     try {
       const { path: p } = await c.req.json() as { path: string }
       if (!p) return c.json({ ok: false, error: 'path required' }, 400)
+      if (anyReserved(p)) {
+        return c.json({ ok: false, error: RESERVED_ERROR }, 403)
+      }
       const abs = assertSafe(p, basePath)
       await fsp.mkdir(abs, { recursive: true })
       return c.json({ ok: true })
@@ -571,6 +616,9 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
     try {
       const { path: p } = await c.req.json() as { path: string }
       if (!p) return c.json({ ok: false, error: 'path required' }, 400)
+      if (anyReserved(p)) {
+        return c.json({ ok: false, error: RESERVED_ERROR }, 403)
+      }
       const abs = assertSafe(p, basePath)
       // 确保父目录存在
       await fsp.mkdir(dirname(abs), { recursive: true })

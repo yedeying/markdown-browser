@@ -1,5 +1,7 @@
 import type { FunctionalComponent } from 'preact'
+import { useState } from 'preact/hooks'
 import ThemeToggle from './ThemeToggle.js'
+import SettingsDialog from './SettingsDialog.js'
 import Icon from './ui/Icon.js'
 
 interface Mount {
@@ -22,6 +24,10 @@ const MountLanding: FunctionalComponent<Props> = ({
   onOpenAdmin,
   errorMsg,
 }) => {
+  // 着陆页也要有设置入口：挂载点为空时这里是唯一能到达的页面，
+  // 没有入口就等于切不回单目录启动模式。
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
   return (
     <div class="landing-wrap">
       <header class="landing-header">
@@ -31,12 +37,23 @@ const MountLanding: FunctionalComponent<Props> = ({
         </div>
         <div class="landing-actions">
           <button class="landing-btn" onClick={onOpenAdmin}>
-            <Icon name="settings" size={14} aria-hidden="true" />
+            <Icon name="folder-plus" size={14} aria-hidden="true" />
             管理挂载点
           </button>
           <ThemeToggle theme={theme} onToggle={onThemeToggle} />
+          <button
+            class="header-icon-btn"
+            onClick={() => setSettingsOpen(true)}
+            title="设置"
+            aria-label="设置"
+            data-testid="open-settings"
+          >
+            <Icon name="sliders" size={16} aria-hidden="true" />
+          </button>
         </div>
       </header>
+
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
 
       {errorMsg && <div class="landing-error">{errorMsg}</div>}
 

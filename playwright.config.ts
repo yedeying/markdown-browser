@@ -32,8 +32,10 @@ export default defineConfig({
   // 后者的 import.meta.dir 指向 src/，会把 distPath 解析成 src/client（源码目录，恰好存在，
   // existsSync 检查骗过去但里面是未打包的 TSX），导致服务"看起来启动成功"却输出坏页面 —— 这是
   // e2e 偶发失败的根因之一。先 build 再跑 dist/cli.js 才是构建产物应有的运行方式。
+  // --env-file=/dev/null：bun 默认会自动加载仓库根目录的 .env，其中的 VMD_PASSWORD 会让
+  // 测试服务器要求登录，导致每个用例都停在登录页。e2e 必须跑在无密码的干净环境里。
   webServer: {
-    command: `${process.env.HOME}/.bun/bin/bun run build && ${process.env.HOME}/.bun/bin/bun dist/cli.js tests/fixtures/docs --port 8899`,
+    command: `${process.env.HOME}/.bun/bin/bun run build && ${process.env.HOME}/.bun/bin/bun --env-file=/dev/null dist/cli.js tests/fixtures/docs --port 8899`,
     url: 'http://localhost:8899',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

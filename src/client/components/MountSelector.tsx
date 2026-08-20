@@ -134,7 +134,7 @@ const MountSelector: FunctionalComponent<Props> = ({ currentAlias, mounts }) => 
           text-align: left;
         }
         .ms-item:hover { background: var(--bg-hover, rgba(0,0,0,0.06)); }
-        .ms-item.active { background: var(--active-bg, rgba(59, 130, 246, 0.1)); }
+        .ms-item.active { background: var(--active-bg); color: var(--accent); }
         .ms-item-icon { flex-shrink: 0; color: var(--text-muted); }
         .ms-item-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
         .ms-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

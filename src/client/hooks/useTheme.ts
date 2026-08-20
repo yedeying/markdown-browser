@@ -1,21 +1,34 @@
 import { useState, useEffect } from 'preact/hooks'
-
-type Theme = 'dark' | 'light'
-
-const STORAGE_KEY = 'vmd_theme'
+import { usePref } from './usePref.js'
+import { applyAppearancePrefs, resolveTheme } from '../utils/appearance.js'
+import type { ThemePref } from '../utils/prefs.js'
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as Theme | null
-    return saved === 'light' ? 'light' : 'dark'
-  })
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  const [selectedTheme, setSelectedTheme] = usePref('theme')
+  const [prefersDark, setPrefersDark] = useState(mediaQuery.matches)
+  const resolvedTheme = resolveTheme(selectedTheme, prefersDark)
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem(STORAGE_KEY, theme)
-  }, [theme])
+    if (selectedTheme !== 'system') return
+    setPrefersDark(mediaQuery.matches)
+    const handleChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches)
+    mediaQuery.addEventListener('change', handleChange)
+    return () => mediaQuery.removeEventListener('change', handleChange)
+  }, [selectedTheme])
 
-  const toggle = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
+  useEffect(() => {
+    applyAppearancePrefs(document.documentElement, prefersDark)
+  }, [selectedTheme, prefersDark])
 
-  return { theme, toggle }
+  const setTheme = (theme: ThemePref) => setSelectedTheme(theme)
+  const toggle = () => setSelectedTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
+
+  return {
+    theme: resolvedTheme,
+    selectedTheme,
+    resolvedTheme,
+    setTheme,
+    toggle,
+  }
 }

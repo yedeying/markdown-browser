@@ -13,8 +13,9 @@ import ThemeToggle from './components/ThemeToggle.js'
 import MountLanding from './components/MountLanding.js'
 import AdminPanel from './components/AdminPanel.js'
 import MountSelector from './components/MountSelector.js'
+import SettingsDialog from './components/SettingsDialog.js'
 import { watchUrl } from './utils/fsApi.js'
-import { getShowHidden, setShowHidden } from './utils/prefs.js'
+import { usePref } from './hooks/usePref.js'
 import type { FileNode, WatchEvent } from '../types.js'
 import type { ClipboardState } from './components/FolderView.js'
 
@@ -174,14 +175,10 @@ interface DirModeProps {
 const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, mountAlias }) => {
   // 隐藏文件（点文件）显隐，默认隐藏；侧边栏与文件夹视图共享同一状态。
   // 服务端默认不返回点文件，因此这个开关也是 tree / search 请求的参数。
-  const [showHidden, setShowHiddenState] = useState<boolean>(() => getShowHidden())
+  const [showHidden, setShowHiddenState] = usePref('showHidden')
   const handleToggleShowHidden = useCallback(() => {
-    setShowHiddenState(prev => {
-      const next = !prev
-      setShowHidden(next)
-      return next
-    })
-  }, [])
+    setShowHiddenState(!showHidden)
+  }, [showHidden])
 
   const { tree, loading: treeLoading, childErrors, refresh, loadChildren } = useFileTree(showHidden)
   const { content, loading, error, currentPath, loadFile, selectFile, saveFile, setContent } = useFileContent()
@@ -211,6 +208,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
   // 移动端 Sidebar 抽屉开关
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   // 剪贴板（跨文件夹复制/剪切）
   const [clipboard, setClipboard] = useState<ClipboardState | null>(null)
   // 应用内导航栈（手势前进/后退，不依赖浏览器历史，避免退到登录页）
@@ -378,35 +376,36 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   }, [currentPath])
 
   return (
-    <div class="app-layout">
-      <Sidebar
-        tree={tree}
-        currentPath={selectedNode?.path ?? null}
-        onSelect={handleSelect}
-        onExpandFolder={(path) => loadChildren(path)}
-        query={query}
-        onQueryChange={setQuery}
-        searchType={searchType}
-        onTypeChange={setSearchType}
-        searchResults={results}
-        searchLoading={searchLoading}
-        dirName={dirName}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        treeLoading={treeLoading}
-        showHidden={showHidden}
-        onToggleShowHidden={handleToggleShowHidden}
-        headerExtra={
-          mountAlias ? (
-            <MountSelector
-              currentAlias={mountAlias}
-              mounts={window.__VMD_MOUNTS__ || []}
-            />
-          ) : null
-        }
-      />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-        <ContentArea
+    <>
+      <div class="app-layout">
+        <Sidebar
+          tree={tree}
+          currentPath={selectedNode?.path ?? null}
+          onSelect={handleSelect}
+          onExpandFolder={(path) => loadChildren(path)}
+          query={query}
+          onQueryChange={setQuery}
+          searchType={searchType}
+          onTypeChange={setSearchType}
+          searchResults={results}
+          searchLoading={searchLoading}
+          dirName={dirName}
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          treeLoading={treeLoading}
+          showHidden={showHidden}
+          onToggleShowHidden={handleToggleShowHidden}
+          headerExtra={
+            mountAlias ? (
+              <MountSelector
+                currentAlias={mountAlias}
+                mounts={window.__VMD_MOUNTS__ || []}
+              />
+            ) : null
+          }
+        />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+          <ContentArea
           filePath={currentPath}
           content={content}
           loading={loading}
@@ -420,8 +419,9 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
             const node = findNodeByPath(tree, path) ?? { name: path.split('/').pop() || path, type: 'file' as const, path }
             handleSelect(node)
           }}
-          onToggleSidebar={() => setSidebarOpen(o => !o)}
-          themeToggle={<ThemeToggle theme={theme} onToggle={onThemeToggle} />}
+            onToggleSidebar={() => setSidebarOpen(o => !o)}
+            themeToggle={<ThemeToggle theme={theme} onToggle={onThemeToggle} />}
+            onOpenSettings={() => setSettingsOpen(true)}
           selectedNode={
             // 根节点（path=''）时动态带入最新 tree，避免 tree 更新后 children 过期
             selectedNode?.path === '' ? makeRootNode(tree, dirName) : selectedNode
@@ -439,10 +439,19 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
           onClearClipboard={() => setClipboard(null)}
           onSwipe={handleSwipe}
           shareMode={!!window.__VMD_SHARE_TOKEN__}
-          showHidden={showHidden}
-        />
+            showHidden={showHidden}
+          />
+        </div>
       </div>
-    </div>
+      {settingsOpen && (
+        <SettingsDialog
+          onClose={() => setSettingsOpen(false)}
+          currentMountAlias={mountAlias}
+          // 分享链接的访客不是管理员，挂载设置对他们不可见
+          mountConfigurable={!window.__VMD_SHARE_TOKEN__}
+        />
+      )}
+    </>
   )
 }
 

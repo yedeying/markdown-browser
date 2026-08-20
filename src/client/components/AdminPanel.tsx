@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import { apiFetch } from '../utils/fsApi.js'
 import ThemeToggle from './ThemeToggle.js'
+import Icon from './ui/Icon.js'
 
 interface Mount {
   alias: string
@@ -245,11 +246,13 @@ function renderHeader(
   return (
     <header class="admin-header">
       <div class="admin-title">
-        <span style={{ fontSize: '20px' }}>⚙</span>
+        <Icon name="settings" size={18} aria-hidden="true" />
         <span>Markdown Browser · 管理后台</span>
       </div>
       <div class="admin-actions">
-        <button class="admin-btn" onClick={onNavigateHome}>🏠 首页</button>
+        <button class="admin-btn" onClick={onNavigateHome}>
+          <Icon name="home" size={14} aria-hidden="true" /> 首页
+        </button>
         <ThemeToggle theme={theme} onToggle={onThemeToggle} />
       </div>
     </header>
@@ -311,8 +314,9 @@ const styleBlock = (
     .admin-modal input[type="text"] {
       padding: 8px 10px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px;
       background: var(--bg-card); color: var(--text); outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
-    .admin-modal input[type="text"]:focus { border-color: var(--accent, #3b82f6); }
+    .admin-modal input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 7px 0 var(--focus-glow); outline: none; }
     .admin-modal input[type="text"]:disabled { opacity: 0.6; }
     .admin-checkbox { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); margin-top: 10px; }
     .admin-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }

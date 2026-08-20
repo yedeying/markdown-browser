@@ -9,18 +9,8 @@ import { apiFetch, assetUrl } from '../utils/fsApi.js'
 import { filterVisible } from '../utils/hiddenFiles.js'
 import { sortNodes } from '../utils/sortNodes.js'
 import type { SortField, SortOrder } from '../utils/prefs.js'
-
-function getNodeIcon(node: FileNode): string {
-  if (node.type === 'folder') return '📁'
-  switch (getFileType(node.name)) {
-    case 'markdown': return '📝'
-    case 'image':    return '🖼'
-    case 'video':    return '🎬'
-    case 'code':     return '📄'
-    case 'text':     return '📃'
-    default:         return '📎'
-  }
-}
+import { getNodeIconName } from '../utils/nodeIcon.js'
+import Icon from './ui/Icon.js'
 
 interface PreviewState {
   node: FileNode
@@ -164,7 +154,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
     // 不支持预览
     return (
       <div class="col-preview-placeholder">
-        <div style={{ fontSize: '32px', marginBottom: '8px' }}>{getNodeIcon(p.node)}</div>
+        <Icon name={getNodeIconName(p.node)} size={32} class="col-preview-icon" aria-hidden="true" />
         <div style={{ color: 'var(--text-muted)', fontSize: '13px' }}>{p.node.name}</div>
         {p.node.size && (
           <div style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '4px' }}>{p.node.size}</div>
@@ -198,7 +188,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
                       {...lpHandlers}
                       title={node.name}
                     >
-                      <span style={{ fontSize: '14px', flexShrink: 0 }}>{getNodeIcon(node)}</span>
+                      <Icon name={getNodeIconName(node)} size={14} class="row-icon" aria-hidden="true" />
                       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {node.name}
                       </span>

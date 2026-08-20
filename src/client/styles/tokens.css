@@ -11,6 +11,10 @@
   /* Structural tokens (theme-independent) */
   --sidebar-width: 280px;
   --tree-row-height: 32px;
+  --reading-width: 900px;
+  --reading-font-size: 16px;
+  --reading-line-height: 1.7;
+  --editor-font-size: 14px;
 }
 
 :root,
@@ -30,6 +34,17 @@
   --accent: #ff7b47;
   --accent-active: #e8632e;
   --on-accent: #ffffff;
+
+  /* 选中/激活态用半透明强调色铺淡底，而不是高饱和实底：
+     长时间阅读时实底橙块过于抢眼，且能叠在侧栏、正文等不同底色上。 */
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-soft-hover: color-mix(in srgb, var(--accent) 24%, transparent);
+  /* 输入框聚焦光晕：靠模糊扩散表达焦点，避免实心描边把边框显得很厚。
+     深色底上光晕要更实才看得出来。 */
+  --focus-glow: color-mix(in srgb, var(--accent) 45%, transparent);
+  /* 多选勾选态：比"当前项"更淡一档，两者靠强度而非色相区分 */
+  --accent-faint: color-mix(in srgb, var(--accent) 9%, transparent);
+  --accent-faint-border: color-mix(in srgb, var(--accent) 45%, transparent);
 
   --color-link: #58a6ff;
   --color-hover: #1f2428;
@@ -51,8 +66,8 @@
   --hover: var(--color-hover);
   --sidebar-bg: var(--canvas-soft);
   --header-bg: var(--surface);
-  --active-bg: var(--accent);
-  --active-text: var(--on-accent);
+  --active-bg: var(--accent-soft);
+  --active-text: var(--ink);
   --scrollbar-bg: var(--color-scrollbar);
   --success: var(--color-success);
   --warning: var(--color-warning);
@@ -79,6 +94,13 @@
   --accent-active: #d04200;
   --on-accent: #ffffff;
 
+  /* 浅色底上这支橙更饱和，淡底比例相应压低 */
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-soft-hover: color-mix(in srgb, var(--accent) 16%, transparent);
+  --focus-glow: color-mix(in srgb, var(--accent) 30%, transparent);
+  --accent-faint: color-mix(in srgb, var(--accent) 6%, transparent);
+  --accent-faint-border: color-mix(in srgb, var(--accent) 40%, transparent);
+
   --color-link: #0969da;
   --color-hover: #f3f4f6;
   --color-scrollbar: #d0d7de;
@@ -99,8 +121,8 @@
   --hover: var(--color-hover);
   --sidebar-bg: #f6f8fa;
   --header-bg: #f6f8fa;
-  --active-bg: var(--accent);
-  --active-text: var(--on-accent);
+  --active-bg: var(--accent-soft);
+  --active-text: var(--ink);
   --scrollbar-bg: var(--color-scrollbar);
   --success: var(--color-success);
   --warning: var(--color-warning);

@@ -4,8 +4,9 @@ import { promises as fsp } from 'node:fs'
 import { join, relative, extname, basename, dirname, resolve, sep } from 'path'
 import type { ShareToken, AuthConfig } from '../types.js'
 import { createAuthMiddleware } from './auth.js'
+import { SHARES_FILENAME, hasReservedSegment } from './reserved-files.js'
 
-const SHARES_FILE = '.vmd-shares.json'
+const SHARES_FILE = SHARES_FILENAME
 
 // ============================================================
 // ShareStore
@@ -137,6 +138,26 @@ function assertInBase(target: string, base: string): string {
   const abs = resolve(base, target)
   if (abs !== realBase && !abs.startsWith(realBase + sep)) throw new Error('Forbidden')
   return abs
+}
+
+// 分享链接不需要登录，所以这里是服务端托管文件最危险的入口：
+// 一个文件夹分享链接就足以改写 .vmd-config.json 并劫持下次启动的根目录。
+const RESERVED_ERROR = '服务端托管文件不可通过分享接口访问'
+
+/**
+ * 保留文件判定要在解码后做，但畸形的百分号编码会让 decodeURIComponent 抛错。
+ * 这个判定跑在各 handler 自己的 try 之前，所以必须自己吞掉异常 ——
+ * 否则 `/api/file/%` 之类的请求会从 404 变成 500。
+ * 解不开的路径一律当作命中保留文件：它本来也定位不到任何真实文件。
+ */
+function isReservedRequestPath(relPath: string): boolean {
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(relPath)
+  } catch {
+    return true
+  }
+  return hasReservedSegment(decoded)
 }
 
 // ============================================================
@@ -309,6 +330,8 @@ export function createSharePageRoutes(
         if (!match) continue
         const [, filePath, lineNumStr, lineContent] = match
         const relPath = relative(shareDirAbs, filePath)
+        // grep 的 --include=*.json 会命中服务端托管文件
+        if (hasReservedSegment(relPath)) continue
         if (!fileMatches.has(relPath)) {
           fileMatches.set(relPath, { filePath: relPath, fileName: basename(filePath), matches: [] })
         }
@@ -339,6 +362,9 @@ export function createSharePageRoutes(
     if (!share) return c.json({ error: 'Share expired or not found' }, 410)
 
     const relPath = c.req.path.replace(/^\/share\/[^/]+\/api\/file\//, '')
+    if (isReservedRequestPath(relPath)) {
+      return c.json({ error: 'File not found' }, 404)
+    }
     try {
       const shareBase = share.type === 'folder'
         ? join(basePath, share.path)
@@ -363,6 +389,9 @@ export function createSharePageRoutes(
     if (!share) return c.json({ error: 'Share expired or not found' }, 410)
 
     const relPath = c.req.path.replace(/^\/share\/[^/]+\/api\/asset\//, '')
+    if (isReservedRequestPath(relPath)) {
+      return c.json({ error: 'File not found' }, 404)
+    }
     try {
       const shareBase = share.type === 'folder'
         ? join(basePath, share.path)
@@ -383,6 +412,9 @@ export function createSharePageRoutes(
     if (!share) return c.json({ error: 'Share expired or not found' }, 410)
 
     const relPath = c.req.path.replace(/^\/share\/[^/]+\/api\/download\//, '')
+    if (isReservedRequestPath(relPath)) {
+      return c.json({ error: 'File not found' }, 404)
+    }
     try {
       const shareBase = share.type === 'folder'
         ? join(basePath, share.path)
@@ -415,6 +447,9 @@ export function createSharePageRoutes(
     try {
       const { path: p } = await c.req.json() as { path: string }
       if (!p) return c.json({ ok: false, error: 'path required' }, 400)
+      if (hasReservedSegment(p)) {
+        return c.json({ ok: false, error: RESERVED_ERROR }, 403)
+      }
       const shareBase = join(basePath, share.path)
       const abs = assertInBase(p, shareBase)
       await fsp.mkdir(dirname(abs), { recursive: true })
@@ -434,6 +469,9 @@ export function createSharePageRoutes(
     if (share.type !== 'folder') return c.json({ error: 'Not a folder share' }, 403)
 
     const relPath = c.req.path.replace(/^\/share\/[^/]+\/api\/save\//, '')
+    if (isReservedRequestPath(relPath)) {
+      return c.json({ ok: false, error: RESERVED_ERROR }, 403)
+    }
     try {
       const shareBase = join(basePath, share.path)
       const targetAbs = assertInBase(decodeURIComponent(relPath), shareBase)

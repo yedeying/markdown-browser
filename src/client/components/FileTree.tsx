@@ -2,19 +2,8 @@ import { useState, useEffect, useImperativeHandle } from 'preact/hooks'
 import type { Ref } from 'preact'
 import { forwardRef } from 'preact/compat'
 import type { FileNode, SearchResult } from '../../types.js'
-import { getFileType } from '../utils/fileType.js'
-import Icon, { type IconName } from './ui/Icon.js'
-
-function getFileIcon(name: string): IconName {
-  switch (getFileType(name)) {
-    case 'markdown':    return 'file-text'
-    case 'image':       return 'file-image'
-    case 'video':       return 'file-video'
-    case 'code':        return 'file-code'
-    case 'text':        return 'file-text'
-    default:            return 'file'
-  }
-}
+import Icon from './ui/Icon.js'
+import { getFileIconName } from '../utils/nodeIcon.js'
 
 const STORAGE_KEY = 'vmd_expanded_folders'
 
@@ -231,7 +220,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
             data-testid={`tree-node-${node.path.replace(/\//g, '-')}`}
             onClick={() => onSelect(node)}
           >
-            <Icon name={getFileIcon(node.name)} size={15} class="file-icon" aria-hidden="true" />
+            <Icon name={getFileIconName(node.name)} size={15} class="file-icon" aria-hidden="true" />
             <div class="file-info">
               <div class="file-name">{node.name}</div>
               <div class="file-meta">{node.size}</div>

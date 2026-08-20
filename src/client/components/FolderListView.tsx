@@ -1,22 +1,11 @@
 import type { FunctionalComponent } from 'preact'
 import type { FileNode } from '../../types.js'
-import { getFileType } from '../utils/fileType.js'
 import { useLongPress } from '../hooks/useLongPress.js'
 import { getTypeLabel } from '../utils/sortNodes.js'
+import { getNodeIconName } from '../utils/nodeIcon.js'
 import type { SortField, SortOrder } from '../utils/prefs.js'
 import type { SelectionProps } from './FolderView.js'
-
-function getNodeIcon(node: FileNode): string {
-  if (node.type === 'folder') return '📁'
-  switch (getFileType(node.name)) {
-    case 'markdown': return '📝'
-    case 'image':    return '🖼'
-    case 'video':    return '🎬'
-    case 'code':     return '📄'
-    case 'text':     return '📃'
-    default:         return '📎'
-  }
-}
+import Icon from './ui/Icon.js'
 
 interface Props {
   /** 已按 sortField/sortOrder 排序、按 showHidden 过滤过的节点（由 FolderView 统一处理） */
@@ -133,7 +122,7 @@ const FolderListView: FunctionalComponent<Props> = ({
                 />
               </div>
             )}
-            <span style={{ fontSize: '16px', flexShrink: 0 }}>{getNodeIcon(node)}</span>
+            <Icon name={getNodeIconName(node)} size={16} class="row-icon" aria-hidden="true" />
             <div class="folder-list-name">{node.name}</div>
             <div class="folder-list-type">{getTypeLabel(node)}</div>
             <div class="folder-list-size">{node.type === 'folder' ? '—' : (node.size || '—')}</div>

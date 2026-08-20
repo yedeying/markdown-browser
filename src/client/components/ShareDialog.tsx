@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'preact/hooks'
+import { useState, useCallback, useEffect } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import { fsApi } from '../utils/fsApi.js'
+import Icon from './ui/Icon.js'
 
 interface Props {
   path: string
@@ -25,6 +26,13 @@ const ShareDialog: FunctionalComponent<Props> = ({ path, type, name, onClose }) 
   const [copiedApi, setCopiedApi] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // ESC 关闭，与 ContextModal / BottomSheet / ContextMenu 保持一致
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
 
   const handleCreate = useCallback(async () => {
     setCreating(true)
@@ -63,7 +71,7 @@ const ShareDialog: FunctionalComponent<Props> = ({ path, type, name, onClose }) 
     setShareToken(null)
   }, [shareToken])
 
-  const icon = type === 'folder' ? '📁' : '📄'
+  const icon = <Icon name={type === 'folder' ? 'folder' : 'file'} size={14} aria-hidden="true" />
 
   // 生成 API 用法文本
   const getApiDocs = (baseUrl: string) => {

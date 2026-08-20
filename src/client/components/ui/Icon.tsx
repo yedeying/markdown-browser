@@ -21,6 +21,23 @@ import {
   Check,
   Ellipsis,
   TriangleAlert,
+  Pencil,
+  Copy,
+  Scissors,
+  ClipboardPaste,
+  Link,
+  Trash2,
+  FolderPlus,
+  FilePlus,
+  List,
+  LayoutGrid,
+  Columns3,
+  Ban,
+  Inbox,
+  RotateCw,
+  Share2,
+  SlidersHorizontal,
+  X,
 } from 'lucide-preact'
 
 export type IconName =
@@ -45,6 +62,23 @@ export type IconName =
   | 'check'
   | 'more'
   | 'alert'
+  | 'pencil'
+  | 'copy'
+  | 'scissors'
+  | 'paste'
+  | 'link'
+  | 'trash'
+  | 'folder-plus'
+  | 'file-plus'
+  | 'list'
+  | 'grid'
+  | 'columns'
+  | 'ban'
+  | 'inbox'
+  | 'refresh'
+  | 'share'
+  | 'sliders'
+  | 'x'
 
 const ICONS = {
   folder: Folder,
@@ -68,6 +102,23 @@ const ICONS = {
   check: Check,
   more: Ellipsis,
   alert: TriangleAlert,
+  pencil: Pencil,
+  copy: Copy,
+  scissors: Scissors,
+  paste: ClipboardPaste,
+  link: Link,
+  trash: Trash2,
+  'folder-plus': FolderPlus,
+  'file-plus': FilePlus,
+  list: List,
+  grid: LayoutGrid,
+  columns: Columns3,
+  ban: Ban,
+  inbox: Inbox,
+  refresh: RotateCw,
+  share: Share2,
+  sliders: SlidersHorizontal,
+  x: X,
 } as const
 
 interface Props {

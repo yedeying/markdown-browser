@@ -5,18 +5,8 @@ import { getFileType } from '../utils/fileType.js'
 import { useLongPress } from '../hooks/useLongPress.js'
 import type { SelectionProps } from './FolderView.js'
 import { assetUrl } from '../utils/fsApi.js'
-
-function getNodeIcon(node: FileNode): string {
-  if (node.type === 'folder') return '📁'
-  switch (getFileType(node.name)) {
-    case 'markdown': return '📝'
-    case 'image':    return '🖼'
-    case 'video':    return '🎬'
-    case 'code':     return '📄'
-    case 'text':     return '📃'
-    default:         return '📎'
-  }
-}
+import { getNodeIconName } from '../utils/nodeIcon.js'
+import Icon from './ui/Icon.js'
 
 interface Props {
   node: FileNode
@@ -95,7 +85,7 @@ const FolderCard: FunctionalComponent<Props> = ({
             onError={() => setImgError(true)}
           />
         ) : (
-          <span class="folder-card-icon">{getNodeIcon(node)}</span>
+          <Icon name={getNodeIconName(node)} size={Math.round(thumbSize * 0.4)} class="folder-card-icon" aria-hidden="true" />
         )}
       </div>
       <div class="folder-card-name">{node.name}</div>

@@ -1,5 +1,7 @@
 import { render } from 'preact'
 import App from './App.js'
+import { applyAppearancePrefs } from './utils/appearance.js'
+import { getPref, subscribePref, type PrefKey } from './utils/prefs.js'
 import './styles/index.css'
 import './styles/markdown.css'
 
@@ -17,10 +19,30 @@ function loadHljsTheme(theme: 'dark' | 'light') {
     : 'https://unpkg.com/@highlightjs/cdn-assets@11.10.0/styles/github.min.css'
 }
 
-// 初始化主题
-const savedTheme = (localStorage.getItem('vmd_theme') as 'dark' | 'light') || 'dark'
-document.documentElement.setAttribute('data-theme', savedTheme)
-loadHljsTheme(savedTheme)
+const colorScheme = window.matchMedia('(prefers-color-scheme: dark)')
+const appearanceKeys: PrefKey[] = [
+  'theme',
+  'accent',
+  'accentCustom',
+  'readingWidth',
+  'readingFontSize',
+  'readingLineHeight',
+  'editorFontSize',
+]
+const refreshAppearance = () =>
+  applyAppearancePrefs(document.documentElement, colorScheme.matches)
+
+// 在 Preact 首次渲染前应用所有外观偏好，避免主题和排版闪烁。
+const initialAppearance = refreshAppearance()
+loadHljsTheme(initialAppearance.resolvedTheme)
+
+for (const key of appearanceKeys) {
+  subscribePref(key, refreshAppearance)
+}
+
+colorScheme.addEventListener('change', () => {
+  if (getPref('theme') === 'system') refreshAppearance()
+})
 
 // 主题变更时同步 hljs
 const observer = new MutationObserver(() => {

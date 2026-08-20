@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test'
+import { existsSync, unlinkSync } from 'node:fs'
+import { join } from 'node:path'
 
 test('2a: folder skeleton shows during lazy children load, then folder-view replaces it; switching away from a file preview leaves no stale markdown-preview', async ({ page }) => {
   await page.goto('/')
@@ -156,4 +158,258 @@ test('2f-bugfix: name search does not leak a plain-named file nested inside a do
   // Enabling "show hidden" surfaces the match again.
   await page.click('[data-testid="toggle-hidden-files"]')
   await expect(page.getByText('无匹配结果')).not.toBeVisible()
+})
+
+async function openShareDialog(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await page.click('[data-testid="tree-node-notes"]')
+  await page.waitForSelector('[data-testid="folder-view"]')
+  await page.locator('.folder-list-row:has-text("daily.md")').click({ button: 'right' })
+  await page.click('.ctx-item:has-text("分享")')
+  await page.waitForSelector('.share-dialog')
+}
+
+test('share dialog closes on ESC, matching ContextModal / BottomSheet / ContextMenu', async ({ page }) => {
+  await openShareDialog(page)
+  await page.locator('.share-ttl-btn:has-text("30 天")').click()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.share-dialog')).toHaveCount(0)
+})
+
+test('controls without a .btn class still focus with the accent ring, not the browser blue', async ({ page }) => {
+  await openShareDialog(page)
+
+  // A control with no explicit focus style falls back to Chrome's blue focus ring,
+  // which clashes with the orange accent. .share-ttl-btn carries no .btn class, so it
+  // only gets a ring from the global :focus-visible rule in base.css.
+  // Tab first to put the browser in keyboard modality — that is what makes Chrome
+  // treat the subsequent focus as :focus-visible (the same reason the stray blue ring
+  // appeared only after a key press).
+  await page.keyboard.press('Tab')
+  const btn = page.locator('.share-ttl-btn:has-text("30 天")')
+  await btn.evaluate((el: HTMLElement) => el.focus())
+  await expect(btn).toHaveCSS('outline-color', 'rgb(255, 123, 71)')
+})
+
+async function openSettings(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await page.locator('[data-testid="open-settings"]').click()
+  return page.getByRole('dialog', { name: '设置' })
+}
+
+test('settings opens from the header and closes with Escape', async ({ page }) => {
+  const dialog = await openSettings(page)
+  await expect(dialog).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+})
+
+test('settings applies theme, accent, and reading preferences immediately', async ({ page }) => {
+  const dialog = await openSettings(page)
+
+  await dialog.getByRole('radio', { name: '浅色' }).check()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+
+  await dialog.getByRole('radio', { name: '蓝' }).check()
+  await expect.poll(() => page.locator('html').evaluate((el) =>
+    el.style.getPropertyValue('--accent'),
+  )).toBe('#0969da')
+
+  await dialog.getByLabel('内容宽度').selectOption('1140')
+  await dialog.getByLabel('正文字号').selectOption('17')
+  await dialog.getByLabel('行高').selectOption('1.9')
+  await expect.poll(() => page.locator('html').evaluate((el) => ({
+    width: el.style.getPropertyValue('--reading-width'),
+    fontSize: el.style.getPropertyValue('--reading-font-size'),
+    lineHeight: el.style.getPropertyValue('--reading-line-height'),
+  }))).toEqual({ width: '1140px', fontSize: '17px', lineHeight: '1.9' })
+})
+
+test('settings synchronizes hidden files and the existing folder view without reload', async ({ page }) => {
+  const dialog = await openSettings(page)
+  await expect(page.locator('[data-testid="tree-node-.hidden-note.md"]')).toHaveCount(0)
+
+  await dialog.getByLabel('显示隐藏文件').check()
+  await expect(page.locator('[data-testid="tree-node-.hidden-note.md"]')).toBeVisible()
+
+  await dialog.getByLabel('默认视图').selectOption('grid')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.folder-grid')).toBeVisible()
+  await expect(page.locator('[data-testid="view-btn-grid"]')).toHaveClass(/active/)
+})
+
+test('settings keeps share as an icon-only accessible header action', async ({ page }) => {
+  await page.goto('/')
+  const share = page.getByRole('button', { name: '分享此文件夹' })
+  await expect(share).toBeVisible()
+  await expect(share).toHaveText('')
+})
+
+test('settings reset requires confirmation before clearing local preferences', async ({ page }) => {
+  const dialog = await openSettings(page)
+  await dialog.getByRole('radio', { name: '浅色' }).check()
+
+  await dialog.getByRole('button', { name: '重置本地偏好' }).click()
+  const confirmation = page.getByRole('alertdialog', { name: '确认重置本地偏好' })
+  await expect(confirmation).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+
+  await confirmation.getByRole('button', { name: '取消' }).click()
+  await expect(confirmation).toHaveCount(0)
+  await expect(dialog).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+
+  await dialog.getByRole('button', { name: '重置本地偏好' }).click()
+  await confirmation.getByRole('button', { name: '确认重置' }).click()
+  await page.waitForLoadState('domcontentloaded')
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(page.locator('[data-testid="open-settings"]')).toBeVisible()
+})
+
+test('settings reset confirmation traps Tab focus away from the underlying controls', async ({ page }) => {
+  const dialog = await openSettings(page)
+  const underlyingTheme = page.locator('.settings-dialog input[name="settings-theme"][value="light"]')
+
+  await dialog.getByRole('button', { name: '重置本地偏好' }).click()
+  const confirmation = page.getByRole('alertdialog', { name: '确认重置本地偏好' })
+  const cancel = confirmation.getByRole('button', { name: '取消' })
+  const confirm = confirmation.getByRole('button', { name: '确认重置' })
+  await expect(cancel).toBeFocused()
+
+  await page.keyboard.press('Shift+Tab')
+  await expect(confirm).toBeFocused()
+  await expect(underlyingTheme).not.toBeFocused()
+
+  await page.keyboard.press('Tab')
+  await expect(cancel).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(confirm).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(cancel).toBeFocused()
+  await expect(underlyingTheme).not.toBeFocused()
+})
+
+test('settings reset confirmation restores focus to its trigger after Cancel and Escape', async ({ page }) => {
+  const dialog = await openSettings(page)
+  const reset = dialog.getByRole('button', { name: '重置本地偏好' })
+  const confirmation = page.getByRole('alertdialog', { name: '确认重置本地偏好' })
+
+  await reset.click()
+  await expect(confirmation.getByRole('button', { name: '取消' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(confirmation).toHaveCount(0)
+  await expect(reset).toBeFocused()
+
+  await reset.click()
+  await expect(confirmation).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(confirmation).toHaveCount(0)
+  await expect(reset).toBeFocused()
+})
+
+test('settings reset confirmation ignores clicks on the shared backdrop', async ({ page }) => {
+  const dialog = await openSettings(page)
+  await dialog.getByRole('button', { name: '重置本地偏好' }).click()
+  const confirmation = page.getByRole('alertdialog', { name: '确认重置本地偏好' })
+  await expect(confirmation).toBeVisible()
+
+  await page.locator('.settings-overlay').click({ position: { x: 4, y: 4 } })
+
+  await expect(confirmation).toBeVisible()
+  await expect(page.locator('.settings-dialog')).toBeAttached()
+})
+
+// The fixture server runs in dir mode against tests/fixtures/docs, so saving a
+// startup mode writes a real .vmd-config.json there. That file decides the next
+// launch's root, so leaving one behind would make every later run start in multi
+// mode — hence the unconditional cleanup around these tests.
+test.describe('settings mount mode', () => {
+  // These tests write and remove one shared config file on one shared server, so
+  // they cannot overlap: a parallel save would make the "no config yet" case see
+  // mounts that another test had just persisted.
+  test.describe.configure({ mode: 'serial' })
+
+  const fixtureConfig = join(process.cwd(), 'tests/fixtures/docs/.vmd-config.json')
+  const removeFixtureConfig = () => {
+    try {
+      unlinkSync(fixtureConfig)
+    } catch {
+      // already absent, which is the state we want
+    }
+  }
+
+  test.beforeEach(removeFixtureConfig)
+  test.afterEach(removeFixtureConfig)
+
+  test('settings loads the startup mount mode without writing a config file', async ({ page }) => {
+    const dialog = await openSettings(page)
+    const mount = dialog.locator('.settings-mount')
+
+    await expect(mount.getByTestId('mount-mode-current')).toHaveText('单目录模式')
+    // Merely opening the dialog must not persist anything: a GET that created the
+    // config would silently pin the next launch's root directory.
+    expect(existsSync(fixtureConfig)).toBe(false)
+
+    // No mounts exist yet, so single-directory startup has nothing to point at
+    await expect(mount.getByTestId('mount-mode-no-mounts')).toBeVisible()
+    await expect(mount.getByTestId('mount-mode-save')).toBeDisabled()
+  })
+
+  test('saving the multi startup mode reports that a restart is required', async ({ page }) => {
+    const dialog = await openSettings(page)
+    const mount = dialog.locator('.settings-mount')
+
+    await mount.getByRole('radio', { name: '多挂载' }).check()
+    await expect(mount.getByTestId('mount-mode-promote-hint')).toContainText('docs')
+
+    await mount.getByTestId('mount-mode-save').click()
+    await expect(mount.getByTestId('mount-mode-saved')).toContainText('重启服务后生效')
+    expect(existsSync(fixtureConfig)).toBe(true)
+
+    // The running process does not hot-switch its root, but the promoted
+    // directory is now a mount that single-directory startup can select.
+    await expect(mount.getByTestId('mount-mode-current')).toHaveText('单目录模式')
+    await mount.getByRole('radio', { name: '单目录' }).check()
+    await expect(mount.getByTestId('mount-mode-alias')).toBeVisible()
+    await expect(mount.getByTestId('mount-mode-save')).toBeEnabled()
+  })
+
+  test('settings surfaces a save failure instead of claiming success', async ({ page }) => {
+    const dialog = await openSettings(page)
+    const mount = dialog.locator('.settings-mount')
+
+    await page.route('**/api/admin/mount-mode', (route) => route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: false, error: '配置目录不存在' }),
+    }))
+
+    await mount.getByRole('radio', { name: '多挂载' }).check()
+    await mount.getByTestId('mount-mode-save').click()
+
+    await expect(mount.getByTestId('mount-mode-error')).toHaveText('配置目录不存在')
+    await expect(mount.getByTestId('mount-mode-saved')).toHaveCount(0)
+    expect(existsSync(fixtureConfig)).toBe(false)
+  })
+
+  test('an anonymous folder share never exposes the mount settings', async ({ page, request }) => {
+    const created = await request.post('/api/share', {
+      data: { path: '.', type: 'folder', ttl: null },
+    })
+    const { token } = await created.json() as { token: string }
+    try {
+      await page.goto(`/share/${token}/`)
+      await page.locator('[data-testid="open-settings"]').click()
+
+      const dialog = page.getByRole('dialog', { name: '设置' })
+      await expect(dialog).toBeVisible()
+      // Share visitors are anonymous: no mount paths, no startup mode switch
+      await expect(dialog.locator('.settings-mount')).toHaveCount(0)
+      await expect(dialog.getByText('外观')).toBeVisible()
+    } finally {
+      await request.delete(`/api/share/${token}`)
+    }
+  })
 })

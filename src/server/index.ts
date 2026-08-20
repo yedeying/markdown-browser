@@ -4,6 +4,7 @@ import { createSingleRouter } from './routes/single.js'
 import { createAdminRoutes } from './routes/admin.js'
 import { generateSigningKey } from './auth.js'
 import { MountManager } from './mount-manager.js'
+import { CONFIG_FILENAME } from './reserved-files.js'
 import { treeCache } from './tree-cache.js'
 import { Hono } from 'hono'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
@@ -114,14 +115,31 @@ export async function startServer(config: ServerConfig) {
     router = createSingleRouter(config.basePath!, config.distPath, authConfig)
   }
 
+  // 单目录模式同样要能读写启动挂载设置（否则切到 dir 模式后就没有回到多挂载的入口）。
+  // 目录路由最后注册了 SPA fallback（GET /*），直接往它身上加 /api/admin/* 会被 fallback
+  // 先接走，所以套一层父 app：先处理管理接口，其余请求原样转交。
+  // 单文件模式没有挂载语义，不注册。
+  let fetchHandler = router.app.fetch
+  if (config.mode === 'dir') {
+    const dirRouter = router
+    const parent = new Hono()
+    createAdminRoutes(parent, {
+      mode: 'dir',
+      // 配置可能不在被服务的目录里（根目录来自配置选中的挂载点时），写回必须用 configDir
+      configDir: config.configDir ?? config.basePath!,
+      basePath: config.basePath!,
+    }, authConfig)
+    parent.all('*', (c) => dirRouter.app.fetch(c.req.raw))
+    fetchHandler = parent.fetch
+  }
+
   const server = Bun.serve({
     port,
     hostname: config.host,
-    fetch: router.app.fetch,
+    fetch: fetchHandler,
   })
 
   printBanner(config, authConfig, port)
-  openBrowser(`http://localhost:${port}`)
 
   process.on('SIGINT', () => {
     console.log('\n\x1b[33m正在停止服务器...\x1b[0m')
@@ -220,7 +238,7 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
   })
 
   // 挂载点管理 API（复用访问密码鉴权；无密码模式下公开）
-  createAdminRoutes(app, mountManager, authConfig)
+  createAdminRoutes(app, { mode: 'multi', mountManager }, authConfig)
 
   /**
    * 判断给定的 (stripped) 路径是否属于子 app 应该处理的 API/资源请求。
@@ -325,7 +343,6 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
   })
 
   printBanner(config, authConfig, port, mountManager.list())
-  openBrowser(`http://localhost:${port}`)
 
   const shutdown = () => {
     console.log('\n\x1b[33m正在停止服务器...\x1b[0m')
@@ -362,6 +379,10 @@ function printBanner(
     }
   } else if (config.mode === 'dir') {
     console.log(`\x1b[0m  目录: \x1b[33m${config.basePath}\x1b[0m`)
+    // 根目录来自配置里选中的挂载点时，配置文件并不在根目录下，写回要用它
+    if (config.configDir && config.configDir !== config.basePath) {
+      console.log(`\x1b[0m  配置: \x1b[33m${join(config.configDir, CONFIG_FILENAME)}\x1b[0m`)
+    }
   } else {
     console.log(`\x1b[0m  文件: \x1b[33m${config.basePath}\x1b[0m`)
   }

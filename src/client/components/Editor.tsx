@@ -3,24 +3,13 @@ import type { FunctionalComponent, Ref } from 'preact'
 import { forwardRef, useImperativeHandle } from 'preact/compat'
 import { EditorView, keymap } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
-import { markdown } from '@codemirror/lang-markdown'
-import { javascript } from '@codemirror/lang-javascript'
-import { css } from '@codemirror/lang-css'
-import { html } from '@codemirror/lang-html'
 import { defaultKeymap, historyKeymap, history, selectAll } from '@codemirror/commands'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection } from '@codemirror/view'
-import { indentOnInput, syntaxHighlighting, defaultHighlightStyle, StreamLanguage } from '@codemirror/language'
-import { shell } from '@codemirror/legacy-modes/mode/shell'
-import { yaml } from '@codemirror/legacy-modes/mode/yaml'
-import { python } from '@codemirror/legacy-modes/mode/python'
-import { go } from '@codemirror/legacy-modes/mode/go'
-import { rust } from '@codemirror/legacy-modes/mode/rust'
-import { sql } from '@codemirror/legacy-modes/mode/sql'
-import { toml } from '@codemirror/legacy-modes/mode/toml'
-import type { Extension } from '@codemirror/state'
+import { indentOnInput, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import prettier from 'prettier'
 import prettierMarkdown from 'prettier/plugins/markdown'
+import { getLangExtension } from '../utils/editorLang.js'
 
 interface Props {
   value: string
@@ -34,25 +23,6 @@ export interface EditorHandle {
   selectAll: () => void
   getScrollDOM: () => HTMLElement | null
   getSelection: () => string
-}
-
-function getLangExtension(language?: string): Extension {
-  switch (language) {
-    case 'javascript': return javascript()
-    case 'typescript': return javascript({ typescript: true })
-    case 'css':        return css()
-    case 'html':       return html()
-    case 'json':       return javascript()  // JSON 用 JS 高亮够用
-    case 'shell':      return StreamLanguage.define(shell)
-    case 'yaml':       return StreamLanguage.define(yaml)
-    case 'python':     return StreamLanguage.define(python)
-    case 'go':         return StreamLanguage.define(go)
-    case 'rust':       return StreamLanguage.define(rust)
-    case 'sql':        return StreamLanguage.define(sql)
-    case 'toml':       return StreamLanguage.define(toml)
-    case 'plaintext':  return []
-    default:           return markdown()    // 默认 markdown（含 undefined）
-  }
 }
 
 const Editor = forwardRef<EditorHandle, Props>(({ value, onChange, theme, readOnly, language }, ref) => {
@@ -117,6 +87,11 @@ const Editor = forwardRef<EditorHandle, Props>(({ value, onChange, theme, readOn
       getLangExtension(language),
       keymap.of([...defaultKeymap, ...historyKeymap]),
       EditorView.lineWrapping,
+      EditorView.theme({
+        '.cm-content, .cm-gutters': {
+          fontSize: 'var(--editor-font-size)',
+        },
+      }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           onChange?.(update.state.doc.toString())

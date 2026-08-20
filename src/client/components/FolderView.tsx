@@ -7,18 +7,18 @@ import FolderGridView from './FolderGridView.js'
 import FolderColumnView from './FolderColumnView.js'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.js'
 import ContextModal, { type ModalMode } from './ContextModal.js'
-import BottomSheet from './BottomSheet.js'
+import BottomSheet, { type BottomSheetItem } from './BottomSheet.js'
 import ShareDialog from './ShareDialog.js'
 import { fsApi } from '../utils/fsApi.js'
 import { filterVisible } from '../utils/hiddenFiles.js'
 import { sortNodes } from '../utils/sortNodes.js'
-import { getSort, setSort, type SortField, type SortOrder } from '../utils/prefs.js'
+import { type FolderViewPref, type SortField, type SortOrder } from '../utils/prefs.js'
+import { usePref } from '../hooks/usePref.js'
 import { showToast } from './ui/Toast.js'
+import Icon from './ui/Icon.js'
 
-type FolderViewMode = 'list' | 'grid' | 'column'
 type CardSize = 's' | 'm' | 'l'
 
-const VIEW_MODE_KEY = 'vmd_folder_view_mode'
 const CARD_SIZE_KEY = 'vmd_grid_card_size'
 
 function loadPref<T extends string>(key: string, fallback: T, valid: T[]): T {
@@ -80,25 +80,20 @@ const FolderView: FunctionalComponent<Props> = ({
 }) => {
   // 分享弹窗
   const [shareTarget, setShareTarget] = useState<FileNode | null>(null)
-  const [viewMode, setViewMode] = useState<FolderViewMode>(() =>
-    loadPref<FolderViewMode>(VIEW_MODE_KEY, 'list', ['list', 'grid', 'column'])
-  )
+  const [viewMode, setViewMode] = usePref('folderView')
   const [cardSize, setCardSize] = useState<CardSize>(() =>
     loadPref<CardSize>(CARD_SIZE_KEY, 'm', ['s', 'm', 'l'])
   )
 
   // ── 排序偏好（跨列表/网格/列视图共享，持久化到 vmd_sort）──────
-  const [sortPref, setSortPref] = useState(() => getSort())
+  const [sortPref, setSortPref] = usePref('sort')
   const handleSortChange = useCallback((field: SortField) => {
-    setSortPref(prev => {
-      const next: { field: SortField; order: SortOrder } =
-        prev.field === field
-          ? { field, order: prev.order === 'asc' ? 'desc' : 'asc' }
-          : { field, order: 'asc' }
-      setSort(next)
-      return next
-    })
-  }, [])
+    const next: { field: SortField; order: SortOrder } =
+      sortPref.field === field
+        ? { field, order: sortPref.order === 'asc' ? 'desc' : 'asc' }
+        : { field, order: 'asc' }
+    setSortPref(next)
+  }, [sortPref])
 
   // ── 多选状态 ──────────────────────────────────────────────
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
@@ -265,7 +260,7 @@ const FolderView: FunctionalComponent<Props> = ({
       return [
         {
           label: target.type === 'folder' ? '打开文件夹' : '打开文件',
-          icon: target.type === 'folder' ? '📂' : '📄',
+          icon: target.type === 'folder' ? 'folder-open' : 'file',
           onClick: () => onSelect(target),
         },
       ]
@@ -274,51 +269,51 @@ const FolderView: FunctionalComponent<Props> = ({
     return [
       {
         label: target.type === 'folder' ? '打开文件夹' : '打开文件',
-        icon: target.type === 'folder' ? '📂' : '📄',
+        icon: target.type === 'folder' ? 'folder-open' : 'file',
         onClick: () => onSelect(target),
       },
       ...(target.type === 'folder' ? [{
         label: '新建文件夹',
-        icon: '📁',
+        icon: 'folder-plus',
         separator: true,
         onClick: () => setModal({ mode: 'mkdir' }),
       }, {
         label: '新建文件',
-        icon: '📝',
+        icon: 'file-plus',
         onClick: () => setModal({ mode: 'touch' }),
-      }] : []),
+      }] as ContextMenuItem[] : []),
       ...(!isMulti ? [{
         label: '重命名',
-        icon: '✏️',
+        icon: 'pencil',
         separator: !target.type || true,
         onClick: () => setModal({ mode: 'rename', node: target }),
-      }] : []),
+      }] as ContextMenuItem[] : []),
       {
         label: isMulti ? `复制 ${label}` : '复制',
-        icon: '📋',
+        icon: 'copy',
         separator: isMulti || target.type !== 'folder',
         onClick: () => onCopy?.(targets),
       },
       {
         label: isMulti ? `剪切 ${label}` : '剪切',
-        icon: '✂️',
+        icon: 'scissors',
         onClick: () => onCut?.(targets),
       },
       {
         label: '粘贴',
-        icon: '📌',
+        icon: 'paste',
         disabled: !clipboard,
         onClick: handlePaste,
       },
       ...(!isMulti ? [{
         label: '分享',
-        icon: '🔗',
+        icon: 'link',
         separator: true,
         onClick: () => setShareTarget(target),
-      }] : []),
+      }] as ContextMenuItem[] : []),
       {
         label: isMulti ? `删除 ${label}` : '删除',
-        icon: '🗑️',
+        icon: 'trash',
         danger: true,
         separator: isMulti,
         onClick: () => setModal({
@@ -342,9 +337,8 @@ const FolderView: FunctionalComponent<Props> = ({
   }, [])
 
   // ── 工具栏事件 ─────────────────────────────────────────────
-  const handleViewMode = (mode: FolderViewMode) => {
+  const handleViewMode = (mode: FolderViewPref) => {
     setViewMode(mode)
-    savePref(VIEW_MODE_KEY, mode)
   }
 
   const handleCardSize = (size: CardSize) => {
@@ -375,13 +369,13 @@ const FolderView: FunctionalComponent<Props> = ({
   }
 
   // ── BottomSheet 菜单项 ─────────────────────────────────────
-  const buildBottomSheetItems = (target: FileNode) => {
+  const buildBottomSheetItems = (target: FileNode): BottomSheetItem[] => {
     const targets = getTargetNodes(target)
     const isMulti = targets.length > 1
     return [
       {
         label: '重命名',
-        icon: '✏️',
+        icon: 'pencil',
         disabled: isMulti,
         onClick: () => {
           setBottomSheet(null)
@@ -390,17 +384,17 @@ const FolderView: FunctionalComponent<Props> = ({
       },
       {
         label: isMulti ? `复制 ${targets.length} 项` : '复制',
-        icon: '📋',
+        icon: 'copy',
         onClick: () => { setBottomSheet(null); onCopy?.(targets) },
       },
       {
         label: isMulti ? `剪切 ${targets.length} 项` : '剪切',
-        icon: '✂️',
+        icon: 'scissors',
         onClick: () => { setBottomSheet(null); onCut?.(targets) },
       },
       {
         label: isMulti ? `删除 ${targets.length} 项` : '删除',
-        icon: '🗑️',
+        icon: 'trash',
         danger: true,
         onClick: () => {
           setBottomSheet(null)
@@ -460,19 +454,19 @@ const FolderView: FunctionalComponent<Props> = ({
             data-testid="view-btn-list"
             onClick={() => handleViewMode('list')}
             title="列表视图"
-          >☰ 列表</button>
+          ><Icon name="list" size={14} aria-hidden="true" /> 列表</button>
           <button
             class={`btn folder-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
             data-testid="view-btn-grid"
             onClick={() => handleViewMode('grid')}
             title="网格视图"
-          >⊞ 网格</button>
+          ><Icon name="grid" size={14} aria-hidden="true" /> 网格</button>
           <button
             class={`btn folder-view-btn ${viewMode === 'column' ? 'active' : ''}`}
             data-testid="view-btn-column"
             onClick={() => handleViewMode('column')}
             title="列视图"
-          >⊟ 列</button>
+          ><Icon name="columns" size={14} aria-hidden="true" /> 列</button>
           {viewMode === 'grid' && (
             <div class="folder-card-size-group">
               <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '24px' }}>尺寸：</span>
@@ -517,7 +511,7 @@ const FolderView: FunctionalComponent<Props> = ({
         <div class="empty-state" data-testid="folder-empty" style={{ flex: 1 }}
           onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, node }) }}
         >
-          <div class="empty-state-icon">📂</div>
+          <div class="empty-state-icon"><Icon name="inbox" size={40} aria-hidden="true" /></div>
           <div class="empty-state-text">空文件夹</div>
         </div>
       ) : viewMode === 'list' ? (

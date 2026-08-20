@@ -1,10 +1,11 @@
 import { useEffect } from 'preact/hooks'
 import { createPortal } from 'preact/compat'
 import type { FunctionalComponent } from 'preact'
+import Icon, { type IconName } from './ui/Icon.js'
 
 export interface BottomSheetItem {
   label: string
-  icon?: string
+  icon?: IconName
   danger?: boolean
   disabled?: boolean
   onClick: () => void
@@ -62,7 +63,7 @@ const BottomSheet: FunctionalComponent<Props> = ({ open, title, items, onClose }
               if (!item.disabled) item.onClick()
             }}
           >
-            {item.icon && <span class="bottom-sheet-icon">{item.icon}</span>}
+            {item.icon && <Icon name={item.icon} size={16} class="bottom-sheet-icon" aria-hidden="true" />}
             <span>{item.label}</span>
           </button>
         ))}

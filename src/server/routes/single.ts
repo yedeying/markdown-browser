@@ -5,6 +5,7 @@ import { join, extname, basename, dirname } from 'path'
 import { createWatcher } from '../watcher.js'
 import type { AuthConfig } from '../../types.js'
 import { createAuthMiddleware, createAuthRoutes } from '../auth.js'
+import { hasReservedSegment } from '../reserved-files.js'
 
 export function createSingleRouter(filePath: string, distPath: string, authConfig: AuthConfig | null = null) {
   const app = new Hono()
@@ -71,6 +72,11 @@ export function createSingleRouter(filePath: string, distPath: string, authConfi
     const relPath = c.req.path.replace('/api/asset/', '')
     const fileDir = dirname(filePath)
     const assetPath = join(fileDir, decodeURIComponent(relPath))
+
+    // 单文件模式不读启动配置，但相邻的托管文件仍会泄漏挂载点路径和分享令牌
+    if (hasReservedSegment(decodeURIComponent(relPath))) {
+      return c.json({ error: 'Not found' }, 404)
+    }
 
     try {
       const realBase = realpathSync(fileDir)

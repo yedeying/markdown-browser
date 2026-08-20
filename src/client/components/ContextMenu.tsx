@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import { createPortal } from 'preact/compat'
+import Icon, { type IconName } from './ui/Icon.js'
 
 export interface ContextMenuItem {
   label: string
-  icon?: string
+  icon?: IconName
   danger?: boolean
   disabled?: boolean
   onClick: () => void
@@ -60,7 +61,7 @@ const ContextMenu: FunctionalComponent<Props> = ({ x, y, items, onClose }) => {
                 onClose()
               }}
             >
-              {item.icon && <span class="ctx-icon">{item.icon}</span>}
+              {item.icon && <Icon name={item.icon} size={14} class="ctx-icon" aria-hidden="true" />}
               <span>{item.label}</span>
             </div>
           </>

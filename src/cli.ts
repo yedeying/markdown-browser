@@ -1,6 +1,7 @@
 import { resolve } from 'path'
 import { existsSync, statSync } from 'fs'
 import { startServer } from './server/index.js'
+import { readStartupConfig, resolveStartupMode } from './server/startup-mode.js'
 import type { MountConfig } from './types.js'
 
 // import.meta.dir 在 Bun 构建产物中返回当前文件所在目录（dist/）
@@ -106,6 +107,12 @@ function parseArgs(argv: string[]): ParsedArgs | null {
   return { path: pathArg, workspace, mounts, port, host, password }
 }
 
+function warn(messages: string[]) {
+  for (const m of messages) {
+    console.warn(`\x1b[33m⚠ ${m}\x1b[0m`)
+  }
+}
+
 async function main() {
   const parsed = parseArgs(process.argv)
   if (!parsed) return
@@ -131,10 +138,31 @@ async function main() {
       console.error(`\x1b[31m错误: 工作区不是目录: ${wsAbs}\x1b[0m`)
       process.exit(1)
     }
+    const resolved = resolveStartupMode(
+      { kind: 'workspace', path: wsAbs, hasExplicitMounts: mounts.length > 0 },
+      readStartupConfig(wsAbs),
+    )
+    warn(resolved.warnings)
+
+    if (resolved.mode === 'dir') {
+      console.log(`\x1b[34m📁 目录模式（来自 .vmd-config.json）: ${resolved.basePath}\x1b[0m`)
+      await startServer({
+        mode: 'dir',
+        basePath: resolved.basePath!,
+        configDir: resolved.configDir,
+        port,
+        host,
+        distPath,
+        password,
+      })
+      return
+    }
+
     console.log(`\x1b[34m🗂  多挂载模式: workspace=${wsAbs}\x1b[0m`)
     await startServer({
       mode: 'multi',
       workspace: wsAbs,
+      configDir: resolved.configDir,
       mounts,
       port,
       host,
@@ -153,10 +181,37 @@ async function main() {
   const stat = statSync(absPath)
 
   if (stat.isDirectory()) {
-    console.log(`\x1b[34m📁 目录模式: ${absPath}\x1b[0m`)
+    const resolved = resolveStartupMode(
+      { kind: 'dir', path: absPath, hasExplicitMounts: mounts.length > 0 },
+      readStartupConfig(absPath),
+    )
+    warn(resolved.warnings)
+
+    if (resolved.mode === 'multi') {
+      console.log(`\x1b[34m🗂  多挂载模式（来自 .vmd-config.json）: workspace=${resolved.workspace}\x1b[0m`)
+      await startServer({
+        mode: 'multi',
+        workspace: resolved.workspace!,
+        configDir: resolved.configDir,
+        mounts,
+        port,
+        host,
+        distPath,
+        password,
+      })
+      return
+    }
+
+    const basePath = resolved.basePath!
+    if (resolved.source === 'config') {
+      console.log(`\x1b[34m📁 目录模式（来自 .vmd-config.json）: ${basePath}\x1b[0m`)
+    } else {
+      console.log(`\x1b[34m📁 目录模式: ${basePath}\x1b[0m`)
+    }
     await startServer({
       mode: 'dir',
-      basePath: absPath,
+      basePath,
+      configDir: resolved.configDir,
       port,
       host,
       distPath,

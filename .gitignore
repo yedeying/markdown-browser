@@ -6,6 +6,9 @@ generated-image-*.jpg
 generated-image-*.png
 .env
 .vmd-shares.json
+# e2e 会在 fixture 里写真实配置再删掉；worker 崩溃时残留会让下次启动进入多挂载模式
+tests/fixtures/**/.vmd-config.json
+.superpowers/
 mcp-server/node_modules/
 mcp-server/dist/
 .claude/

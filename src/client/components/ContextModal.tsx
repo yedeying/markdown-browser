@@ -110,7 +110,7 @@ const ContextModal: FunctionalComponent<Props> = ({
           {isConfirm ? (
             <button class="btn modal-btn-danger" onClick={handleConfirm}>删除</button>
           ) : (
-            <button class="btn" style={{ background: 'var(--link)', color: '#fff', borderColor: 'var(--link)' }} onClick={handleConfirm}>
+            <button class="btn btn-primary" onClick={handleConfirm}>
               确定
             </button>
           )}

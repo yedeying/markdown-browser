@@ -51,6 +51,7 @@ interface Props {
   watchConnected?: boolean
   onNavigate?: (path: string) => void
   themeToggle?: ComponentChildren
+  onOpenSettings?: () => void
   // 移动端汉堡菜单
   onToggleSidebar?: () => void
   // 文件夹视图相关
@@ -85,6 +86,7 @@ const ContentArea: FunctionalComponent<Props> = ({
   watchConnected,
   onNavigate,
   themeToggle,
+  onOpenSettings,
   onToggleSidebar,
   selectedNode,
   tree,
@@ -514,10 +516,10 @@ const ContentArea: FunctionalComponent<Props> = ({
 
     if (!filePath) {
       return (
-        <div class="empty-state">
-          <div class="empty-state-icon">📝</div>
-          <div class="empty-state-text">选择左侧文件开始浏览</div>
-        </div>
+        <EmptyState
+          icon={<Icon name="book" size={40} aria-hidden="true" />}
+          title="选择左侧文件开始浏览"
+        />
       )
     }
 
@@ -546,20 +548,20 @@ const ContentArea: FunctionalComponent<Props> = ({
 
     if (error) {
       return (
-        <div class="empty-state">
-          <div class="empty-state-icon">⚠️</div>
-          <div class="empty-state-text">加载失败: {error}</div>
-        </div>
+        <EmptyState
+          icon={<Icon name="alert" size={40} aria-hidden="true" />}
+          title={`加载失败: ${error}`}
+        />
       )
     }
 
     // 不支持的文件类型
     if (fileType === 'unsupported') {
       return (
-        <div class="empty-state">
-          <div class="empty-state-icon">🚫</div>
-          <div class="empty-state-text">不支持预览此文件类型</div>
-        </div>
+        <EmptyState
+          icon={<Icon name="ban" size={40} aria-hidden="true" />}
+          title="不支持预览此文件类型"
+        />
       )
     }
 
@@ -590,10 +592,10 @@ const ContentArea: FunctionalComponent<Props> = ({
             style={{ flex: 1 }}
           >
             {!content && (
-              <div class="empty-state">
-                <div class="empty-state-icon">📝</div>
-                <div class="empty-state-text">选择左侧文件进行预览</div>
-              </div>
+              <EmptyState
+                icon={<Icon name="book" size={40} aria-hidden="true" />}
+                title="选择左侧文件进行预览"
+              />
             )}
             {content && (
               <MarkdownPreview
@@ -671,9 +673,29 @@ const ContentArea: FunctionalComponent<Props> = ({
         </div>
         <div class="header-actions">
           {themeToggle}
-          {/* 文件夹视图：分享按钮 */}
-          {isFolderView && !isShareMode && selectedNode && selectedNode.path !== undefined && (
-            <button class="btn" onClick={() => setShareDialogOpen(true)} title="分享此文件夹">分享</button>
+          {!isShareMode && (
+            (isFolderView && selectedNode && selectedNode.path !== undefined)
+            || (!isFolderView && !!filePath)
+          ) && (
+            <button
+              class="header-icon-btn"
+              onClick={() => setShareDialogOpen(true)}
+              title={isFolderView ? '分享此文件夹' : '分享此文件'}
+              aria-label={isFolderView ? '分享此文件夹' : '分享此文件'}
+            >
+              <Icon name="share" size={16} aria-hidden="true" />
+            </button>
+          )}
+          {onOpenSettings && (
+            <button
+              class="header-icon-btn"
+              data-testid="open-settings"
+              onClick={onOpenSettings}
+              title="设置"
+              aria-label="打开设置"
+            >
+              <Icon name="sliders" size={16} aria-hidden="true" />
+            </button>
           )}
           {/* 文件视图下的操作按钮（文件夹视图时隐藏） */}
           {!isFolderView && (
@@ -717,10 +739,6 @@ const ContentArea: FunctionalComponent<Props> = ({
                       >编辑</button>
                     </>
                   )}
-                  {/* 分享按钮 */}
-                  {filePath && (
-                    <button class="btn" onClick={() => setShareDialogOpen(true)} title="分享此文件">分享</button>
-                  )}
                 </div>
               )}
 
@@ -760,9 +778,6 @@ const ContentArea: FunctionalComponent<Props> = ({
                           >编辑模式</button>
                         </>
                       )}
-                      <button class="header-dropdown-item" onClick={() => { setShareDialogOpen(true); setMoreMenuOpen(false) }}>
-                        分享
-                      </button>
                     </div>
                   )}
                 </div>

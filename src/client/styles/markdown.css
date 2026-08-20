@@ -3,8 +3,12 @@
 .markdown-body {
   color: var(--text);
   word-wrap: break-word;
-  font-size: 15px;
-  line-height: 1.7;
+  width: 100%;
+  max-width: var(--reading-width);
+  margin-left: auto;
+  margin-right: auto;
+  font-size: var(--reading-font-size);
+  line-height: var(--reading-line-height);
 }
 
 .markdown-body h1,
@@ -73,9 +77,9 @@
 }
 
 .markdown-body pre .copy-btn:hover {
-  background: var(--link);
-  border-color: var(--link);
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 .markdown-body pre .copy-btn.copied {
@@ -194,7 +198,7 @@
   margin-right: 6px;
   vertical-align: middle;
   cursor: pointer;
-  accent-color: var(--link);
+  accent-color: var(--accent);
   width: 15px;
   height: 15px;
 }
