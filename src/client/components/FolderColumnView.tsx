@@ -40,6 +40,53 @@ function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
   return null
 }
 
+/** 列预览区按行滚动；滚得动返回 true，已到顶/底返回 false */
+function scrollColPreviewByLine(dir: 'up' | 'down'): boolean {
+  const panel = document.querySelector('.col-preview-panel')
+  if (!(panel instanceof HTMLElement)) return false
+
+  const preferred = [
+    panel.querySelector('.col-preview-markdown'),
+    panel.querySelector('.col-preview-jsonl'),
+    panel.querySelector('.col-preview-code .cm-scroller'),
+    panel.querySelector('.col-preview-image'),
+    panel.querySelector('.col-preview-text'),
+  ]
+
+  const seen = new Set<Element>()
+  const candidates: HTMLElement[] = []
+  for (const node of preferred) {
+    if (node instanceof HTMLElement && !seen.has(node)) {
+      seen.add(node)
+      candidates.push(node)
+    }
+  }
+  // 兜底：任意可纵向滚动的后代（含 CodeMirror 内部）
+  for (const node of panel.querySelectorAll('*')) {
+    if (!(node instanceof HTMLElement) || seen.has(node)) continue
+    const oy = getComputedStyle(node).overflowY
+    if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') continue
+    seen.add(node)
+    candidates.push(node)
+  }
+
+  const deltaSign = dir === 'down' ? 1 : -1
+  for (const el of candidates) {
+    const max = el.scrollHeight - el.clientHeight
+    if (max <= 1) continue
+    const lh = Number.parseFloat(getComputedStyle(el).lineHeight)
+    const line = Number.isFinite(lh) && lh > 0 ? lh : 22
+    // 一次翻约 1/4 屏（至少 3 行）
+    const page = Math.max(line * 3, el.clientHeight * 0.25)
+    const before = el.scrollTop
+    const next = Math.max(0, Math.min(max, before + page * deltaSign))
+    if (Math.abs(next - before) < 0.5) continue
+    el.scrollTop = next
+    return true
+  }
+  return false
+}
+
 interface PreviewState {
   node: FileNode
   content: string | null
@@ -51,6 +98,8 @@ interface Props {
   rootNode: FileNode
   tree: FileNode[]
   onFileSelect: (node: FileNode) => void
+  /** ↗ 全屏打开（媒体绕过 Lightbox，进入主内容区） */
+  onOpenFull?: (node: FileNode) => void
   theme: 'dark' | 'light'
   onContextMenu: (node: FileNode, e: MouseEvent) => void
   onLongPress: (node: FileNode) => void
@@ -64,6 +113,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   rootNode,
   tree,
   onFileSelect,
+  onOpenFull,
   theme,
   onContextMenu,
   onLongPress,
@@ -74,6 +124,8 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   const [columnStack, setColumnStack] = useState<FileNode[]>([rootNode])
   const [selectedInCol, setSelectedInCol] = useState<Record<number, string>>({})
   const [preview, setPreview] = useState<PreviewState | null>(null)
+  /** 文件预览焦点：→ 进入后上下只翻预览行，← 退回列光标 */
+  const [previewFocus, setPreviewFocus] = useState(false)
   const showPreviewSkeleton = useDelayedFlag(!!preview?.loading, 500)
   const wrapRef = useRef<HTMLDivElement>(null)
   const rootNodeRef = useRef(rootNode)
@@ -181,6 +233,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
         return next
       })
       setPreview(null)
+      setPreviewFocus(false)
       setTimeout(() => {
         if (wrapRef.current) {
           wrapRef.current.scrollLeft = wrapRef.current.scrollWidth
@@ -196,6 +249,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
         return next
       })
       setColumnStack(prev => prev.slice(0, colIndex + 1))
+      setPreviewFocus(false)
       // 只加载预览，不触发外层跳转
       loadPreview(node)
       // 滚动到最右（预览列）
@@ -231,6 +285,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
         return next
       })
       setPreview(null)
+      setPreviewFocus(false)
     } else if (first) {
       setColumnStack((prev) => [...prev.slice(0, colIndex + 1), fresh])
       setSelectedInCol((prev) => {
@@ -242,6 +297,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
         next[colIndex + 1] = first.path
         return next
       })
+      setPreviewFocus(false)
       loadPreview(first)
     } else {
       setColumnStack((prev) => [...prev.slice(0, colIndex + 1), fresh])
@@ -254,6 +310,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
         return next
       })
       setPreview(null)
+      setPreviewFocus(false)
     }
 
     setTimeout(() => {
@@ -272,11 +329,18 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   const onFileSelectRef = useRef(onFileSelect)
   onFileSelectRef.current = onFileSelect
 
+  const previewRef = useRef(preview)
+  previewRef.current = preview
+  const previewFocusRef = useRef(previewFocus)
+  previewFocusRef.current = previewFocus
+
   // 列视图键盘导航
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (getNavFocus() !== 'folder') return
-      if (isTypingTarget(e.target)) return
+      // 列预览内只读 CodeMirror 不阻断翻行 / 换文件
+      const inColPreview = !!(e.target as Element | null)?.closest?.('.col-preview-panel')
+      if (isTypingTarget(e.target) && !inColPreview) return
       if (isOverlayBlocking()) return
       const dir = normalizeNavKey(e)
       if (!dir) return
@@ -299,8 +363,13 @@ const FolderColumnView: FunctionalComponent<Props> = ({
         e.preventDefault()
         const curPath = selectedInCol[activeCol]
         const curIdx = curPath ? colChildren.findIndex((n) => n.path === curPath) : -1
+        // 仅文件预览焦点（→ 进入）时上下翻预览；列光标阶段只换行选中
+        if (previewFocusRef.current) {
+          scrollColPreviewByLine(dir)
+          return
+        }
         const nextIdx = stepIndex(curIdx, colChildren.length, dir === 'down' ? 1 : -1)
-        if (nextIdx < 0) return
+        if (nextIdx < 0 || nextIdx === curIdx) return
         const next = colChildren[nextIdx]
         handleRowClick(next, activeCol)
         requestAnimationFrame(() => {
@@ -324,7 +393,18 @@ const FolderColumnView: FunctionalComponent<Props> = ({
           return
         }
 
-        // → / l：进入选中目录（或当前列第一个目录），并选中下一列首项（优先子目录）
+        // → / l：文件 → 进入预览焦点；目录 → 进入子列
+        if (cur?.type === 'file') {
+          if (!previewRef.current || previewRef.current.node.path !== cur.path) {
+            handleRowClick(cur, activeCol)
+          }
+          setPreviewFocus(true)
+          requestAnimationFrame(() => {
+            scrollNavTarget(document.querySelector('.col-preview-panel'))
+          })
+          return
+        }
+
         const targetFolder =
           cur?.type === 'folder' ? cur : colChildren.find((n) => n.type === 'folder')
         if (targetFolder) {
@@ -336,12 +416,18 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       if (dir === 'left') {
         e.preventDefault()
         e.stopImmediatePropagation()
+        // 文件预览焦点：← 先退回列光标
+        if (previewFocusRef.current) {
+          setPreviewFocus(false)
+          return
+        }
         // 最左列：焦点交回侧栏树，光标停在当前展示目录；清除列视图选中
         if (activeCol === 0) {
           const root = rootNodeRef.current
           setColumnStack([root])
           setSelectedInCol({})
           setPreview(null)
+          setPreviewFocus(false)
           setNavFocus('tree')
           onFileSelectRef.current(root)
           requestAnimationFrame(() => {
@@ -363,12 +449,13 @@ const FolderColumnView: FunctionalComponent<Props> = ({
           return next
         })
         setPreview(null)
+        setPreviewFocus(false)
       }
     }
 
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
-  }, [columnStack, selectedInCol, showHidden, sortField, sortOrder])
+  }, [columnStack, selectedInCol, showHidden, sortField, sortOrder, previewFocus])
 
 
   const renderPreviewContent = (p: PreviewState) => {
@@ -477,7 +564,12 @@ const FolderColumnView: FunctionalComponent<Props> = ({
                   return (
                     <div
                       key={node.path}
-                      class={`folder-column-row ${isSelected ? 'active' : ''} ${hasChildren ? 'has-children' : ''}`}
+                      class={[
+                        'folder-column-row',
+                        isSelected ? 'active' : '',
+                        hasChildren ? 'has-children' : '',
+                        node.type === 'file' && isSelected ? 'kb-focus' : '',
+                      ].filter(Boolean).join(' ')}
                       data-path={node.path}
                       onClick={() => handleRowClick(node, colIndex)}
                       onContextMenu={(e) => onContextMenu(node, e as MouseEvent)}
@@ -499,13 +591,13 @@ const FolderColumnView: FunctionalComponent<Props> = ({
 
       {/* 右侧：预览区（flex:1 填满剩余空间） */}
       {preview ? (
-        <div class="col-preview-panel">
+        <div class={`col-preview-panel${previewFocus ? ' kb-focus' : ''}`} data-preview-focus={previewFocus ? '1' : undefined}>
           <div class="col-preview-panel-header">
             <span class="col-preview-panel-title">{preview.node.name}</span>
             <button
               class="col-preview-open-btn"
               title="全屏打开"
-              onClick={() => onFileSelect(preview.node)}
+              onClick={() => (onOpenFull ?? onFileSelect)(preview.node)}
             >
               ↗
             </button>

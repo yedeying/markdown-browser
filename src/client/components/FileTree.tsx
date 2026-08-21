@@ -239,7 +239,8 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
         e.preventDefault()
         e.stopImmediatePropagation()
         const nextIdx = stepIndex(curIdx, visible.length, dir === 'down' ? 1 : -1)
-        if (nextIdx < 0) return
+        // 已在边界或仅一项：索引不变，勿重复 onSelect（避免无意义 state 更新）
+        if (nextIdx < 0 || nextIdx === curIdx) return
         const next = visible[nextIdx]
         moveCursor(next.path)
         setNavFocus('tree')

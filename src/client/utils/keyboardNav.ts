@@ -19,7 +19,7 @@ export function isTypingTarget(target: EventTarget | null): boolean {
 export function isOverlayBlocking(root: ParentNode = document): boolean {
   return !!(
     root.querySelector(
-      '.modal-overlay, .dialog-overlay, .ctx-menu, .context-menu, .bottom-sheet-overlay, .share-dialog-overlay',
+      '.modal-overlay, .dialog-overlay, .ctx-menu, .context-menu, .bottom-sheet-overlay, .share-dialog-overlay, .media-lightbox-overlay',
     )
     || root.querySelector('.bottom-sheet.open, .bottom-sheet[data-open="true"]')
   )

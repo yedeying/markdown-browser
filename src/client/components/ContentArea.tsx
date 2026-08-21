@@ -2,14 +2,16 @@ import { useRef, useState, useEffect, useCallback, useMemo } from 'preact/hooks'
 import type { FunctionalComponent, ComponentChildren } from 'preact'
 import MarkdownPreview from './MarkdownPreview.js'
 import Editor, { type EditorHandle } from './Editor.js'
-import ImageViewer from './ImageViewer.js'
-import VideoViewer from './VideoViewer.js'
+import MediaLightbox from './MediaLightbox.js'
 import TableOfContents from './TableOfContents.js'
 import FolderView, { type ClipboardState } from './FolderView.js'
 import StChatPreview from './StChatPreview.js'
 import JsonlLinePreview from './JsonlLinePreview.js'
 import { getFileType, getEditorLang, isBinaryContent, isJsonlPath } from '../utils/fileType.js'
 import { parseStJsonl } from '../utils/stJsonl.js'
+import { buildMediaPlaylist } from '../utils/galleryMedia.js'
+import { filterVisible } from '../utils/hiddenFiles.js'
+import { sortNodes } from '../utils/sortNodes.js'
 import type { FileNode } from '../../types.js'
 import ShareDialog from './ShareDialog.js'
 import { getSharePrefix, downloadUrl } from '../utils/fsApi.js'
@@ -32,6 +34,35 @@ function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
     }
   }
   return null
+}
+
+function parentDirPath(filePath: string): string {
+  const i = filePath.lastIndexOf('/')
+  return i <= 0 ? '' : filePath.slice(0, i)
+}
+
+/** 深链接媒体：同级可见媒体列表（有 tree 时）；否则仅当前文件。 */
+function mediaPlaylistForFile(
+  filePath: string,
+  tree: FileNode[] | undefined,
+  showHidden: boolean,
+  sort: { field: 'name' | 'type' | 'size'; order: 'asc' | 'desc' },
+): FileNode[] {
+  const alone: FileNode = {
+    name: filePath.split('/').pop() || filePath,
+    type: 'file',
+    path: filePath,
+  }
+  if (!tree) return [alone]
+  const parentPath = parentDirPath(filePath)
+  const parent =
+    parentPath === ''
+      ? { name: '', type: 'folder' as const, path: '', children: tree }
+      : findNodeByPath(tree, parentPath)
+  if (!parent?.children) return [alone]
+  const siblings = sortNodes(filterVisible(parent.children, showHidden), sort.field, sort.order)
+  const playlist = buildMediaPlaylist(siblings)
+  return playlist.length > 0 ? playlist : [alone]
 }
 
 type ViewMode = 'preview' | 'edit' | 'code-only'
@@ -123,6 +154,7 @@ const ContentArea: FunctionalComponent<Props> = ({
   )
   const jsonlOk = jsonlParsed?.ok === true
   const [jsonlPreviewMode, setJsonlPreviewMode] = usePref('jsonlPreviewMode')
+  const [sortPref] = usePref('sort')
   // 非 ST 文件即使偏好记的是 'st' 也固定回落到逐行 JSONL（设计 §3.1）
   const effectiveJsonlMode: 'st' | 'jsonl' = jsonlOk && jsonlPreviewMode === 'st' ? 'st' : 'jsonl'
 
@@ -571,14 +603,31 @@ const ContentArea: FunctionalComponent<Props> = ({
       )
     }
 
-    // 图片/视频不依赖文本 content，必须在 loading/content-null 骨架屏之前路由，
-    // 否则二进制文件永远拿不到 content 字符串，会卡在骨架屏（深链接打开图片/视频的已知 bug）
-    if (fileType === 'image') {
-      return <ImageViewer filePath={filePath} />
-    }
-
-    if (fileType === 'video') {
-      return <VideoViewer filePath={filePath} />
+    // 图片/视频：共享 Lightbox（同级媒体可左右切换）；Esc 回到父目录
+    if (fileType === 'image' || fileType === 'video') {
+      const playlist = mediaPlaylistForFile(filePath, tree, showHidden, sortPref)
+      const closeToParent = () => {
+        const parentPath = parentDirPath(filePath)
+        if (onSelectNode && tree) {
+          if (parentPath === '') {
+            onSelectNode({ name: window.__VMD_DIR_NAME__ || '文件库', type: 'folder', path: '', children: tree })
+          } else {
+            const parent = findNodeByPath(tree, parentPath)
+            if (parent) onSelectNode(parent)
+            else onNavigate?.(parentPath)
+          }
+        } else if (onNavigate) {
+          onNavigate(parentPath)
+        }
+      }
+      return (
+        <MediaLightbox
+          playlist={playlist}
+          startPath={filePath}
+          onClose={closeToParent}
+          closeOnEscape={true}
+        />
+      )
     }
 
     // filePath 有值但内容尚未对应该路径：延迟半秒再出骨架；更快则空白，绝不渲染旧文件 raw

@@ -32,6 +32,7 @@ import {
   List,
   LayoutGrid,
   Columns3,
+  LayoutDashboard,
   Ban,
   Inbox,
   RotateCw,
@@ -73,6 +74,7 @@ export type IconName =
   | 'list'
   | 'grid'
   | 'columns'
+  | 'masonry'
   | 'ban'
   | 'inbox'
   | 'refresh'
@@ -113,6 +115,7 @@ const ICONS = {
   list: List,
   grid: LayoutGrid,
   columns: Columns3,
+  masonry: LayoutDashboard,
   ban: Ban,
   inbox: Inbox,
   refresh: RotateCw,

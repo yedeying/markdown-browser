@@ -27,6 +27,9 @@ test('clampIndex and stepIndex', () => {
   expect(stepIndex(-1, 5, -1)).toBe(4)
   expect(stepIndex(0, 5, -1)).toBe(0)
   expect(stepIndex(4, 5, 1)).toBe(4)
+  // 仅一项时步进仍停在 0；调用方应以 nextIdx === curIdx 跳过 onSelect
+  expect(stepIndex(0, 1, 1)).toBe(0)
+  expect(stepIndex(0, 1, -1)).toBe(0)
 })
 
 test('normalizeNavKey maps hjkl and arrows; ignores modifiers', () => {

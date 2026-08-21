@@ -250,6 +250,7 @@ const SettingsDialog: FunctionalComponent<Props> = ({ onClose, currentMountAlias
                 <option value="list">列表</option>
                 <option value="grid">网格</option>
                 <option value="column">分栏</option>
+                <option value="masonry">瀑布流</option>
               </select>
             </label>
             <div class="settings-row">

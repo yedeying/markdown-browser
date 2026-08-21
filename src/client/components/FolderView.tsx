@@ -5,6 +5,8 @@ import FolderBreadcrumb from './FolderBreadcrumb.js'
 import FolderListView from './FolderListView.js'
 import FolderGridView from './FolderGridView.js'
 import FolderColumnView from './FolderColumnView.js'
+import FolderMasonryView from './FolderMasonryView.js'
+import MediaLightbox from './MediaLightbox.js'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.js'
 import ContextModal, { type ModalMode } from './ContextModal.js'
 import BottomSheet, { type BottomSheetItem } from './BottomSheet.js'
@@ -17,6 +19,12 @@ import { usePref } from '../hooks/usePref.js'
 import { showToast } from './ui/Toast.js'
 import Icon from './ui/Icon.js'
 import {
+  buildMediaPlaylist,
+  folderHasMedia,
+  filterMasonryNodes,
+  isMediaFile,
+} from '../utils/galleryMedia.js'
+import {
   getNavFocus,
   isOverlayBlocking,
   isTypingTarget,
@@ -27,8 +35,8 @@ import {
   stepIndex,
 } from '../utils/keyboardNav.js'
 
-function countGridCols(): number {
-  const grid = document.querySelector('[data-testid="folder-grid"]')
+function countGridCols(testid: string = 'folder-grid'): number {
+  const grid = document.querySelector(`[data-testid="${testid}"]`)
   if (!grid) return 1
   const cards = [...grid.querySelectorAll('.folder-card')]
   if (cards.length === 0) return 1
@@ -40,6 +48,7 @@ function countGridCols(): number {
   }
   return Math.max(1, cols)
 }
+
 
 type CardSize = 's' | 'm' | 'l'
 
@@ -142,15 +151,34 @@ const FolderView: FunctionalComponent<Props> = ({
 
   // 隐藏文件过滤 + 排序（列表/网格/列视图共用同一份处理后的列表，保持一致）
   const children = sortNodes(filterVisible(node.children || [], showHidden), sortPref.field, sortPref.order)
+  const hasMedia = folderHasMedia(children)
+  const effectiveView: FolderViewPref =
+    viewMode === 'masonry' && !hasMedia ? 'grid' : viewMode
+  const masonryNodes = filterMasonryNodes(children)
   const dirName = window.__VMD_DIR_NAME__ || '文件库'
+
+  // Lightbox（文件夹内打开媒体）
+  const [lightbox, setLightbox] = useState<{ startPath: string } | null>(null)
+
+  const openNode = useCallback((target: FileNode) => {
+    if (isMediaFile(target)) {
+      setLightbox({ startPath: target.path })
+      return
+    }
+    onSelect(target)
+  }, [onSelect])
 
   // 网格键盘焦点（移动不打开，Enter 打开）
   const [gridFocusPath, setGridFocusPath] = useState<string | null>(null)
   const gridFocusPathRef = useRef<string | null>(null)
   const childrenRef = useRef(children)
+  const masonryNodesRef = useRef(masonryNodes)
+  const openNodeRef = useRef(openNode)
   const onSelectRef = useRef(onSelect)
   gridFocusPathRef.current = gridFocusPath
   childrenRef.current = children
+  masonryNodesRef.current = masonryNodes
+  openNodeRef.current = openNode
   onSelectRef.current = onSelect
 
   // 切换文件夹时清空选中
@@ -160,11 +188,12 @@ const FolderView: FunctionalComponent<Props> = ({
     setLastClickedPath(null)
     setCtxMenu(null)
     setGridFocusPath(null)
+    setLightbox(null)
   }, [node.path])
 
   useEffect(() => {
     setGridFocusPath(null)
-  }, [viewMode])
+  }, [effectiveView])
 
   // ESC 退出选择模式
   useEffect(() => {
@@ -177,28 +206,30 @@ const FolderView: FunctionalComponent<Props> = ({
     return () => window.removeEventListener('keydown', handler)
   }, [selectionMode])
 
-  // 列表 / 网格键盘导航（列视图由 FolderColumnView 自己处理）
+  // 列表 / 网格 / 瀑布流键盘导航（列视图由 FolderColumnView 自己处理）
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (getNavFocus() !== 'folder') return
       if (selectionMode) return
-      if (modal || ctxMenu || bottomSheet || shareTarget) return
+      if (modal || ctxMenu || bottomSheet || shareTarget || lightbox) return
       if (isTypingTarget(e.target)) return
       if (isOverlayBlocking()) return
 
       const dir = normalizeNavKey(e)
       if (!dir) return
 
-      const mode = document.querySelector('[data-testid="folder-grid"]')
-        ? 'grid'
-        : document.querySelector('[data-testid="folder-list"]')
-          ? 'list'
-          : document.querySelector('.folder-columns-outer')
-            ? 'column'
-            : null
+      const mode = document.querySelector('[data-testid="folder-masonry"]')
+        ? 'masonry'
+        : document.querySelector('[data-testid="folder-grid"]')
+          ? 'grid'
+          : document.querySelector('[data-testid="folder-list"]')
+            ? 'list'
+            : document.querySelector('.folder-columns-outer')
+              ? 'column'
+              : null
       if (!mode || mode === 'column') return
 
-      const list = childrenRef.current
+      const list = mode === 'masonry' ? masonryNodesRef.current : childrenRef.current
       if (list.length === 0) return
 
       if (mode === 'list') {
@@ -223,11 +254,11 @@ const FolderView: FunctionalComponent<Props> = ({
           ? list.findIndex((n) => n.path === currentFilePath)
           : -1
         if (dir === 'enter') {
-          if (curIdx >= 0) onSelectRef.current(list[curIdx])
+          if (curIdx >= 0) openNodeRef.current(list[curIdx])
           return
         }
         const nextIdx = stepIndex(curIdx, list.length, dir === 'down' ? 1 : -1)
-        if (nextIdx < 0) return
+        if (nextIdx < 0 || nextIdx === curIdx) return
         const next = list[nextIdx]
         onSelectRef.current(next)
         requestAnimationFrame(() => {
@@ -236,7 +267,7 @@ const FolderView: FunctionalComponent<Props> = ({
         return
       }
 
-      // grid
+      // grid / masonry
       if (dir === 'enter') {
         e.preventDefault()
         e.stopImmediatePropagation()
@@ -250,12 +281,12 @@ const FolderView: FunctionalComponent<Props> = ({
                 path,
               })
             : null
-          if (focus) onSelectRef.current(focus)
+          if (focus) openNodeRef.current(focus)
           return
         }
         const path = gridFocusPathRef.current
         const focus = path ? list.find((n) => n.path === path) : null
-        if (focus) onSelectRef.current(focus)
+        if (focus) openNodeRef.current(focus)
         return
       }
       if (dir !== 'up' && dir !== 'down' && dir !== 'left' && dir !== 'right') return
@@ -271,7 +302,7 @@ const FolderView: FunctionalComponent<Props> = ({
         }
       }
 
-      const cols = countGridCols()
+      const cols = countGridCols(mode === 'masonry' ? 'folder-masonry' : 'folder-grid')
       const focusPath = gridFocusPathRef.current
       const curIdx = focusPath
         ? list.findIndex((n) => n.path === focusPath)
@@ -279,7 +310,7 @@ const FolderView: FunctionalComponent<Props> = ({
           ? list.findIndex((n) => n.path === currentFilePath)
           : -1
       const nextIdx = stepGridIndex(curIdx, list.length, cols, dir)
-      if (nextIdx < 0) return
+      if (nextIdx < 0 || nextIdx === curIdx) return
       const next = list[nextIdx]
       setNavFocus('folder')
       setGridFocusPath(next.path)
@@ -296,6 +327,7 @@ const FolderView: FunctionalComponent<Props> = ({
     ctxMenu,
     bottomSheet,
     shareTarget,
+    lightbox,
     currentFilePath,
   ])
 
@@ -421,7 +453,7 @@ const FolderView: FunctionalComponent<Props> = ({
         {
           label: target.type === 'folder' ? '打开文件夹' : '打开文件',
           icon: target.type === 'folder' ? 'folder-open' : 'file',
-          onClick: () => onSelect(target),
+          onClick: () => openNode(target),
         },
       ]
     }
@@ -430,7 +462,7 @@ const FolderView: FunctionalComponent<Props> = ({
       {
         label: target.type === 'folder' ? '打开文件夹' : '打开文件',
         icon: target.type === 'folder' ? 'folder-open' : 'file',
-        onClick: () => onSelect(target),
+        onClick: () => openNode(target),
       },
       ...(target.type === 'folder' ? [{
         label: '新建文件夹',
@@ -615,24 +647,32 @@ const FolderView: FunctionalComponent<Props> = ({
         <div class="folder-toolbar">
           <span style={{ fontSize: '13px', color: 'var(--text-muted)', marginRight: '4px' }}>视图：</span>
           <button
-            class={`btn folder-view-btn ${viewMode === 'list' ? 'active' : ''}`}
+            class={`btn folder-view-btn ${effectiveView === 'list' ? 'active' : ''}`}
             data-testid="view-btn-list"
             onClick={() => handleViewMode('list')}
             title="列表视图"
           ><Icon name="list" size={14} aria-hidden="true" /> 列表</button>
           <button
-            class={`btn folder-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
+            class={`btn folder-view-btn ${effectiveView === 'grid' ? 'active' : ''}`}
             data-testid="view-btn-grid"
             onClick={() => handleViewMode('grid')}
             title="网格视图"
           ><Icon name="grid" size={14} aria-hidden="true" /> 网格</button>
           <button
-            class={`btn folder-view-btn ${viewMode === 'column' ? 'active' : ''}`}
+            class={`btn folder-view-btn ${effectiveView === 'column' ? 'active' : ''}`}
             data-testid="view-btn-column"
             onClick={() => handleViewMode('column')}
             title="列视图"
           ><Icon name="columns" size={14} aria-hidden="true" /> 列</button>
-          {viewMode === 'grid' && (
+          {hasMedia && (
+            <button
+              class={`btn folder-view-btn ${effectiveView === 'masonry' ? 'active' : ''}`}
+              data-testid="view-btn-masonry"
+              onClick={() => handleViewMode('masonry')}
+              title="瀑布流视图"
+            ><Icon name="masonry" size={14} aria-hidden="true" /> 瀑布流</button>
+          )}
+          {effectiveView === 'grid' && (
             <div class="folder-card-size-group">
               <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '24px' }}>尺寸：</span>
               {(['s', 'm', 'l'] as CardSize[]).map(size => (
@@ -679,24 +719,33 @@ const FolderView: FunctionalComponent<Props> = ({
           <div class="empty-state-icon"><Icon name="inbox" size={40} aria-hidden="true" /></div>
           <div class="empty-state-text">空文件夹</div>
         </div>
-      ) : viewMode === 'list' ? (
+      ) : effectiveView === 'list' ? (
         <FolderListView
           nodes={children}
           currentPath={currentFilePath}
-          onSelect={onSelect}
+          onSelect={openNode}
           selectionProps={selectionProps}
           onBgContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, node }) }}
           sortField={sortPref.field}
           sortOrder={sortPref.order}
           onSortChange={handleSortChange}
         />
-      ) : viewMode === 'grid' ? (
+      ) : effectiveView === 'grid' ? (
         <FolderGridView
           nodes={children}
           cardSize={cardSize}
           currentPath={currentFilePath}
           focusPath={gridFocusPath}
-          onSelect={onSelect}
+          onSelect={openNode}
+          selectionProps={selectionProps}
+          onBgContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, node }) }}
+        />
+      ) : effectiveView === 'masonry' ? (
+        <FolderMasonryView
+          nodes={masonryNodes}
+          currentPath={currentFilePath}
+          focusPath={gridFocusPath}
+          onSelect={openNode}
           selectionProps={selectionProps}
           onBgContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, node }) }}
         />
@@ -704,13 +753,22 @@ const FolderView: FunctionalComponent<Props> = ({
         <FolderColumnView
           rootNode={node}
           tree={tree}
-          onFileSelect={onSelect}
+          onFileSelect={openNode}
+          onOpenFull={onSelect}
           theme={theme}
           onContextMenu={handleContextMenu}
           onLongPress={handleLongPress}
           showHidden={showHidden}
           sortField={sortPref.field}
           sortOrder={sortPref.order}
+        />
+      )}
+
+      {lightbox && (
+        <MediaLightbox
+          playlist={buildMediaPlaylist(children)}
+          startPath={lightbox.startPath}
+          onClose={() => setLightbox(null)}
         />
       )}
 
