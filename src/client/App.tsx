@@ -14,10 +14,11 @@ import MountLanding from './components/MountLanding.js'
 import AdminPanel from './components/AdminPanel.js'
 import MountSelector from './components/MountSelector.js'
 import SettingsDialog from './components/SettingsDialog.js'
-import { watchUrl } from './utils/fsApi.js'
+import { watchUrl, fetchPathStat } from './utils/fsApi.js'
 import { usePref } from './hooks/usePref.js'
 import type { FileNode, WatchEvent } from '../types.js'
 import type { ClipboardState } from './components/FolderView.js'
+import { clientPerfLog } from './utils/perfLog.js'
 
 // 模式由服务端注入（'dir' | 'single' | 'multi'）
 declare global {
@@ -180,7 +181,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     setShowHiddenState(!showHidden)
   }, [showHidden])
 
-  const { tree, loading: treeLoading, childErrors, refresh, loadChildren } = useFileTree(showHidden)
+  const { tree, loading: treeLoading, childErrors, refresh, loadChildren, ensurePathLoaded } = useFileTree(showHidden)
   const { content, loadedPath, loading, error, currentPath, loadFile, selectFile, saveFile, setContentForPath } = useFileContent()
   const { query, setQuery, searchType, setSearchType, results, loading: searchLoading } = useSearch(tree, showHidden)
 
@@ -302,27 +303,50 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   }, [handleSwipeBack, handleSwipeForward])
 
   const dirName = window.__VMD_DIR_NAME__ || 'Markdown Browser'
+  const deepLinkDoneRef = useRef(false)
 
   // 页面初始加载：从 URL pathname 恢复文件或文件夹
   useEffect(() => {
-    const path = stripPrefix(window.location.pathname)
+    if (tree.length === 0) return
+    if (deepLinkDoneRef.current) return
 
-    // 根路径：等 tree 加载完后设置根节点（见下方 effect）
+    const path = stripPrefix(window.location.pathname)
     if (!path) return
 
-    const node = findNodeByPath(tree, path)
-    if (node) {
-      setSelectedNode(node)
-      if (node.type === 'file') selectFile(path)
-      else if (node.type === 'folder') loadChildren(path)
-      window.history.replaceState({ path, isFolder: node.type === 'folder' }, '', buildUrl(path))
-    } else {
-      // 深链接目标不在已加载的 tree 中（例如图片/视频文件，或所在文件夹尚未懒加载展开）：
-      // 合成一个文件节点，保证 selectedNode 非空，selectFile 仍会按路径正常加载
-      setSelectedNode({ name: path.split('/').pop() || path, type: 'file', path })
-      selectFile(path)
-      window.history.replaceState({ path }, '', buildUrl(path))
-    }
+    deepLinkDoneRef.current = true
+
+    void (async () => {
+      const existing = findNodeByPath(tree, path)
+      if (existing) {
+        clientPerfLog('deepLink:hit', { path, type: existing.type, treeReady: tree.length })
+        setSelectedNode(existing)
+        if (existing.type === 'file') selectFile(path)
+        else if (existing.type === 'folder') await loadChildren(path)
+        window.history.replaceState({ path, isFolder: existing.type === 'folder' }, '', buildUrl(path))
+        return
+      }
+
+      const stat = await fetchPathStat(path)
+      if (!stat) {
+        clientPerfLog('deepLink:stat-miss', { path })
+        setSelectedNode({ name: path.split('/').pop() || path, type: 'file', path })
+        selectFile(path)
+        window.history.replaceState({ path, isFolder: false }, '', buildUrl(path))
+        return
+      }
+
+      clientPerfLog('deepLink:stat', { path, type: stat.type })
+      if (stat.type === 'folder') {
+        await ensurePathLoaded(path, true)
+        setSelectedNode({ name: stat.name, type: 'folder', path })
+        window.history.replaceState({ path, isFolder: true }, '', buildUrl(path))
+      } else {
+        await ensurePathLoaded(path, false)
+        setSelectedNode({ name: stat.name, type: 'file', path })
+        selectFile(path)
+        window.history.replaceState({ path, isFolder: false }, '', buildUrl(path))
+      }
+    })()
   }, [tree.length > 0 ? 'loaded' : 'empty'])
 
   // tree 变化时同步 selectedNode
@@ -337,6 +361,9 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
 
     const node = findNodeByPath(tree, path)
     if (node?.type === 'folder') {
+      clientPerfLog('deepLink:tree-sync-folder', { path })
+      setSelectedNode(node)
+    } else if (node?.type === 'file') {
       setSelectedNode(node)
     }
   }, [tree])

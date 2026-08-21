@@ -23,14 +23,14 @@ test('masonry → click image → lightbox → arrow next → Esc', async ({ pag
   await page.click('[data-testid="view-btn-masonry"]')
   await expect(page.locator('[data-testid="folder-masonry"]')).toBeVisible()
 
-  await page.locator('[data-testid="folder-masonry"] .folder-card').first().click()
+  await page.locator('[data-testid="folder-masonry"] .masonry-tile').first().click()
   await expect(page.locator('[data-testid="media-lightbox"]')).toBeVisible()
 
-  const captionBefore = await page.locator('.media-lightbox-caption').textContent()
-  await page.click('[data-testid="media-lightbox-next"]')
-  await expect(page.locator('.media-lightbox-caption')).not.toHaveText(captionBefore || '')
+  const nameBefore = await page.locator('.media-lightbox-toolbar-name').textContent()
+  await page.locator('.media-lightbox-toolbar [data-testid="media-lightbox-next"]').click()
+  await expect(page.locator('.media-lightbox-toolbar-name')).not.toHaveText(nameBefore || '')
   await page.keyboard.press('ArrowLeft')
-  await expect(page.locator('.media-lightbox-caption')).toHaveText(captionBefore || '')
+  await expect(page.locator('.media-lightbox-toolbar-name')).toHaveText(nameBefore || '')
 
   await page.keyboard.press('Escape')
   await expect(page.locator('[data-testid="media-lightbox"]')).toHaveCount(0)

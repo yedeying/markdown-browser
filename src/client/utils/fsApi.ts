@@ -100,6 +100,18 @@ export function watchUrl(): string {
   return `${prefix}/api/watch`
 }
 
+export type PathStat =
+  | { type: 'folder'; path: string; name: string }
+  | { type: 'file'; path: string; name: string; size?: string }
+
+/** 判断路径是文件还是目录（深链恢复用） */
+export async function fetchPathStat(path: string): Promise<PathStat | null> {
+  const q = `/api/stat?path=${encodeURIComponent(path)}`
+  const res = await apiFetch(withHidden(q))
+  if (!res.ok) return null
+  return await res.json() as PathStat
+}
+
 async function post<T = Record<string, unknown>>(url: string, body: unknown): Promise<FsResult<T>> {
   try {
     const res = await apiFetch(url, {

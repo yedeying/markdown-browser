@@ -38,7 +38,7 @@ import {
 function countGridCols(testid: string = 'folder-grid'): number {
   const grid = document.querySelector(`[data-testid="${testid}"]`)
   if (!grid) return 1
-  const cards = [...grid.querySelectorAll('.folder-card')]
+  const cards = [...grid.querySelectorAll(testid === 'folder-masonry' ? '.masonry-tile' : '.folder-card')]
   if (cards.length === 0) return 1
   const top = cards[0].getBoundingClientRect().top
   let cols = 0
@@ -159,6 +159,34 @@ const FolderView: FunctionalComponent<Props> = ({
 
   // Lightbox（文件夹内打开媒体）
   const [lightbox, setLightbox] = useState<{ startPath: string } | null>(null)
+  /** 列视图当前浏览目录（最深一列），切出列视图时同步到外层 */
+  const columnActiveFolderRef = useRef<FileNode | null>(null)
+  /** 列内钻入路径（仅影响面包屑展示，不改外层 selectedNode） */
+  const [columnBrowsePath, setColumnBrowsePath] = useState<string | null>(null)
+
+  const handleColumnActiveFolder = useCallback((folder: FileNode) => {
+    setColumnBrowsePath(folder.path)
+  }, [])
+
+  const [columnTruncateRequest, setColumnTruncateRequest] = useState<{ path: string; token: number } | null>(null)
+
+  const handleBreadcrumbNavigate = useCallback((target: FileNode) => {
+    if (effectiveView === 'column' && target.type === 'folder') {
+      const root = node.path
+      const withinColumnRoot =
+        target.path === root
+        || (root !== '' && target.path.startsWith(root + '/'))
+      if (withinColumnRoot) {
+        setColumnBrowsePath(target.path)
+        setColumnTruncateRequest((prev) => ({
+          path: target.path,
+          token: (prev?.token ?? 0) + 1,
+        }))
+        return
+      }
+    }
+    onSelect(target)
+  }, [effectiveView, node.path, onSelect])
 
   const openNode = useCallback((target: FileNode) => {
     if (isMediaFile(target)) {
@@ -189,10 +217,12 @@ const FolderView: FunctionalComponent<Props> = ({
     setCtxMenu(null)
     setGridFocusPath(null)
     setLightbox(null)
+    setColumnBrowsePath(null)
   }, [node.path])
 
   useEffect(() => {
     setGridFocusPath(null)
+    if (effectiveView !== 'column') setColumnBrowsePath(null)
   }, [effectiveView])
 
   // ESC 退出选择模式
@@ -271,7 +301,9 @@ const FolderView: FunctionalComponent<Props> = ({
       if (dir === 'enter') {
         e.preventDefault()
         e.stopImmediatePropagation()
-        const focused = document.querySelector('.folder-card.kb-focus') as HTMLElement | null
+        const focused = document.querySelector(
+          mode === 'masonry' ? '.masonry-tile.kb-focus' : '.folder-card.kb-focus',
+        ) as HTMLElement | null
         if (focused) {
           const path = focused.getAttribute('data-path')
           const focus = path
@@ -531,6 +563,13 @@ const FolderView: FunctionalComponent<Props> = ({
   // ── 工具栏事件 ─────────────────────────────────────────────
   const handleViewMode = (mode: FolderViewPref) => {
     setNavFocus('folder')
+    // 列视图钻入只改本地 stack；切到其它视图时把当前最深目录提交给外层
+    if (effectiveView === 'column' && mode !== 'column') {
+      const folder = columnActiveFolderRef.current
+      if (folder && folder.path !== node.path) {
+        onSelect(folder)
+      }
+    }
     setViewMode(mode)
   }
 
@@ -705,9 +744,9 @@ const FolderView: FunctionalComponent<Props> = ({
 
       {/* ── 面包屑 ─────────────────────────────────────────── */}
       <FolderBreadcrumb
-        path={node.path}
+        path={effectiveView === 'column' && columnBrowsePath != null ? columnBrowsePath : node.path}
         rootName={dirName}
-        onNavigate={onSelect}
+        onNavigate={handleBreadcrumbNavigate}
         tree={tree}
       />
 
@@ -755,6 +794,9 @@ const FolderView: FunctionalComponent<Props> = ({
           tree={tree}
           onFileSelect={openNode}
           onOpenFull={onSelect}
+          activeFolderRef={columnActiveFolderRef}
+          onActiveFolderChange={handleColumnActiveFolder}
+          truncateRequest={columnTruncateRequest}
           theme={theme}
           onContextMenu={handleContextMenu}
           onLongPress={handleLongPress}

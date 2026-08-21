@@ -39,6 +39,8 @@ import {
   Share2,
   SlidersHorizontal,
   X,
+  ChevronLeft,
+  Download,
 } from 'lucide-preact'
 
 export type IconName =
@@ -81,6 +83,8 @@ export type IconName =
   | 'share'
   | 'sliders'
   | 'x'
+  | 'chevron-left'
+  | 'download'
 
 const ICONS = {
   folder: Folder,
@@ -122,6 +126,8 @@ const ICONS = {
   share: Share2,
   sliders: SlidersHorizontal,
   x: X,
+  'chevron-left': ChevronLeft,
+  download: Download,
 } as const
 
 interface Props {

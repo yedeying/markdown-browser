@@ -366,6 +366,11 @@ function printBanner(
   const url = `http://localhost:${port}`
   console.log(`\x1b[36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`)
   console.log(`\x1b[32m✓ Markdown Browser 已启动\x1b[0m`)
+  if (process.env.VMD_DEBUG_PERF === '1' || process.env.VMD_DEBUG_PERF === 'true') {
+    console.log(`\x1b[33m  性能日志: VMD_DEBUG_PERF=1（全部 listDir/buildTree）\x1b[0m`)
+  } else {
+    console.log(`\x1b[90m  性能日志: 慢请求(>80ms)自动打印；全量请设 VMD_DEBUG_PERF=1\x1b[0m`)
+  }
   console.log(`\x1b[0m  URL: \x1b[34m${url}\x1b[0m`)
   if (config.mode === 'multi') {
     console.log(`\x1b[0m  工作区: \x1b[33m${config.workspace}\x1b[0m`)

@@ -107,6 +107,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .header-actions {
@@ -185,9 +189,22 @@
 
 .current-file-icon {
   flex-shrink: 0;
-  vertical-align: -2px;
-  margin-right: 2px;
   color: var(--text-muted);
+}
+
+.current-file-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.current-file-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .editor-wrapper {

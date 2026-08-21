@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import type { FileNode } from '../../types.js'
 import { getFileType } from '../utils/fileType.js'
-import { assetUrl } from '../utils/fsApi.js'
+import { assetUrl, downloadUrl } from '../utils/fsApi.js'
 import Icon from './ui/Icon.js'
 
 export interface MediaLightboxProps {
@@ -65,7 +65,6 @@ const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
         go(1)
       }
     }
-    // 捕获阶段且尽早注册：避免侧栏/文件夹导航抢先 stopImmediatePropagation
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
   }, [closeOnEscape, onClose])
@@ -96,35 +95,80 @@ const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
         go(dx > 0 ? -1 : 1)
       }}
     >
-      <button
-        type="button"
-        class="media-lightbox-close btn"
-        data-testid="media-lightbox-close"
-        aria-label="关闭"
-        onClick={onClose}
-      >
-        <Icon name="x" size={18} aria-hidden="true" />
-      </button>
+      <div class="media-lightbox-toolbar" onClick={(e) => e.stopPropagation()}>
+        <div class="media-lightbox-toolbar-title" title={current.name}>
+          <span class="media-lightbox-toolbar-name">{current.name}</span>
+          {len > 1 && (
+            <span class="media-lightbox-toolbar-count" data-testid="media-lightbox-count">
+              {index + 1} / {len}
+            </span>
+          )}
+        </div>
+        <div class="media-lightbox-toolbar-actions">
+          {len > 1 && (
+            <>
+              <button
+                type="button"
+                class="btn media-lightbox-tool-btn"
+                data-testid="media-lightbox-prev"
+                aria-label="上一张"
+                title="上一张 ←"
+                onClick={() => go(-1)}
+              >
+                <Icon name="chevron-left" size={18} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                class="btn media-lightbox-tool-btn"
+                data-testid="media-lightbox-next"
+                aria-label="下一张"
+                title="下一张 →"
+                onClick={() => go(1)}
+              >
+                <Icon name="chevron-right" size={18} aria-hidden="true" />
+              </button>
+            </>
+          )}
+          <a
+            class="btn media-lightbox-tool-btn"
+            data-testid="media-lightbox-download"
+            href={downloadUrl(current.path)}
+            download={current.name}
+            title="下载"
+            aria-label="下载"
+          >
+            <Icon name="download" size={18} aria-hidden="true" />
+          </a>
+          <button
+            type="button"
+            class="btn media-lightbox-tool-btn"
+            data-testid="media-lightbox-close"
+            aria-label="关闭"
+            title="关闭 Esc"
+            onClick={onClose}
+          >
+            <Icon name="x" size={18} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
 
       {len > 1 && (
         <>
           <button
             type="button"
             class="media-lightbox-nav media-lightbox-prev btn"
-            data-testid="media-lightbox-prev"
-            aria-label="上一项"
+            aria-label="上一张"
             onClick={(e) => { e.stopPropagation(); go(-1) }}
           >
-            ‹
+            <Icon name="chevron-left" size={28} aria-hidden="true" />
           </button>
           <button
             type="button"
             class="media-lightbox-nav media-lightbox-next btn"
-            data-testid="media-lightbox-next"
-            aria-label="下一项"
+            aria-label="下一张"
             onClick={(e) => { e.stopPropagation(); go(1) }}
           >
-            ›
+            <Icon name="chevron-right" size={28} aria-hidden="true" />
           </button>
         </>
       )}
@@ -146,10 +190,6 @@ const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
             alt={current.name}
           />
         )}
-        <div class="media-lightbox-caption">
-          {current.name}
-          {len > 1 ? ` · ${index + 1}/${len}` : ''}
-        </div>
       </div>
     </div>
   )

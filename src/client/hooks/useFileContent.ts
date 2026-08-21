@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'preact/hooks'
 import { apiFetch, withHidden } from '../utils/fsApi.js'
 import { getFileType } from '../utils/fileType.js'
+import { clientPerfLog, clientPerfTimed } from '../utils/perfLog.js'
 
 export function useFileContent() {
   const [content, setContent] = useState<string | null>(null)
@@ -41,6 +42,8 @@ export function useFileContent() {
     }
 
     setLoading(true)
+    const t0 = performance.now()
+    clientPerfLog('loadFile:start', { path })
     try {
       const res = await apiFetch(withHidden(`/api/file/${encodeURI(path)}`))
       if (gen !== loadGenRef.current) return true
@@ -50,11 +53,13 @@ export function useFileContent() {
       setContent(text)
       setLoadedPath(path)
       setCurrentPath(path)
+      clientPerfTimed('loadFile:ok', performance.now() - t0, { path, bytes: text.length })
     } catch (e) {
       if (gen !== loadGenRef.current) return true
       setError(String(e))
       setContent(null)
       setLoadedPath(null)
+      clientPerfTimed('loadFile:err', performance.now() - t0, { path, error: String(e) })
     } finally {
       if (gen === loadGenRef.current) setLoading(false)
     }

@@ -782,10 +782,12 @@ const ContentArea: FunctionalComponent<Props> = ({
           {displayName ? (
             <>
               {!isFolderView && unsaved && <span style={{ color: 'var(--warning)' }}>● </span>}
-              {isFolderView && (
-                <Icon name="folder" size={14} class="current-file-icon" aria-hidden="true" />
-              )}
-              {displayName}
+              <span class="current-file-heading">
+                {isFolderView && (
+                  <Icon name="folder" size={14} class="current-file-icon" aria-hidden="true" />
+                )}
+                <span class="current-file-title">{displayName}</span>
+              </span>
               {!isFolderView && watchConnected !== undefined && (
                 <span
                   class={`watch-indicator ${watchConnected ? '' : 'disconnected'}`}
@@ -987,8 +989,12 @@ const ContentArea: FunctionalComponent<Props> = ({
               <span
                 class="file-breadcrumb-seg"
                 onClick={() => {
-                  const node = findNodeByPath(tree || [], seg.fullPath)
-                  if (node) onSelectNode(node)
+                  const node = findNodeByPath(tree || [], seg.fullPath) ?? {
+                    name: seg.name,
+                    type: 'folder' as const,
+                    path: seg.fullPath,
+                  }
+                  onSelectNode(node)
                 }}
               >
                 {seg.name}

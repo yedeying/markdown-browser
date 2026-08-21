@@ -14,6 +14,53 @@ export interface FileWatcher {
 
 const DEBOUNCE_MS = 200
 
+/**
+ * 家目录作 root 时，这些路径会疯狂写入（浏览器缓存等）。
+ * recursive watch 命中后若广播 tree-change，客户端会刷屏请求 /api/files。
+ */
+const WATCH_NOISE_PREFIXES = [
+  'Library/',
+  'Library',
+  '.Trash/',
+  '.Trash',
+  '.cache/',
+  '.cache',
+  '.npm/',
+  '.npm',
+  '.bun/',
+  '.bun',
+  '.local/share/Trash/',
+  'AppData/Local/',
+  'AppData/Roaming/',
+]
+
+const WATCH_NOISE_SEGMENTS = new Set([
+  'node_modules',
+  '.git',
+  'Cache',
+  'Caches',
+  'Cache_Data',
+  'Code Cache',
+  'GPUCache',
+  'GrShaderCache',
+  'ShaderCache',
+  'Service Worker',
+  'IndexedDB',
+  'Local Storage',
+  'Session Storage',
+  'com.apple.bird',
+])
+
+/** 供测试与 watcher 共用：是否应忽略该相对路径上的 fs 事件 */
+export function shouldIgnoreWatchPath(filename: string): boolean {
+  const normalized = filename.replace(/\\/g, '/').replace(/^\.\//, '')
+  if (!normalized || normalized === '.') return false
+  for (const prefix of WATCH_NOISE_PREFIXES) {
+    if (normalized === prefix.replace(/\/$/, '') || normalized.startsWith(prefix)) return true
+  }
+  return normalized.split('/').some((seg) => WATCH_NOISE_SEGMENTS.has(seg))
+}
+
 export function createWatcher(target: string): FileWatcher {
   const clients = new Set<SSEWriter>()
   const listeners = new Set<(e: WatchEvent) => void>()
@@ -77,6 +124,7 @@ export function createDirWatcher(basePath: string): FileWatcher {
 
   function schedule(filename: string) {
     const normalized = filename.replace(/\\/g, '/')
+    if (shouldIgnoreWatchPath(normalized)) return
     const isMarkdown = normalized.endsWith('.md') || normalized.endsWith('.markdown')
     const existing = pending.get(normalized)
     if (existing) clearTimeout(existing.timer)

@@ -89,3 +89,16 @@ test('whitelisted files are unaffected by the change', async () => {
   const names = tree.map(n => n.name)
   expect(names).toContain('README.md')
 })
+
+test('GET /api/stat distinguishes folder vs file', async () => {
+  const folder = await app.request('/api/stat?path=only-jsonl')
+  expect(folder.status).toBe(200)
+  expect(await folder.json()).toMatchObject({ type: 'folder', path: 'only-jsonl', name: 'only-jsonl' })
+
+  const file = await app.request('/api/stat?path=README.md')
+  expect(file.status).toBe(200)
+  expect(await file.json()).toMatchObject({ type: 'file', path: 'README.md', name: 'README.md' })
+
+  const missing = await app.request('/api/stat?path=nope')
+  expect(missing.status).toBe(404)
+})

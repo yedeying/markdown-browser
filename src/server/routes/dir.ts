@@ -10,6 +10,7 @@ import { ShareStore, createShareApiRoutes, createSharePageRoutes } from '../shar
 import { treeCache } from '../tree-cache.js'
 import { hasReservedSegment, isReservedFilename } from '../reserved-files.js'
 import { decodeTextBuffer } from '../decodeText.js'
+import { nowMs, perfLog, perfLogTimed } from '../perfLog.js'
 
 const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.DS_Store'])
 
@@ -53,6 +54,7 @@ export function hasHiddenSegment(relPath: string): boolean {
  * 返回的 FileNode.path 是相对于 base 的路径
  */
 function listDir(dir: string, base: string, showHidden: boolean): FileNode[] {
+  const t0 = nowMs()
   let entries: string[]
   try {
     entries = readdirSync(dir).sort()
@@ -62,23 +64,33 @@ function listDir(dir: string, base: string, showHidden: boolean): FileNode[] {
 
   const folders: FileNode[] = []
   const files: FileNode[] = []
+  let skippedHidden = 0
+  let skippedIgnore = 0
+  let skippedStat = 0
 
   for (const name of entries) {
     // 服务端托管文件不属于用户内容，showHidden 也不该把它露出来
     if (isReservedFilename(name)) continue
     // 默认不返回点文件/点文件夹：客户端必须显式带 ?showHidden=1 才能看到，
     // 否则 ~/.docker/config.json 之类的敏感文件会对所有客户端可见（且可经 /api/file 读取）。
-    if (!showHidden && name.startsWith('.')) continue
+    if (!showHidden && name.startsWith('.')) {
+      skippedHidden++
+      continue
+    }
     const fullPath = join(dir, name)
     let stat
     try {
       stat = statSync(fullPath)
     } catch {
+      skippedStat++
       continue
     }
 
     if (stat.isDirectory()) {
-      if (IGNORE_DIRS.has(name)) continue
+      if (IGNORE_DIRS.has(name)) {
+        skippedIgnore++
+        continue
+      }
       folders.push({
         name,
         type: 'folder',
@@ -95,7 +107,18 @@ function listDir(dir: string, base: string, showHidden: boolean): FileNode[] {
     }
   }
 
-  return [...folders, ...files]
+  const result = [...folders, ...files]
+  perfLogTimed('listDir', nowMs() - t0, {
+    dir: relative(base, dir) || '(root)',
+    entries: entries.length,
+    out: result.length,
+    folders: folders.length,
+    files: files.length,
+    skippedHidden,
+    skippedIgnore,
+    skippedStat,
+  })
+  return result
 }
 
 /**
@@ -103,7 +126,10 @@ function listDir(dir: string, base: string, showHidden: boolean): FileNode[] {
  */
 function listDirCached(scope: string, dir: string, base: string, relPath: string, showHidden: boolean): FileNode[] {
   const cached = treeCache.get(scope, relPath)
-  if (cached) return cached
+  if (cached) {
+    perfLog('listDir:cache-hit', { relPath: relPath || '(root)', nodes: cached.length })
+    return cached
+  }
   const nodes = listDir(dir, base, showHidden)
   treeCache.set(scope, relPath, nodes)
   return nodes
@@ -115,9 +141,14 @@ function listDirCached(scope: string, dir: string, base: string, relPath: string
  * depth = Infinity 表示全量
  */
 function buildTree(scope: string, dir: string, base: string, relPath = '', depth = Infinity, showHidden = false): FileNode[] {
+  const t0 = nowMs()
   const nodes = listDirCached(scope, dir, base, relPath, showHidden)
-  if (depth <= 0) return nodes
+  if (depth <= 0) {
+    perfLogTimed('buildTree', nowMs() - t0, { relPath: relPath || '(root)', depth, nodes: nodes.length, leaf: true })
+    return nodes
+  }
 
+  let childListCalls = 0
   const result: FileNode[] = []
   for (const node of nodes) {
     if (node.type === 'folder') {
@@ -125,6 +156,7 @@ function buildTree(scope: string, dir: string, base: string, relPath = '', depth
       const childAbs = join(base, childRel)
       // 磁盘上是否还有子项（文件或子目录）。递归结果可能把空叶子剪掉，
       // 但不能因此把「只含空子目录」的父目录也丢掉。
+      childListCalls++
       const diskChildren = listDirCached(scope, childAbs, base, childRel, showHidden)
       const children = buildTree(scope, childAbs, base, childRel, depth - 1, showHidden)
       if (children.length > 0 || diskChildren.length > 0) {
@@ -134,6 +166,13 @@ function buildTree(scope: string, dir: string, base: string, relPath = '', depth
       result.push(node)
     }
   }
+  perfLogTimed('buildTree', nowMs() - t0, {
+    relPath: relPath || '(root)',
+    depth,
+    nodes: nodes.length,
+    foldersListed: childListCalls,
+    out: result.length,
+  })
   return result
 }
 
@@ -184,6 +223,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   //   2. ?path=<rel>&depth=1 → 懒加载单层
   // 点文件仅在 ?showHidden=1 时列出（默认既不列出也不向下递归）
   app.get('/api/files', (c) => {
+    const t0 = nowMs()
     const relPath = (c.req.query('path') || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
     const depthParam = c.req.query('depth')
     const hasLazyParams = c.req.query('path') !== undefined || depthParam !== undefined
@@ -209,26 +249,82 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
     if (hasLazyParams) {
       const depth = depthParam ? Math.max(0, Math.min(10, parseInt(depthParam) || 0)) : 1
       const tree = buildTree(scopeFor(showHidden), targetDir, basePath, relPath, depth, showHidden)
+      perfLogTimed('GET /api/files', nowMs() - t0, {
+        path: relPath || '(root)',
+        depth,
+        lazy: true,
+        nodes: tree.length,
+        base: basePath,
+      })
       return c.json(tree)
     }
 
     // 旧行为兼容：默认返回根目录（深度 3，避免超大树一次性返回）
     const tree = buildTree(scopeFor(showHidden), basePath, basePath, '', 3, showHidden)
+    perfLogTimed('GET /api/files', nowMs() - t0, {
+      path: '(root)',
+      depth: 3,
+      lazy: false,
+      nodes: tree.length,
+      base: basePath,
+    })
     return c.json(tree)
+  })
+
+  // GET /api/stat?path= — 判断路径是文件还是目录（深链用，避免把目录当文件读）
+  app.get('/api/stat', (c) => {
+    const relPath = (c.req.query('path') || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    const showHidden = wantsHidden(c.req.query('showHidden'))
+
+    if (!relPath) {
+      return c.json({ type: 'folder', path: '', name: basename(basePath) })
+    }
+    if (hasReservedSegment(relPath)) {
+      return c.json({ error: 'Not found' }, 404)
+    }
+    if (!showHidden && hasHiddenSegment(relPath)) {
+      return c.json({ error: 'Not found' }, 404)
+    }
+
+    const target = join(basePath, relPath)
+    try {
+      const realBase = realpathSync(basePath)
+      const realTarget = realpathSync(target)
+      if (!realTarget.startsWith(realBase)) {
+        return c.json({ error: 'Forbidden' }, 403)
+      }
+      const st = statSync(target)
+      if (st.isDirectory()) {
+        return c.json({ type: 'folder', path: relPath, name: basename(relPath) })
+      }
+      if (st.isFile()) {
+        return c.json({
+          type: 'file',
+          path: relPath,
+          name: basename(relPath),
+          size: formatSize(st.size),
+        })
+      }
+      return c.json({ error: 'Not found' }, 404)
+    } catch {
+      return c.json({ error: 'Not found' }, 404)
+    }
   })
 
   // GET /api/file/:path - 读取文件内容
   app.get('/api/file/*', (c) => {
+    const t0 = nowMs()
     const relPath = c.req.path.replace('/api/file/', '')
-    const filePath = join(basePath, decodeURIComponent(relPath))
+    const decoded = decodeURIComponent(relPath)
+    const filePath = join(basePath, decoded)
 
     // 挂载点路径和分享令牌本身就是敏感信息：当作不存在
-    if (hasReservedSegment(decodeURIComponent(relPath))) {
+    if (hasReservedSegment(decoded)) {
       return c.json({ error: 'File not found' }, 404)
     }
 
     // 纵深防御：列表/搜索默认不返回点路径，直接猜路径也读不到
-    if (!wantsHidden(c.req.query('showHidden')) && hasHiddenSegment(decodeURIComponent(relPath))) {
+    if (!wantsHidden(c.req.query('showHidden')) && hasHiddenSegment(decoded)) {
       return c.json({ error: 'File not found' }, 404)
     }
 
@@ -238,9 +334,27 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       if (!realFile.startsWith(realBase)) {
         return c.json({ error: 'Forbidden' }, 403)
       }
+      const st = statSync(filePath)
+      if (st.isDirectory()) {
+        perfLogTimed('GET /api/file', nowMs() - t0, {
+          path: decoded,
+          kind: 'directory',
+          error: 'is-directory',
+        })
+        return c.json({ error: 'File not found', reason: 'is-directory' }, 404)
+      }
       const buf = readFileSync(filePath)
+      perfLogTimed('GET /api/file', nowMs() - t0, {
+        path: decoded,
+        kind: 'file',
+        bytes: buf.length,
+      })
       return c.text(decodeTextBuffer(buf))
-    } catch {
+    } catch (e) {
+      perfLogTimed('GET /api/file', nowMs() - t0, {
+        path: decoded,
+        error: String(e),
+      })
       return c.json({ error: 'File not found' }, 404)
     }
   })

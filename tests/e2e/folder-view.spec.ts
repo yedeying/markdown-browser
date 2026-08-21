@@ -135,6 +135,19 @@ test('T6: 列视图 → 点击子文件夹展开新列', async ({ page }) => {
   await expect(page.locator('.folder-column').nth(1)).toContainText('deep.md')
 })
 
+test('列视图钻入后切到列表，保持当前子目录而非父目录', async ({ page }) => {
+  await page.goto('/')
+  await page.click('[data-testid="tree-node-notes"]')
+  await page.click('[data-testid="view-btn-column"]')
+  await page.click('.folder-column-row[data-path="notes/sub"]')
+  await expect(page.locator('.folder-column')).toHaveCount(2)
+
+  await page.click('[data-testid="view-btn-list"]')
+  await expect(page.locator('[data-testid="folder-list"]')).toBeVisible()
+  await expect(page.locator('.folder-breadcrumb')).toContainText('sub')
+  await expect(page.locator('.folder-list-row[data-path="notes/sub/deep.md"]')).toBeVisible()
+})
+
 // ─── T7 列视图点击文件打开预览 ────────────────────────────────────────────────
 test('T7: 列视图 → 点击文件 → 预览内容，退出 FolderView', async ({ page }) => {
   await page.goto('/')
@@ -201,6 +214,22 @@ test('T10: 直接访问文件夹 URL 恢复 FolderView', async ({ page }) => {
 
   // 面包屑包含 notes
   await expect(page.locator('.folder-breadcrumb')).toContainText('notes')
+})
+
+test('深链文件夹不请求 /api/file，并打开 FolderView', async ({ page }) => {
+  const fileGets: string[] = []
+  page.on('request', (req) => {
+    if (req.method() === 'GET' && req.url().includes('/api/file/')) {
+      fileGets.push(req.url())
+    }
+  })
+
+  await page.goto('/notes/sub')
+  await expect(page.locator('[data-testid="folder-view"]')).toBeVisible({ timeout: 10000 })
+  await expect(page.locator('.folder-breadcrumb')).toContainText('sub')
+  await expect(page.locator('[data-path="notes/sub/deep.md"], .folder-list-row:has-text("deep.md"), .folder-card:has-text("deep.md")').first()).toBeVisible()
+
+  expect(fileGets.some((u) => u.includes('/api/file/notes/sub'))).toBe(false)
 })
 
 // ─── T11 图片加载失败降级 ─────────────────────────────────────────────────────

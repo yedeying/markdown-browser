@@ -100,6 +100,18 @@ interface Props {
   onFileSelect: (node: FileNode) => void
   /** ↗ 全屏打开（媒体绕过 Lightbox，进入主内容区） */
   onOpenFull?: (node: FileNode) => void
+  /**
+   * 离开列视图时可读：当前浏览的最深目录（columnStack 末列）。
+   * 列内钻入不写外层 selectedNode，切到列表/网格时用此同步。
+   */
+  activeFolderRef?: { current: FileNode | null }
+  /** 列内浏览目录变化（用于面包屑），不触发外层跳转 */
+  onActiveFolderChange?: (folder: FileNode) => void
+  /**
+   * 面包屑点到列根之下的某层时传入该 path，列 stack 截断到该目录。
+   * 每次请求用递增 token，避免同 path 重复点击无效。
+   */
+  truncateRequest?: { path: string; token: number } | null
   theme: 'dark' | 'light'
   onContextMenu: (node: FileNode, e: MouseEvent) => void
   onLongPress: (node: FileNode) => void
@@ -114,6 +126,9 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   tree,
   onFileSelect,
   onOpenFull,
+  activeFolderRef,
+  onActiveFolderChange,
+  truncateRequest = null,
   theme,
   onContextMenu,
   onLongPress,
@@ -138,6 +153,28 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   sortFieldRef.current = sortField
   const sortOrderRef = useRef(sortOrder)
   sortOrderRef.current = sortOrder
+
+  // 同步「当前浏览目录」给外层（面包屑展示 + 切出列视图时提交）
+  useEffect(() => {
+    const folder = columnStack[columnStack.length - 1] ?? rootNode
+    if (activeFolderRef) activeFolderRef.current = folder
+    onActiveFolderChange?.(folder)
+  }, [columnStack, rootNode, activeFolderRef, onActiveFolderChange])
+
+  // 面包屑：截断到指定目录（含列根 = 只留一列）
+  useEffect(() => {
+    if (!truncateRequest) return
+    const target = truncateRequest.path
+    setPreview(null)
+    setPreviewFocus(false)
+    setSelectedInCol({})
+    setColumnStack((prev) => {
+      const idx = prev.findIndex((n) => n.path === target)
+      if (idx >= 0) return prev.slice(0, idx + 1)
+      if (rootNodeRef.current.path === target) return [rootNodeRef.current]
+      return prev
+    })
+  }, [truncateRequest?.token])
 
   /** 用完整 tree 上的节点，避免列内缓存的浅节点没有 children */
   const resolveFolder = (folder: FileNode): FileNode =>
