@@ -40,7 +40,7 @@ export type AccentPref = 'orange' | 'blue' | 'cyan' | 'green' | 'purple' | 'rose
 export type ReadingWidthPref = 720 | 900 | 1140 | 'full'
 export type ReadingFontSizePref = 14 | 15 | 16 | 17
 export type ReadingLineHeightPref = 1.55 | 1.7 | 1.9
-export type FolderViewPref = 'list' | 'grid' | 'column'
+export type FolderViewPref = 'list' | 'grid' | 'column' | 'masonry'
 export type EditorFontSizePref = 13 | 14 | 15
 export type JsonlPreviewModePref = 'st' | 'jsonl'
 
@@ -81,7 +81,7 @@ const ACCENT_PREFS: AccentPref[] = ['orange', 'blue', 'cyan', 'green', 'purple',
 const READING_WIDTHS: ReadingWidthPref[] = [720, 900, 1140, 'full']
 const READING_FONT_SIZES: ReadingFontSizePref[] = [14, 15, 16, 17]
 const READING_LINE_HEIGHTS: ReadingLineHeightPref[] = [1.55, 1.7, 1.9]
-const FOLDER_VIEWS: FolderViewPref[] = ['list', 'grid', 'column']
+const FOLDER_VIEWS: FolderViewPref[] = ['list', 'grid', 'column', 'masonry']
 const EDITOR_FONT_SIZES: EditorFontSizePref[] = [13, 14, 15]
 const JSONL_PREVIEW_MODES: JsonlPreviewModePref[] = ['st', 'jsonl']
 
