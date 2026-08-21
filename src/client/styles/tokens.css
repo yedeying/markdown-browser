@@ -66,6 +66,8 @@
   --hover: var(--color-hover);
   --sidebar-bg: var(--canvas-soft);
   --header-bg: var(--surface);
+  /* ST 玩家气泡：略亮于默认，弱于强提亮 */
+  --st-user-bubble-bg: color-mix(in srgb, var(--surface-strong) 88%, white);
   --active-bg: var(--accent-soft);
   --active-text: var(--ink);
   --scrollbar-bg: var(--color-scrollbar);
@@ -121,6 +123,8 @@
   --hover: var(--color-hover);
   --sidebar-bg: #f6f8fa;
   --header-bg: #f6f8fa;
+  /* ST 玩家气泡：比 #f6f8fa 默认气泡略亮（纯白表面） */
+  --st-user-bubble-bg: var(--surface);
   --active-bg: var(--accent-soft);
   --active-text: var(--ink);
   --scrollbar-bg: var(--color-scrollbar);

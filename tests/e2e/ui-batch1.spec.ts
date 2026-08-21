@@ -29,7 +29,8 @@ test('2a: folder skeleton shows during lazy children load, then folder-view repl
   // Click into notes/sub while its children fetch is held: must show the
   // skeleton, not a stale/empty FolderView (this is the actual 2a fix under test).
   await page.click('[data-testid="tree-node-notes-sub"]')
-  await expect(page.locator('[data-testid="folder-skeleton"]')).toBeVisible()
+  // 骨架延迟 500ms 才出现；请求被 gate 住时应能等到
+  await expect(page.locator('[data-testid="folder-skeleton"]')).toBeVisible({ timeout: 3000 })
   await expect(page.locator('[data-testid="folder-view"]')).not.toBeVisible()
   await expect(page.locator('[data-testid="markdown-preview"]')).not.toBeVisible()
 

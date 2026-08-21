@@ -181,7 +181,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   }, [showHidden])
 
   const { tree, loading: treeLoading, childErrors, refresh, loadChildren } = useFileTree(showHidden)
-  const { content, loading, error, currentPath, loadFile, selectFile, saveFile, setContent } = useFileContent()
+  const { content, loadedPath, loading, error, currentPath, loadFile, selectFile, saveFile, setContentForPath } = useFileContent()
   const { query, setQuery, searchType, setSearchType, results, loading: searchLoading } = useSearch(tree, showHidden)
 
   // 多挂载模式：URL 前缀 /m/alias
@@ -259,10 +259,10 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   const handleSave = useCallback(async (path: string, text: string): Promise<boolean> => {
     const ok = await saveFile(path, text)
     if (ok) {
-      setContent(text)
+      setContentForPath(path, text)
     }
     return ok
-  }, [saveFile, setContent])
+  }, [saveFile, setContentForPath])
 
   // 应用内手势后退（右滑）：在导航栈里向前走
   const handleSwipeBack = useCallback(() => {
@@ -367,13 +367,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     return () => window.removeEventListener('popstate', handlePopState)
   }, [handlePopState])
 
-  // currentPath 变化时同步 selectedNode（针对文件选择）
-  useEffect(() => {
-    if (!currentPath) return
-    if (selectedNode?.path === currentPath) return
-    const node = findNodeByPath(tree, currentPath)
-    if (node) setSelectedNode(node)
-  }, [currentPath])
+  // 注意：不要用 currentPath（异步加载结果）回写 selectedNode。
+  // 快速上下键时旧请求后完成会把树光标拽回去；选中态以 handleSelect 的实时选择为准。
 
   return (
     <>
@@ -408,6 +403,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
           <ContentArea
           filePath={currentPath}
           content={content}
+          contentReady={!!currentPath && loadedPath === currentPath}
           loading={loading}
           error={error}
           theme={theme}

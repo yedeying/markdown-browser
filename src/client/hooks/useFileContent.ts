@@ -4,6 +4,8 @@ import { getFileType } from '../utils/fileType.js'
 
 export function useFileContent() {
   const [content, setContent] = useState<string | null>(null)
+  /** 当前 content 对应的路径；与 currentPath 不一致时表示内容尚未就绪（勿渲染旧文） */
+  const [loadedPath, setLoadedPath] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [currentPath, setCurrentPath] = useState<string | null>(null)
@@ -12,35 +14,49 @@ export function useFileContent() {
   const selfSaveAt = useRef<number>(0)
   const SELF_SAVE_IGNORE_WINDOW = 2000 // ms
 
+  /** 递增世代：快速连点时只让「最后一次」请求落地，避免光标/内容往复 */
+  const loadGenRef = useRef(0)
+
   /** 返回值：是否真的执行了加载（false = 被 self-save 窗口抑制，调用方据此放弃后续动作） */
   const loadFile = useCallback(async (path: string, { ignoreSelfSave = false } = {}): Promise<boolean> => {
     // 如果是 SSE 触发的 reload，且距上次 self-save 不足 2s，则忽略（避免屏闪）
     if (!ignoreSelfSave && Date.now() - selfSaveAt.current < SELF_SAVE_IGNORE_WINDOW) {
       return false
     }
-    // 图片/视频等二进制类型不走文本内容拉取：直接设置 currentPath，
-    // ContentArea 据此路由到 ImageViewer/VideoViewer，无需等待（也不会有）content
+
+    const gen = ++loadGenRef.current
+
+    // 实时光标：路径立刻切换，不等网络；过期响应不得回写
+    setCurrentPath(path)
+    setError(null)
+
+    // 图片/视频等二进制类型不走文本内容拉取
     const ft = getFileType(path)
     if (ft === 'image' || ft === 'video') {
-      setCurrentPath(path)
+      if (gen !== loadGenRef.current) return true
       setContent('')
-      setError(null)
+      setLoadedPath(path)
       setLoading(false)
       return true
     }
+
     setLoading(true)
-    setError(null)
     try {
       const res = await apiFetch(withHidden(`/api/file/${encodeURI(path)}`))
+      if (gen !== loadGenRef.current) return true
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const text = await res.text()
+      if (gen !== loadGenRef.current) return true
       setContent(text)
+      setLoadedPath(path)
       setCurrentPath(path)
     } catch (e) {
+      if (gen !== loadGenRef.current) return true
       setError(String(e))
       setContent(null)
+      setLoadedPath(null)
     } finally {
-      setLoading(false)
+      if (gen === loadGenRef.current) setLoading(false)
     }
     return true
   }, [])
@@ -67,5 +83,21 @@ export function useFileContent() {
     }
   }, [])
 
-  return { content, loading, error, currentPath, loadFile, selectFile, saveFile, setContent }
+  const setContentForPath = useCallback((path: string, text: string) => {
+    setContent(text)
+    setLoadedPath(path)
+  }, [])
+
+  return {
+    content,
+    loadedPath,
+    loading,
+    error,
+    currentPath,
+    loadFile,
+    selectFile,
+    saveFile,
+    setContent,
+    setContentForPath,
+  }
 }

@@ -5,6 +5,7 @@ import { join, relative, extname, basename, dirname, resolve, sep } from 'path'
 import type { ShareToken, AuthConfig } from '../types.js'
 import { createAuthMiddleware } from './auth.js'
 import { SHARES_FILENAME, hasReservedSegment } from './reserved-files.js'
+import { decodeTextBuffer } from './decodeText.js'
 
 const SHARES_FILE = SHARES_FILENAME
 
@@ -86,17 +87,6 @@ export class ShareStore {
 // 工具函数
 // ============================================================
 
-const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp'])
-const VIDEO_EXTS = new Set(['.mp4', '.webm', '.ogg', '.mov', '.avi'])
-const SUPPORTED_EXTS = new Set([
-  '.md', '.markdown', '.txt', '.log', '.csv', '.tsv', '.xml',
-  '.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.htm', '.py', '.json',
-  '.sh', '.bash', '.zsh', '.yaml', '.yml', '.go', '.rs', '.java',
-  '.c', '.cpp', '.h', '.hpp', '.cs', '.php', '.rb', '.swift', '.kt',
-  '.vue', '.svelte', '.sql', '.toml', '.ini', '.conf', '.env',
-  ...IMAGE_EXTS, ...VIDEO_EXTS,
-])
-
 const MIME: Record<string, string> = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
@@ -124,9 +114,22 @@ function buildTree(dir: string, base: string) {
     try { stat = statSync(full) } catch { continue }
     if (stat.isDirectory()) {
       if (IGNORE.has(name)) continue
+      let diskHasChild = false
+      try {
+        for (const n of readdirSync(full)) {
+          if (n.startsWith('.')) continue
+          if (IGNORE.has(n)) continue
+          diskHasChild = true
+          break
+        }
+      } catch { /* ignore */ }
       const children = buildTree(full, base)
-      if (children.length > 0) folders.push({ name, type: 'folder', path: relative(base, full), children })
-    } else if (stat.isFile() && SUPPORTED_EXTS.has(extname(name).toLowerCase())) {
+      // 与 dir.ts 一致：磁盘上有子项的目录必须保留，即使空叶子被剪掉
+      if (children.length > 0 || diskHasChild) {
+        folders.push({ name, type: 'folder', path: relative(base, full), children })
+      }
+    } else if (stat.isFile()) {
+      // 与 dir.ts 的 listDir 保持一致：未知扩展名文件也列入树，避免目录因过滤而消失。
       files.push({ name, type: 'file', path: relative(base, full), size: formatSize(stat.size) })
     }
   }
@@ -375,7 +378,7 @@ export function createSharePageRoutes(
         const shareAbs = join(basePath, share.path)
         if (targetAbs !== resolve(shareAbs)) return c.json({ error: 'Forbidden' }, 403)
       }
-      const content = readFileSync(targetAbs, 'utf-8')
+      const content = decodeTextBuffer(readFileSync(targetAbs))
       c.header('X-File-Name', encodeURIComponent(basename(targetAbs)))
       return c.text(content)
     } catch {

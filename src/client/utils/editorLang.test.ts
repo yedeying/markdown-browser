@@ -20,6 +20,12 @@ const SAMPLES: Record<string, string> = {
   rust: 'fn main() {\n    let a = 1;\n}\n',
   sql: 'CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT);\nSELECT * FROM t;\n',
   toml: '[a]\nb = 1\n',
+  dockerfile: 'FROM alpine\nRUN echo hi\n',
+  ruby: 'def f\n  1\nend\n',
+  perl: 'print "hi";\n',
+  cmake: 'cmake_minimum_required(VERSION 3.10)\nproject(demo)\n',
+  properties: 'foo=bar\nbaz=qux\n',
+  powershell: 'Write-Host "hi"\n',
   plaintext: 'just text\nsecond line\n',
 }
 
@@ -45,8 +51,9 @@ test('every extension getEditorLang maps to has a working highlighter', () => {
   const produced = new Set(
     ['a.js', 'a.jsx', 'a.ts', 'a.tsx', 'a.css', 'a.html', 'a.htm', 'a.vue', 'a.svelte',
       'a.json', 'a.sh', 'a.bash', 'a.zsh', 'a.yaml', 'a.yml', 'a.py', 'a.go', 'a.rs',
-      'a.sql', 'a.toml', 'a.ini', 'a.md', 'a.unknownext']
-      .map(getEditorLang),
+      'a.sql', 'a.toml', 'a.ini', 'a.md', 'a.unknownext', 'a.rb', 'a.dockerfile',
+      'Dockerfile', 'Makefile', 'Gemfile', 'CMakeLists.txt', '.editorconfig']
+      .map((p) => getEditorLang(p)),
   )
   for (const language of produced) {
     expect(EDITOR_LANGUAGES).toContain(language)

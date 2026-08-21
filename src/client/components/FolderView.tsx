@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'preact/hooks'
+import { useState, useCallback, useEffect, useRef } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import type { FileNode } from '../../types.js'
 import FolderBreadcrumb from './FolderBreadcrumb.js'
@@ -16,6 +16,30 @@ import { type FolderViewPref, type SortField, type SortOrder } from '../utils/pr
 import { usePref } from '../hooks/usePref.js'
 import { showToast } from './ui/Toast.js'
 import Icon from './ui/Icon.js'
+import {
+  getNavFocus,
+  isOverlayBlocking,
+  isTypingTarget,
+  normalizeNavKey,
+  scrollNavTarget,
+  setNavFocus,
+  stepGridIndex,
+  stepIndex,
+} from '../utils/keyboardNav.js'
+
+function countGridCols(): number {
+  const grid = document.querySelector('[data-testid="folder-grid"]')
+  if (!grid) return 1
+  const cards = [...grid.querySelectorAll('.folder-card')]
+  if (cards.length === 0) return 1
+  const top = cards[0].getBoundingClientRect().top
+  let cols = 0
+  for (const c of cards) {
+    if (Math.abs(c.getBoundingClientRect().top - top) > 2) break
+    cols++
+  }
+  return Math.max(1, cols)
+}
 
 type CardSize = 's' | 'm' | 'l'
 
@@ -120,13 +144,27 @@ const FolderView: FunctionalComponent<Props> = ({
   const children = sortNodes(filterVisible(node.children || [], showHidden), sortPref.field, sortPref.order)
   const dirName = window.__VMD_DIR_NAME__ || '文件库'
 
+  // 网格键盘焦点（移动不打开，Enter 打开）
+  const [gridFocusPath, setGridFocusPath] = useState<string | null>(null)
+  const gridFocusPathRef = useRef<string | null>(null)
+  const childrenRef = useRef(children)
+  const onSelectRef = useRef(onSelect)
+  gridFocusPathRef.current = gridFocusPath
+  childrenRef.current = children
+  onSelectRef.current = onSelect
+
   // 切换文件夹时清空选中
   useEffect(() => {
     setSelectedPaths(new Set())
     setSelectionMode(false)
     setLastClickedPath(null)
     setCtxMenu(null)
+    setGridFocusPath(null)
   }, [node.path])
+
+  useEffect(() => {
+    setGridFocusPath(null)
+  }, [viewMode])
 
   // ESC 退出选择模式
   useEffect(() => {
@@ -138,6 +176,128 @@ const FolderView: FunctionalComponent<Props> = ({
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [selectionMode])
+
+  // 列表 / 网格键盘导航（列视图由 FolderColumnView 自己处理）
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (getNavFocus() !== 'folder') return
+      if (selectionMode) return
+      if (modal || ctxMenu || bottomSheet || shareTarget) return
+      if (isTypingTarget(e.target)) return
+      if (isOverlayBlocking()) return
+
+      const dir = normalizeNavKey(e)
+      if (!dir) return
+
+      const mode = document.querySelector('[data-testid="folder-grid"]')
+        ? 'grid'
+        : document.querySelector('[data-testid="folder-list"]')
+          ? 'list'
+          : document.querySelector('.folder-columns-outer')
+            ? 'column'
+            : null
+      if (!mode || mode === 'column') return
+
+      const list = childrenRef.current
+      if (list.length === 0) return
+
+      if (mode === 'list') {
+        // l/→：若当前高亮项是目录则进入；h/← 忽略（回父由面包屑/树处理）
+        if (dir === 'right') {
+          e.preventDefault()
+          const activePath = document.querySelector('.folder-list-row.active')?.getAttribute('data-path')
+          const curIdx = activePath
+            ? list.findIndex((n) => n.path === activePath)
+            : currentFilePath
+              ? list.findIndex((n) => n.path === currentFilePath)
+              : -1
+          if (curIdx >= 0 && list[curIdx].type === 'folder') {
+            onSelectRef.current(list[curIdx])
+          }
+          return
+        }
+        if (dir === 'left') return
+        if (dir !== 'up' && dir !== 'down' && dir !== 'enter') return
+        e.preventDefault()
+        const curIdx = currentFilePath
+          ? list.findIndex((n) => n.path === currentFilePath)
+          : -1
+        if (dir === 'enter') {
+          if (curIdx >= 0) onSelectRef.current(list[curIdx])
+          return
+        }
+        const nextIdx = stepIndex(curIdx, list.length, dir === 'down' ? 1 : -1)
+        if (nextIdx < 0) return
+        const next = list[nextIdx]
+        onSelectRef.current(next)
+        requestAnimationFrame(() => {
+          scrollNavTarget(document.querySelector(`[data-path="${CSS.escape(next.path)}"]`))
+        })
+        return
+      }
+
+      // grid
+      if (dir === 'enter') {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        const focused = document.querySelector('.folder-card.kb-focus') as HTMLElement | null
+        if (focused) {
+          const path = focused.getAttribute('data-path')
+          const focus = path
+            ? (list.find((n) => n.path === path) ?? {
+                name: path.split('/').pop() || path,
+                type: 'file' as const,
+                path,
+              })
+            : null
+          if (focus) onSelectRef.current(focus)
+          return
+        }
+        const path = gridFocusPathRef.current
+        const focus = path ? list.find((n) => n.path === path) : null
+        if (focus) onSelectRef.current(focus)
+        return
+      }
+      if (dir !== 'up' && dir !== 'down' && dir !== 'left' && dir !== 'right') return
+      e.preventDefault()
+
+      // 焦点在目录上时，l/→ 进入该目录（而非仅右移）
+      if (dir === 'right') {
+        const focusPath = gridFocusPathRef.current
+        const cur = focusPath ? list.find((n) => n.path === focusPath) : null
+        if (cur?.type === 'folder') {
+          onSelectRef.current(cur)
+          return
+        }
+      }
+
+      const cols = countGridCols()
+      const focusPath = gridFocusPathRef.current
+      const curIdx = focusPath
+        ? list.findIndex((n) => n.path === focusPath)
+        : currentFilePath
+          ? list.findIndex((n) => n.path === currentFilePath)
+          : -1
+      const nextIdx = stepGridIndex(curIdx, list.length, cols, dir)
+      if (nextIdx < 0) return
+      const next = list[nextIdx]
+      setNavFocus('folder')
+      setGridFocusPath(next.path)
+      requestAnimationFrame(() => {
+        scrollNavTarget(document.querySelector(`[data-path="${CSS.escape(next.path)}"]`))
+      })
+    }
+
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [
+    selectionMode,
+    modal,
+    ctxMenu,
+    bottomSheet,
+    shareTarget,
+    currentFilePath,
+  ])
 
   // ── 多选逻辑 ───────────────────────────────────────────────
   const handleToggleSelect = useCallback((path: string, e?: MouseEvent) => {
@@ -338,6 +498,7 @@ const FolderView: FunctionalComponent<Props> = ({
 
   // ── 工具栏事件 ─────────────────────────────────────────────
   const handleViewMode = (mode: FolderViewPref) => {
+    setNavFocus('folder')
     setViewMode(mode)
   }
 
@@ -409,7 +570,11 @@ const FolderView: FunctionalComponent<Props> = ({
   }
 
   return (
-    <div class="folder-view" data-testid="folder-view">
+    <div
+      class="folder-view"
+      data-testid="folder-view"
+      onPointerDown={() => setNavFocus('folder')}
+    >
       {/* ── 工具栏 ─────────────────────────────────────────── */}
       {selectionMode ? (
         // 选择模式工具栏
@@ -530,6 +695,7 @@ const FolderView: FunctionalComponent<Props> = ({
           nodes={children}
           cardSize={cardSize}
           currentPath={currentFilePath}
+          focusPath={gridFocusPath}
           onSelect={onSelect}
           selectionProps={selectionProps}
           onBgContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, node }) }}

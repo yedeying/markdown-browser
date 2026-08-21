@@ -107,6 +107,7 @@ const FolderListView: FunctionalComponent<Props> = ({
           <div
             key={node.path}
             class={`folder-list-row ${currentPath === node.path ? 'active' : ''} ${isSelected ? 'selected' : ''} ${selectionMode ? 'has-checkbox' : ''}`}
+            data-path={node.path}
             onClick={(e) => handleRowClick(node, e as MouseEvent)}
             onContextMenu={(e) => { e.stopPropagation(); onContextMenu(node, e as MouseEvent) }}
             {...lpHandlers}

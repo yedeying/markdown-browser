@@ -6,6 +6,7 @@ import { createWatcher } from '../watcher.js'
 import type { AuthConfig } from '../../types.js'
 import { createAuthMiddleware, createAuthRoutes } from '../auth.js'
 import { hasReservedSegment } from '../reserved-files.js'
+import { decodeTextBuffer } from '../decodeText.js'
 
 export function createSingleRouter(filePath: string, distPath: string, authConfig: AuthConfig | null = null) {
   const app = new Hono()
@@ -30,7 +31,8 @@ export function createSingleRouter(filePath: string, distPath: string, authConfi
   // GET /api/content - 读取文件内容
   app.get('/api/content', (c) => {
     try {
-      const content = readFileSync(filePath, 'utf-8')
+      const buf = readFileSync(filePath)
+      const content = decodeTextBuffer(buf)
       const stat = statSync(filePath)
       c.header('X-File-Name', encodeURIComponent(basename(filePath)))
       c.header('X-File-Mtime', String(stat.mtimeMs))

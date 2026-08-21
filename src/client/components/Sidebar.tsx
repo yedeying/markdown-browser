@@ -7,6 +7,8 @@ import SearchBar from './SearchBar.js'
 import Icon from './ui/Icon.js'
 import { filterTree, isHiddenPath } from '../utils/hiddenFiles.js'
 import { clampSidebarWidth, getSidebarWidth, setSidebarWidth } from '../utils/prefs.js'
+import { setNavFocus } from '../utils/keyboardNav.js'
+import { useDelayedFlag } from '../hooks/useDelayedFlag.js'
 
 interface Props {
   tree: FileNode[]
@@ -53,8 +55,9 @@ const Sidebar: FunctionalComponent<Props> = ({
 }) => {
   const treeRef = useRef<FileTreeHandle>(null)
   const asideRef = useRef<HTMLElement>(null)
+  const showTreeSkeleton = useDelayedFlag(!!treeLoading, 500)
 
-  // ── 宽度拖拽调整（200–480px），初始值从 localStorage 读取 ──
+  // ── 宽度拖拽调整（200px–min(50vw, 1200px)），初始值从 localStorage 读取 ──
   const [width, setWidth] = useState<number>(() => getSidebarWidth())
   // 拖拽过程中读最新宽度（回调是 memo 过的，闭包里的 width 会过期）
   const widthRef = useRef(width)
@@ -88,6 +91,7 @@ const Sidebar: FunctionalComponent<Props> = ({
   }
 
   const handleSelect = (node: FileNode) => {
+    setNavFocus('tree')
     onSelect(node)
     onClose?.()
   }
@@ -142,7 +146,7 @@ const Sidebar: FunctionalComponent<Props> = ({
               onClick={(e) => { e.stopPropagation(); treeRef.current?.collapseAll() }}
             >⊖</button>
           </div>
-          {treeLoading ? (
+          {treeLoading && showTreeSkeleton ? (
             <div class="tree-skeleton">
               {[0.7, 0.5, 0.85, 0.6, 0.75, 0.45, 0.9, 0.55].map((w, i) => (
                 <div key={i} class="tree-skeleton-row" style={{ paddingLeft: `${8 + (i % 3) * 12}px` }}>
@@ -151,7 +155,7 @@ const Sidebar: FunctionalComponent<Props> = ({
                 </div>
               ))}
             </div>
-          ) : visibleSearchResults && visibleSearchResults.length === 0 && query ? (
+          ) : treeLoading ? null : visibleSearchResults && visibleSearchResults.length === 0 && query ? (
             <div style={{ color: 'var(--text-muted)', fontSize: '13px', padding: '12px 8px', textAlign: 'center' }}>
               无匹配结果
             </div>

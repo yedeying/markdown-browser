@@ -22,6 +22,12 @@ import { rust } from '@codemirror/legacy-modes/mode/rust'
 // 直接交给 StreamLanguage.define 会得到一个没有 token 方法的"解析器"。
 import { standardSQL } from '@codemirror/legacy-modes/mode/sql'
 import { toml } from '@codemirror/legacy-modes/mode/toml'
+import { dockerFile } from '@codemirror/legacy-modes/mode/dockerfile'
+import { ruby } from '@codemirror/legacy-modes/mode/ruby'
+import { perl } from '@codemirror/legacy-modes/mode/perl'
+import { cmake } from '@codemirror/legacy-modes/mode/cmake'
+import { properties } from '@codemirror/legacy-modes/mode/properties'
+import { powerShell } from '@codemirror/legacy-modes/mode/powershell'
 import type { Extension } from '@codemirror/state'
 
 /** getEditorLang 可能返回的全部取值，加上 undefined（按 markdown 处理） */
@@ -39,6 +45,12 @@ export const EDITOR_LANGUAGES = [
   'rust',
   'sql',
   'toml',
+  'dockerfile',
+  'ruby',
+  'perl',
+  'cmake',
+  'properties',
+  'powershell',
   'plaintext',
 ] as const
 
@@ -56,6 +68,12 @@ export function getLangExtension(language?: string): Extension {
     case 'rust':       return StreamLanguage.define(rust)
     case 'sql':        return StreamLanguage.define(standardSQL)
     case 'toml':       return StreamLanguage.define(toml)
+    case 'dockerfile': return StreamLanguage.define(dockerFile)
+    case 'ruby':       return StreamLanguage.define(ruby)
+    case 'perl':       return StreamLanguage.define(perl)
+    case 'cmake':      return StreamLanguage.define(cmake)
+    case 'properties': return StreamLanguage.define(properties)
+    case 'powershell': return StreamLanguage.define(powerShell)
     case 'plaintext':  return []
     default:           return markdown()    // 默认 markdown（含 undefined）
   }

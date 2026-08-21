@@ -1,0 +1,3 @@
+{"event":"login","user":"alice","ts":1700000000}
+{"event":"logout","user":"alice","ts":1700000100}
+not valid json at all

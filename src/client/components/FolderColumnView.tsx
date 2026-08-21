@@ -1,16 +1,44 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import type { FileNode } from '../../types.js'
-import { getFileType, getEditorLang } from '../utils/fileType.js'
+import { getFileType, getEditorLang, isJsonlPath } from '../utils/fileType.js'
 import { useLongPress } from '../hooks/useLongPress.js'
 import MarkdownPreview from './MarkdownPreview.js'
 import Editor from './Editor.js'
+import StChatPreview from './StChatPreview.js'
+import JsonlLinePreview from './JsonlLinePreview.js'
 import { apiFetch, assetUrl } from '../utils/fsApi.js'
 import { filterVisible } from '../utils/hiddenFiles.js'
 import { sortNodes } from '../utils/sortNodes.js'
 import type { SortField, SortOrder } from '../utils/prefs.js'
+import { getPref } from '../utils/prefs.js'
 import { getNodeIconName } from '../utils/nodeIcon.js'
 import Icon from './ui/Icon.js'
+import { parseStJsonl } from '../utils/stJsonl.js'
+import {
+  getNavFocus,
+  isOverlayBlocking,
+  isTypingTarget,
+  normalizeNavKey,
+  scrollNavTarget,
+  setNavFocus,
+  stepIndex,
+  consumeColumnSelectFirst,
+  subscribeColumnSelectFirst,
+  treeNodeTestId,
+} from '../utils/keyboardNav.js'
+import { useDelayedFlag } from '../hooks/useDelayedFlag.js'
+
+function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
+  for (const n of nodes) {
+    if (n.path === path) return n
+    if (n.children) {
+      const hit = findNodeByPath(n.children, path)
+      if (hit) return hit
+    }
+  }
+  return null
+}
 
 interface PreviewState {
   node: FileNode
@@ -46,16 +74,22 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   const [columnStack, setColumnStack] = useState<FileNode[]>([rootNode])
   const [selectedInCol, setSelectedInCol] = useState<Record<number, string>>({})
   const [preview, setPreview] = useState<PreviewState | null>(null)
+  const showPreviewSkeleton = useDelayedFlag(!!preview?.loading, 500)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const rootNodeRef = useRef(rootNode)
+  rootNodeRef.current = rootNode
+  const treeRef = useRef(tree)
+  treeRef.current = tree
+  const showHiddenRef = useRef(showHidden)
+  showHiddenRef.current = showHidden
+  const sortFieldRef = useRef(sortField)
+  sortFieldRef.current = sortField
+  const sortOrderRef = useRef(sortOrder)
+  sortOrderRef.current = sortOrder
 
-  // 根节点切换时重置
-  useEffect(() => {
-    setColumnStack([rootNode])
-    setSelectedInCol({})
-    setPreview(null)
-  }, [rootNode.path])
-
-  const makeLongPress = useLongPress<FileNode>({ onLongPress })
+  /** 用完整 tree 上的节点，避免列内缓存的浅节点没有 children */
+  const resolveFolder = (folder: FileNode): FileNode =>
+    findNodeByPath(treeRef.current, folder.path) ?? folder
 
   // 加载预览内容
   const loadPreview = async (node: FileNode) => {
@@ -75,11 +109,77 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       setPreview({ node, content: null, loading: false, error: String(e) })
     }
   }
+  const loadPreviewRef = useRef(loadPreview)
+  loadPreviewRef.current = loadPreview
+
+  const selectFirstInColumn = () => {
+    const root = rootNodeRef.current
+    const children = sortNodes(
+      filterVisible(root.children || [], showHiddenRef.current),
+      sortFieldRef.current,
+      sortOrderRef.current,
+    )
+    setColumnStack([root])
+    setPreview(null)
+    if (children.length === 0) {
+      setSelectedInCol({})
+      setNavFocus('folder')
+      return
+    }
+    const first = children[0]
+    if (first.type === 'folder') {
+      const fresh = resolveFolder(first)
+      setColumnStack([root, fresh])
+      setSelectedInCol({ 0: first.path })
+      setPreview(null)
+    } else {
+      setSelectedInCol({ 0: first.path })
+      setColumnStack([root])
+      void loadPreviewRef.current(first)
+    }
+    setNavFocus('folder')
+    requestAnimationFrame(() => {
+      scrollNavTarget(document.querySelector(`[data-path="${CSS.escape(first.path)}"]`))
+    })
+  }
+
+  // 根节点切换时重置
+  useEffect(() => {
+    setColumnStack([rootNode])
+    setSelectedInCol({})
+    setPreview(null)
+  }, [rootNode.path])
+
+  // tree 懒加载补全后，刷新各列节点上的 children
+  useEffect(() => {
+    setColumnStack((prev) => prev.map((n) => findNodeByPath(tree, n.path) ?? n))
+  }, [tree])
+
+  // 树 Enter：打开目录后选中第一列第一项
+  useEffect(() => {
+    const trySelect = () => {
+      if (!consumeColumnSelectFirst()) return
+      selectFirstInColumn()
+    }
+    trySelect()
+    return subscribeColumnSelectFirst(trySelect)
+  }, [rootNode.path])
+
+  const makeLongPress = useLongPress<FileNode>({ onLongPress })
 
   const handleRowClick = (node: FileNode, colIndex: number) => {
+    setNavFocus('folder')
     if (node.type === 'folder') {
-      setColumnStack(prev => [...prev.slice(0, colIndex + 1), node])
-      setSelectedInCol(prev => ({ ...prev, [colIndex]: node.path }))
+      const fresh = resolveFolder(node)
+      setColumnStack(prev => [...prev.slice(0, colIndex + 1), fresh])
+      setSelectedInCol(prev => {
+        const next: Record<number, string> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          if (Number(k) < colIndex) next[Number(k)] = v
+        }
+        next[colIndex] = node.path
+        return next
+      })
       setPreview(null)
       setTimeout(() => {
         if (wrapRef.current) {
@@ -87,7 +187,14 @@ const FolderColumnView: FunctionalComponent<Props> = ({
         }
       }, 50)
     } else {
-      setSelectedInCol(prev => ({ ...prev, [colIndex]: node.path }))
+      setSelectedInCol(prev => {
+        const next: Record<number, string> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          if (Number(k) < colIndex) next[Number(k)] = v
+        }
+        next[colIndex] = node.path
+        return next
+      })
       setColumnStack(prev => prev.slice(0, colIndex + 1))
       // 只加载预览，不触发外层跳转
       loadPreview(node)
@@ -100,10 +207,175 @@ const FolderColumnView: FunctionalComponent<Props> = ({
     }
   }
 
+  /** →：进入目录，并把光标落到下一列首项（优先子目录） */
+  const enterFolderSelectingFirst = (folder: FileNode, colIndex: number) => {
+    setNavFocus('folder')
+    const fresh = resolveFolder(folder)
+    const nextChildren = sortNodes(
+      filterVisible(fresh.children || [], showHidden),
+      sortField,
+      sortOrder,
+    )
+    const first = nextChildren.find((n) => n.type === 'folder') ?? nextChildren[0]
+
+    if (first?.type === 'folder') {
+      const firstFresh = resolveFolder(first)
+      setColumnStack((prev) => [...prev.slice(0, colIndex + 1), fresh, firstFresh])
+      setSelectedInCol((prev) => {
+        const next: Record<number, string> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          if (Number(k) < colIndex) next[Number(k)] = v
+        }
+        next[colIndex] = folder.path
+        next[colIndex + 1] = first.path
+        return next
+      })
+      setPreview(null)
+    } else if (first) {
+      setColumnStack((prev) => [...prev.slice(0, colIndex + 1), fresh])
+      setSelectedInCol((prev) => {
+        const next: Record<number, string> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          if (Number(k) < colIndex) next[Number(k)] = v
+        }
+        next[colIndex] = folder.path
+        next[colIndex + 1] = first.path
+        return next
+      })
+      loadPreview(first)
+    } else {
+      setColumnStack((prev) => [...prev.slice(0, colIndex + 1), fresh])
+      setSelectedInCol((prev) => {
+        const next: Record<number, string> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          if (Number(k) < colIndex) next[Number(k)] = v
+        }
+        next[colIndex] = folder.path
+        return next
+      })
+      setPreview(null)
+    }
+
+    setTimeout(() => {
+      if (wrapRef.current) {
+        wrapRef.current.scrollLeft = wrapRef.current.scrollWidth
+      }
+    }, 50)
+
+    if (first) {
+      requestAnimationFrame(() => {
+        scrollNavTarget(document.querySelector(`[data-path="${CSS.escape(first.path)}"]`))
+      })
+    }
+  }
+
+  const onFileSelectRef = useRef(onFileSelect)
+  onFileSelectRef.current = onFileSelect
+
+  // 列视图键盘导航
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (getNavFocus() !== 'folder') return
+      if (isTypingTarget(e.target)) return
+      if (isOverlayBlocking()) return
+      const dir = normalizeNavKey(e)
+      if (!dir) return
+
+      const activeCol = (() => {
+        const keys = Object.keys(selectedInCol).map(Number)
+        if (keys.length === 0) return Math.max(0, columnStack.length - 1)
+        return Math.max(...keys)
+      })()
+      const folderNode = columnStack[activeCol] ?? columnStack[0]
+      if (!folderNode) return
+      const colChildren = sortNodes(
+        filterVisible(folderNode.children || [], showHidden),
+        sortField,
+        sortOrder,
+      )
+      if (colChildren.length === 0 && dir !== 'left') return
+
+      if (dir === 'up' || dir === 'down') {
+        e.preventDefault()
+        const curPath = selectedInCol[activeCol]
+        const curIdx = curPath ? colChildren.findIndex((n) => n.path === curPath) : -1
+        const nextIdx = stepIndex(curIdx, colChildren.length, dir === 'down' ? 1 : -1)
+        if (nextIdx < 0) return
+        const next = colChildren[nextIdx]
+        handleRowClick(next, activeCol)
+        requestAnimationFrame(() => {
+          scrollNavTarget(document.querySelector(`[data-path="${CSS.escape(next.path)}"]`))
+        })
+        return
+      }
+
+      if (dir === 'right' || dir === 'enter') {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        const curPath = selectedInCol[activeCol]
+        const cur = curPath ? colChildren.find((n) => n.path === curPath) : null
+
+        if (dir === 'enter') {
+          if (cur?.type === 'folder') {
+            handleRowClick(cur, activeCol)
+          } else if (cur) {
+            onFileSelectRef.current(cur)
+          }
+          return
+        }
+
+        // → / l：进入选中目录（或当前列第一个目录），并选中下一列首项（优先子目录）
+        const targetFolder =
+          cur?.type === 'folder' ? cur : colChildren.find((n) => n.type === 'folder')
+        if (targetFolder) {
+          enterFolderSelectingFirst(targetFolder, activeCol)
+        }
+        return
+      }
+
+      if (dir === 'left') {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        // 最左列：焦点交回侧栏树，光标停在当前展示目录；清除列视图选中
+        if (activeCol === 0) {
+          const root = rootNodeRef.current
+          setColumnStack([root])
+          setSelectedInCol({})
+          setPreview(null)
+          setNavFocus('tree')
+          onFileSelectRef.current(root)
+          requestAnimationFrame(() => {
+            const sel = root.path
+              ? `[data-testid="${treeNodeTestId(root.path)}"]`
+              : '.sidebar-root-row'
+            scrollNavTarget(document.querySelector(sel))
+          })
+          return
+        }
+        // 非最左列：收回一列，光标回到上一列已选目录
+        const newStack = columnStack.slice(0, activeCol)
+        setColumnStack(newStack)
+        setSelectedInCol((prev) => {
+          const next = { ...prev }
+          for (const k of Object.keys(next).map(Number)) {
+            if (k >= activeCol) delete next[k]
+          }
+          return next
+        })
+        setPreview(null)
+      }
+    }
+
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [columnStack, selectedInCol, showHidden, sortField, sortOrder])
+
+
   const renderPreviewContent = (p: PreviewState) => {
     const ft = getFileType(p.node.name)
 
     if (p.loading) {
+      if (!showPreviewSkeleton) return null
       return (
         <div class="col-preview-placeholder">
           <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>加载中...</span>
@@ -130,6 +402,26 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       )
     }
 
+    // .jsonl：与主预览一致，ST 通过则聊天气泡，否则逐行 JSONL
+    if (isJsonlPath(p.node.name) && p.content !== null) {
+      const parsed = parseStJsonl(p.content)
+      const preferSt = getPref('jsonlPreviewMode') === 'st'
+      return (
+        <div class="col-preview-jsonl" data-testid="col-preview-jsonl">
+          {parsed.ok && preferSt ? (
+            <StChatPreview
+              fileName={p.node.name}
+              messages={parsed.messages}
+              characterName={parsed.characterName}
+              userName={parsed.userName}
+            />
+          ) : (
+            <JsonlLinePreview content={p.content} />
+          )}
+        </div>
+      )
+    }
+
     if (ft === 'markdown' && p.content !== null) {
       return (
         <div class="col-preview-markdown">
@@ -145,7 +437,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
             value={p.content}
             theme={theme}
             readOnly={true}
-            language={getEditorLang(p.node.name)}
+            language={getEditorLang(p.node.name, p.content)}
           />
         </div>
       )
@@ -164,7 +456,10 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   }
 
   return (
-    <div class="folder-columns-outer">
+    <div
+      class="folder-columns-outer"
+      onPointerDown={() => setNavFocus('folder')}
+    >
       {/* 左侧：目录列（固定宽度，横向滚动） */}
       <div class="folder-columns-wrap" ref={wrapRef}>
         {columnStack.map((folderNode, colIndex) => {
@@ -183,6 +478,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
                     <div
                       key={node.path}
                       class={`folder-column-row ${isSelected ? 'active' : ''} ${hasChildren ? 'has-children' : ''}`}
+                      data-path={node.path}
                       onClick={() => handleRowClick(node, colIndex)}
                       onContextMenu={(e) => onContextMenu(node, e as MouseEvent)}
                       {...lpHandlers}

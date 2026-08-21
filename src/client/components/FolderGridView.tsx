@@ -15,6 +15,8 @@ interface Props {
   nodes: FileNode[]
   cardSize: CardSize
   currentPath: string | null
+  /** 键盘焦点（可与当前打开文件不同；网格需 Enter 才打开） */
+  focusPath?: string | null
   onSelect: (node: FileNode) => void
   selectionProps: SelectionProps
   onBgContextMenu?: (e: MouseEvent) => void
@@ -24,6 +26,7 @@ const FolderGridView: FunctionalComponent<Props> = ({
   nodes,
   cardSize,
   currentPath,
+  focusPath = null,
   onSelect,
   selectionProps,
   onBgContextMenu,
@@ -46,6 +49,7 @@ const FolderGridView: FunctionalComponent<Props> = ({
             node={node}
             thumbSize={thumbSize}
             selected={currentPath === node.path}
+            kbFocus={focusPath === node.path}
             onSelect={onSelect}
             selectionProps={selectionProps}
           />

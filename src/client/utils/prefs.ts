@@ -6,11 +6,18 @@ const SORT_KEY = 'vmd_sort'
 const SHOW_HIDDEN_KEY = 'vmd_show_hidden'
 
 export const SIDEBAR_WIDTH_MIN = 200
-export const SIDEBAR_WIDTH_MAX = 480
+export const SIDEBAR_WIDTH_MAX = 1200
 export const SIDEBAR_WIDTH_DEFAULT = 280
 
-export function clampSidebarWidth(width: number): number {
-  return Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, width))
+export function clampSidebarWidth(
+  width: number,
+  viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200,
+): number {
+  const max = Math.min(
+    SIDEBAR_WIDTH_MAX,
+    Math.max(SIDEBAR_WIDTH_MIN, Math.floor(viewportWidth * 0.5)),
+  )
+  return Math.min(max, Math.max(SIDEBAR_WIDTH_MIN, width))
 }
 
 // ── 排序偏好 ──────────────────────────────────────────────
@@ -35,6 +42,7 @@ export type ReadingFontSizePref = 14 | 15 | 16 | 17
 export type ReadingLineHeightPref = 1.55 | 1.7 | 1.9
 export type FolderViewPref = 'list' | 'grid' | 'column'
 export type EditorFontSizePref = 13 | 14 | 15
+export type JsonlPreviewModePref = 'st' | 'jsonl'
 
 export interface PrefValues {
   theme: ThemePref
@@ -48,6 +56,7 @@ export interface PrefValues {
   showHidden: boolean
   editorFontSize: EditorFontSizePref
   sidebarWidth: number
+  jsonlPreviewMode: JsonlPreviewModePref
 }
 
 export type PrefKey = keyof PrefValues
@@ -64,6 +73,7 @@ const STORAGE_KEYS: Record<PrefKey, string> = {
   showHidden: SHOW_HIDDEN_KEY,
   editorFontSize: 'vmd_editor_font_size',
   sidebarWidth: SIDEBAR_WIDTH_KEY,
+  jsonlPreviewMode: 'vmd_jsonl_preview_mode',
 }
 
 const THEME_PREFS: ThemePref[] = ['dark', 'light', 'system']
@@ -73,6 +83,7 @@ const READING_FONT_SIZES: ReadingFontSizePref[] = [14, 15, 16, 17]
 const READING_LINE_HEIGHTS: ReadingLineHeightPref[] = [1.55, 1.7, 1.9]
 const FOLDER_VIEWS: FolderViewPref[] = ['list', 'grid', 'column']
 const EDITOR_FONT_SIZES: EditorFontSizePref[] = [13, 14, 15]
+const JSONL_PREVIEW_MODES: JsonlPreviewModePref[] = ['st', 'jsonl']
 
 const DEFAULTS: PrefValues = {
   theme: 'dark',
@@ -86,6 +97,8 @@ const DEFAULTS: PrefValues = {
   showHidden: false,
   editorFontSize: 14,
   sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
+  // 默认对话气泡：ST 检测通过时优先展示对话，符合设计 §3.1「默认：对话」
+  jsonlPreviewMode: 'st',
 }
 
 type PrefListener<K extends PrefKey> = (value: PrefValues[K]) => void
@@ -164,6 +177,10 @@ function parsePref<K extends PrefKey>(key: K, raw: string | null): PrefValues[K]
       const n = Number(raw)
       return (Number.isFinite(n) && n > 0 ? clampSidebarWidth(n) : DEFAULTS.sidebarWidth) as PrefValues[K]
     }
+    case 'jsonlPreviewMode':
+      return (JSONL_PREVIEW_MODES.includes(raw as JsonlPreviewModePref)
+        ? raw
+        : DEFAULTS.jsonlPreviewMode) as PrefValues[K]
     default:
       return DEFAULTS[key]
   }
@@ -241,7 +258,7 @@ export function getSidebarWidth(): number {
   return getPref('sidebarWidth')
 }
 
-/** 写入前会先 clamp 到 [200, 480]，返回实际写入的值。 */
+/** 写入前会先 clamp 到 [SIDEBAR_WIDTH_MIN, min(50vw, SIDEBAR_WIDTH_MAX)]，返回实际写入的值。 */
 export function setSidebarWidth(width: number): number {
   const clamped = clampSidebarWidth(width)
   setPref('sidebarWidth', clamped)

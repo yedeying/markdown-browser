@@ -142,13 +142,16 @@
 .folder-row {
   padding: 5px 8px;
   margin: 1px 0;
-  border-radius: 4px;
+  /* 左直边：与 inset 强调条对齐，避免左侧圆角切掉色条 */
+  border-radius: 0 4px 4px 0;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 5px;
   font-size: 13px;
   min-height: var(--tree-row-height);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .folder-row:hover {
@@ -189,10 +192,20 @@
   flex-shrink: 0;
   transition: transform 0.15s;
   font-size: 10px;
+  cursor: pointer;
 }
 
 .folder-toggle.expanded {
   transform: rotate(90deg);
+}
+
+.folder-name {
+  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .folder-children {
@@ -241,13 +254,15 @@
 .file-row {
   padding: 6px 10px;
   margin: 1px 0;
-  border-radius: 5px;
+  border-radius: 0 5px 5px 0;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 7px;
   transition: background 0.15s;
   min-height: var(--tree-row-height);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .file-row:hover {
@@ -536,7 +551,7 @@
 .folder-list-row.active { background: var(--active-bg); color: var(--active-text); box-shadow: inset 2px 0 0 var(--accent); }
 .folder-list-row.active .folder-list-type,
 .folder-list-row.active .folder-list-size { color: var(--text-muted); }
-.folder-list-name { flex: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.folder-list-name { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .folder-list-type { width: 80px; font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
 .folder-list-size { width: 60px; font-size: 12px; color: var(--text-muted); text-align: right; flex-shrink: 0; }
 
@@ -547,6 +562,10 @@
 .folder-card:hover { background: var(--hover); }
 .folder-card.active { background: var(--active-bg); border-color: var(--accent); }
 .folder-card.active .folder-card-name { color: var(--active-text); }
+.folder-card.kb-focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .folder-card-thumb { display: flex; align-items: center; justify-content: center; border-radius: 6px; overflow: hidden; background: var(--code-bg); flex-shrink: 0; }
 .folder-card-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .folder-card-icon { color: var(--text-muted); stroke-width: 1.5; }
@@ -628,6 +647,17 @@
 .col-preview-markdown .markdown-body {
   font-size: var(--reading-font-size);
   line-height: var(--reading-line-height);
+}
+.col-preview-jsonl {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  min-height: 0;
+}
+.col-preview-jsonl .st-chat-preview {
+  max-width: 100%;
+  margin-left: 0;
+  margin-right: 0;
 }
 .col-preview-text {
   flex: 1;
@@ -1317,7 +1347,13 @@
   color: var(--on-accent);
   border-color: transparent;
 }
-.btn-primary:hover { opacity: 0.88; }
+/* 必须显式写背景：.btn:hover 会把 background 改成 --th-bg，
+   同优先级下若这里只改 opacity，主色底会被盖掉。 */
+.btn-primary:hover {
+  background: var(--accent-active);
+  color: var(--on-accent);
+  border-color: transparent;
+}
 
 .btn-danger {
   background: none;
@@ -1599,6 +1635,195 @@
 
 .landing-empty h2 { font-size: 18px; margin-bottom: 8px; color: var(--text); }
 .landing-empty p { font-size: 14px; max-width: 480px; margin: 0 auto; line-height: 1.6; }
+
+/* ================================
+   JSONL / SillyTavern 预览
+   ================================ */
+
+/* 「对话 | JSONL」切换：与其它 .btn 分组一致的紧凑分段控件外观 */
+.jsonl-mode-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.jsonl-line-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 100%;
+}
+
+.jsonl-line-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.jsonl-line-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--header-bg);
+  overflow: hidden;
+}
+
+.jsonl-line-card.jsonl-line-error {
+  border-color: var(--danger, #e5484d);
+}
+
+.jsonl-line-num {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--th-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.jsonl-line-card.jsonl-line-error .jsonl-line-num {
+  color: var(--danger, #e5484d);
+}
+
+.jsonl-line-content {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: 'SFMono-Regular', 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+  background: transparent;
+}
+
+.jsonl-line-content .hljs {
+  display: block;
+  padding: 0;
+  background: transparent;
+}
+
+.st-chat-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: var(--reading-width);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.st-chat-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.st-chat-filename {
+  font-weight: 600;
+  color: var(--heading);
+  font-size: 14px;
+}
+
+.st-chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.st-bubble-row {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.st-bubble-row-user,
+.st-bubble-row-char {
+  justify-content: flex-start;
+}
+
+.st-bubble {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: var(--header-bg);
+  border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.st-bubble-row-user .st-bubble {
+  background: var(--st-user-bubble-bg);
+  border-color: var(--border);
+}
+
+.st-bubble-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.st-bubble-name {
+  font-weight: 600;
+  color: var(--heading);
+  font-size: 13px;
+}
+
+.st-bubble-model {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--th-bg);
+  font-family: 'SFMono-Regular', 'SF Mono', Consolas, monospace;
+  font-size: 11px;
+}
+
+.st-bubble-mes.markdown-body,
+.st-bubble-reasoning-body.markdown-body {
+  max-width: 100%;
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+  font-size: 14px;
+}
+
+.st-bubble-mes.markdown-body p:first-child {
+  margin-top: 0;
+}
+
+.st-bubble-mes.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* 思考过程：原生 <details>，默认折叠（不带 open 属性），展开后走同一套 markdown-body 排版 */
+.st-bubble-reasoning {
+  margin-bottom: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  background: var(--th-bg);
+}
+
+.st-bubble-reasoning summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 0;
+  user-select: none;
+}
+
+.st-bubble-reasoning[open] summary {
+  color: var(--accent);
+}
+
+.st-bubble-reasoning-body.markdown-body {
+  padding: 4px 2px 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
 
 /* ================================
    移动端默认行为限制

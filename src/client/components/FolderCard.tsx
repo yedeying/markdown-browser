@@ -13,6 +13,8 @@ interface Props {
   thumbSize: number
   /** 是否为"当前打开文件"（高亮） */
   selected: boolean
+  /** 键盘焦点环（网格导航） */
+  kbFocus?: boolean
   onSelect: (node: FileNode) => void
   selectionProps: SelectionProps
 }
@@ -21,6 +23,7 @@ const FolderCard: FunctionalComponent<Props> = ({
   node,
   thumbSize,
   selected,
+  kbFocus = false,
   onSelect,
   selectionProps,
 }) => {
@@ -55,8 +58,9 @@ const FolderCard: FunctionalComponent<Props> = ({
 
   return (
     <div
-      class={`folder-card ${selected ? 'active' : ''} ${isChecked ? 'selected' : ''}`}
+      class={`folder-card ${selected ? 'active' : ''} ${isChecked ? 'selected' : ''} ${kbFocus ? 'kb-focus' : ''}`}
       style={{ '--thumb-size': `${thumbSize}px` } as Record<string, string>}
+      data-path={node.path}
       onClick={handleClick}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(node, e as MouseEvent) }}
       {...lpHandlers}

@@ -1,0 +1,5 @@
+{"user_name":"Alice","character_name":"Nova","chat_metadata":{}}
+{"name":"Nova","is_user":false,"is_system":false,"send_date":"2024-01-01T00:00:00.000Z","mes":"Hello **traveler**, welcome!","extra":{"model":"test-model","reasoning":"The user just arrived, so greet them warmly and set an inviting tone."}}
+{"name":"Alice","is_user":true,"is_system":false,"send_date":"2024-01-01T00:01:00.000Z","mes":"Hi Nova, glad to be here.","extra":{}}
+{"name":"Nova","is_user":false,"is_system":false,"send_date":"2024-01-01T00:02:00.000Z","mes":"<script>alert(1)</script> How can I help you today?","extra":{}}
+{"name":"Nova","is_user":false,"is_system":false,"send_date":"2024-01-01T00:03:00.000Z","mes":"Careful with this one: [click me](javascript:alert(1)) and here is code: `if (a < b) return c;`","extra":{}}

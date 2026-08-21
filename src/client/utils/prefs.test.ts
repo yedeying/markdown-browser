@@ -10,7 +10,10 @@ import {
   setSort,
   getShowHidden,
   setShowHidden,
+  clampSidebarWidth,
   SIDEBAR_WIDTH_DEFAULT,
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
   type PrefKey,
 } from './prefs.ts'
 
@@ -52,6 +55,7 @@ const ALL_KEYS: PrefKey[] = [
   'showHidden',
   'editorFontSize',
   'sidebarWidth',
+  'jsonlPreviewMode',
 ]
 
 test('getPref returns typed defaults when storage is empty', () => {
@@ -65,6 +69,7 @@ test('getPref returns typed defaults when storage is empty', () => {
   expect(getPref('showHidden')).toBe(false)
   expect(getPref('editorFontSize')).toBe(14)
   expect(getPref('sidebarWidth')).toBe(SIDEBAR_WIDTH_DEFAULT)
+  expect(getPref('jsonlPreviewMode')).toBe('st')
 })
 
 test('getPref validates stored values and falls back to defaults', () => {
@@ -78,6 +83,7 @@ test('getPref validates stored values and falls back to defaults', () => {
   localStorage.setItem('vmd_show_hidden', 'yes')
   localStorage.setItem('vmd_editor_font_size', '20')
   localStorage.setItem('vmd_sidebar_width', '-5')
+  localStorage.setItem('vmd_jsonl_preview_mode', 'bogus')
 
   expect(getPref('theme')).toBe('dark')
   expect(getPref('accent')).toBe('orange')
@@ -89,6 +95,7 @@ test('getPref validates stored values and falls back to defaults', () => {
   expect(getPref('showHidden')).toBe(false)
   expect(getPref('editorFontSize')).toBe(14)
   expect(getPref('sidebarWidth')).toBe(SIDEBAR_WIDTH_DEFAULT)
+  expect(getPref('jsonlPreviewMode')).toBe('st')
 })
 
 test('setPref persists values readable by getPref', () => {
@@ -103,6 +110,7 @@ test('setPref persists values readable by getPref', () => {
   setPref('showHidden', true)
   setPref('editorFontSize', 15)
   setPref('sidebarWidth', 320)
+  setPref('jsonlPreviewMode', 'jsonl')
 
   expect(getPref('theme')).toBe('system')
   expect(getPref('accent')).toBe('blue')
@@ -115,6 +123,7 @@ test('setPref persists values readable by getPref', () => {
   expect(getPref('showHidden')).toBe(true)
   expect(getPref('editorFontSize')).toBe(15)
   expect(getPref('sidebarWidth')).toBe(320)
+  expect(getPref('jsonlPreviewMode')).toBe('jsonl')
 })
 
 test('subscribePref notifies listeners after successful writes for the same key', () => {
@@ -165,6 +174,36 @@ test('resetLocalPrefs deletes only vmd_* localStorage keys', () => {
   expect(localStorage.getItem('vmd_theme')).toBeNull()
   expect(localStorage.getItem('vmd_sort')).toBeNull()
   expect(getPref('theme')).toBe('dark')
+})
+
+test('clampSidebarWidth allows up to half viewport (not capped at legacy 480px)', () => {
+  expect(clampSidebarWidth(800, 1600)).toBe(800)
+  expect(clampSidebarWidth(600, 1400)).toBe(600)
+})
+
+test('clampSidebarWidth caps at half viewport when width exceeds it', () => {
+  expect(clampSidebarWidth(900, 1600)).toBe(800)
+  expect(clampSidebarWidth(1000, 1000)).toBe(500)
+})
+
+test('clampSidebarWidth caps at SIDEBAR_WIDTH_MAX pixel ceiling', () => {
+  expect(clampSidebarWidth(2000, 4000)).toBe(SIDEBAR_WIDTH_MAX)
+})
+
+test('clampSidebarWidth enforces SIDEBAR_WIDTH_MIN', () => {
+  expect(clampSidebarWidth(100, 1600)).toBe(SIDEBAR_WIDTH_MIN)
+})
+
+test('setSidebarWidth persists widths up to half viewport', () => {
+  const prevWindow = globalThis.window
+  ;(globalThis as unknown as { window: { innerWidth: number } }).window = { innerWidth: 1600 }
+  try {
+    expect(setSidebarWidth(800)).toBe(800)
+    expect(getSidebarWidth()).toBe(800)
+    expect(getPref('sidebarWidth')).toBe(800)
+  } finally {
+    ;(globalThis as unknown as { window: typeof prevWindow }).window = prevWindow
+  }
 })
 
 test('legacy wrapper functions stay compatible with the typed store', () => {

@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'preact/hooks'
+import { useRef, useState, useEffect, useCallback, useMemo } from 'preact/hooks'
 import type { FunctionalComponent, ComponentChildren } from 'preact'
 import MarkdownPreview from './MarkdownPreview.js'
 import Editor, { type EditorHandle } from './Editor.js'
@@ -6,7 +6,10 @@ import ImageViewer from './ImageViewer.js'
 import VideoViewer from './VideoViewer.js'
 import TableOfContents from './TableOfContents.js'
 import FolderView, { type ClipboardState } from './FolderView.js'
-import { getFileType, getEditorLang } from '../utils/fileType.js'
+import StChatPreview from './StChatPreview.js'
+import JsonlLinePreview from './JsonlLinePreview.js'
+import { getFileType, getEditorLang, isBinaryContent, isJsonlPath } from '../utils/fileType.js'
+import { parseStJsonl } from '../utils/stJsonl.js'
 import type { FileNode } from '../../types.js'
 import ShareDialog from './ShareDialog.js'
 import { getSharePrefix, downloadUrl } from '../utils/fsApi.js'
@@ -16,6 +19,8 @@ import EmptyState from './ui/EmptyState.js'
 import ExternalUpdateBanner from './ui/ExternalUpdateBanner.js'
 import { showToast } from './ui/Toast.js'
 import { getScroll, setScroll } from '../utils/scrollMemory.js'
+import { usePref } from '../hooks/usePref.js'
+import { useDelayedFlag } from '../hooks/useDelayedFlag.js'
 
 /** 在 tree 中按 path 查找 FileNode */
 function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
@@ -34,6 +39,8 @@ type ViewMode = 'preview' | 'edit' | 'code-only'
 interface Props {
   filePath: string | null
   content: string | null
+  /** content 已对应当前 filePath；缺省时回退为 !loading && content != null（单文件模式） */
+  contentReady?: boolean
   loading: boolean
   error: string | null
   theme: 'dark' | 'light'
@@ -76,6 +83,7 @@ interface Props {
 const ContentArea: FunctionalComponent<Props> = ({
   filePath,
   content,
+  contentReady: contentReadyProp,
   loading,
   error,
   theme,
@@ -104,8 +112,33 @@ const ContentArea: FunctionalComponent<Props> = ({
   const fileType = filePath ? getFileType(filePath) : 'markdown'
   const isMarkdown = fileType === 'markdown'
   const isEditable = fileType === 'markdown' || fileType === 'code' || fileType === 'text'
+  const isJsonl = isJsonlPath(filePath)
+  const contentReady = contentReadyProp ?? (!loading && content !== null)
 
-  const [viewMode, setViewMode] = useState<ViewMode>('preview')
+  // .jsonl 的 ST 识别结果：仅在内容就位时解析一次，供预览分支与「对话 | JSONL」
+  // 切换按钮共用（后者只在识别通过时才显示，见设计 §3.1）。
+  const jsonlParsed = useMemo(
+    () => (isJsonl && contentReady && content ? parseStJsonl(content) : null),
+    [isJsonl, contentReady, content],
+  )
+  const jsonlOk = jsonlParsed?.ok === true
+  const [jsonlPreviewMode, setJsonlPreviewMode] = usePref('jsonlPreviewMode')
+  // 非 ST 文件即使偏好记的是 'st' 也固定回落到逐行 JSONL（设计 §3.1）
+  const effectiveJsonlMode: 'st' | 'jsonl' = jsonlOk && jsonlPreviewMode === 'st' ? 'st' : 'jsonl'
+
+  // 默认视图由文件类型同步决定，避免切到 md/jsonl 时先闪一帧 code-only（raw）
+  const defaultViewMode: ViewMode =
+    (isMarkdown || isJsonl) ? 'preview' : (isEditable ? 'code-only' : 'preview')
+  const [viewModeOverride, setViewModeOverride] = useState<{ path: string; mode: ViewMode } | null>(null)
+  const viewMode: ViewMode =
+    filePath && viewModeOverride?.path === filePath
+      ? viewModeOverride.mode
+      : defaultViewMode
+  const setViewMode = useCallback((mode: ViewMode) => {
+    if (!filePath) return
+    setViewModeOverride({ path: filePath, mode })
+  }, [filePath])
+
   const [editContent, setEditContent] = useState(content || '')
   const [unsaved, setUnsaved] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -122,25 +155,28 @@ const ContentArea: FunctionalComponent<Props> = ({
   // 防止滚动事件互相触发死循环
   const scrollingFrom = useRef<'editor' | 'preview' | null>(null)
 
-  // 文件切换时重置视图模式和滚动；本次会话内若记过该文件的滚动位置，
-  // 内容渲染完成后由下方 effect 恢复（不只是 SSE 重载后才恢复）
+  // 文件切换时重置未保存态与滚动；视图模式由 defaultViewMode 同步决定，不在此异步 set
   useEffect(() => {
     setUnsaved(false)
     setExternalUpdatePending(false)
-    setViewMode(isMarkdown ? 'preview' : (isEditable ? 'code-only' : 'preview'))
+    setEditContent('') // 立刻清空，避免下一文件用 code-only 时闪一帧旧 raw
     if (contentBodyRef.current) {
       contentBodyRef.current.scrollTop = 0
     }
     restoreScrollForRef.current = filePath
   }, [filePath])
 
-  // content 首次加载完成时初始化编辑框（异步加载后才有内容）
-  // 只在 unsaved=false 时同步，避免覆盖用户正在编辑的内容
+  // content 就绪后同步编辑缓冲；未保存时不覆盖
   useEffect(() => {
-    if (content !== null && !unsaved) {
+    if (contentReady && content !== null && !unsaved) {
       setEditContent(content)
     }
-  }, [content])
+  }, [content, contentReady, unsaved])
+
+  // 未保存用本地缓冲；否则直接用已就绪的 content，避免 effect 晚一帧导致 raw 闪烁
+  const editorValue = unsaved
+    ? editContent
+    : (contentReady && content !== null ? content : editContent)
 
   const handleEditorChange = useCallback((value: string) => {
     setEditContent(value)
@@ -259,7 +295,7 @@ const ContentArea: FunctionalComponent<Props> = ({
       return
     }
     // 内容尚未到达，等下一次 content 变化
-    if (content === null) return
+    if (!contentReady) return
     restoreScrollForRef.current = null
     const target = getScroll(pendingPath)
     if (!target) return
@@ -270,7 +306,7 @@ const ContentArea: FunctionalComponent<Props> = ({
       apply()
       requestAnimationFrame(apply)
     })
-  }, [content, filePath])
+  }, [content, contentReady, filePath])
 
   // 预览模式下滚动位置持久化（防抖）。
   // 卸载/切文件时 flush 一次，避免最后 200ms 内的滚动被丢掉。
@@ -446,6 +482,17 @@ const ContentArea: FunctionalComponent<Props> = ({
   const folderChildrenReady = !isFolderView || selectedNode!.children != null
   const displayName = isFolderView ? selectedNode!.name : fileName
 
+  // 骨架延迟半秒：快速加载时不闪一下占位
+  const folderLoadPending = isFolderView && !folderChildrenReady && !folderLoadError
+  const showFolderSkeleton = useDelayedFlag(folderLoadPending, 500)
+  const fileLoadPending =
+    !!filePath &&
+    !isFolderView &&
+    fileType !== 'image' &&
+    fileType !== 'video' &&
+    (loading || !contentReady)
+  const showFileSkeleton = useDelayedFlag(fileLoadPending, 500)
+
   // 文件夹 children 未就绪时触发懒加载（App 侧通常已在 onSelect 时触发，这里作为兜底）
   useEffect(() => {
     if (isFolderView && selectedNode!.children == null && selectedNode!.path) {
@@ -495,7 +542,8 @@ const ContentArea: FunctionalComponent<Props> = ({
             />
           )
         }
-        return <Skeleton variant="folder" />
+        // 延迟半秒再出骨架，避免刚出就上屏导致闪烁
+        return showFolderSkeleton ? <Skeleton variant="folder" /> : null
       }
       return (
         <FolderView
@@ -533,17 +581,20 @@ const ContentArea: FunctionalComponent<Props> = ({
       return <VideoViewer filePath={filePath} />
     }
 
-    // filePath 有值但内容还没加载完（loading 或 content 尚为 null）时显示 skeleton
-    if (loading || content === null) {
-      return (
-        <div class="file-loading">
-          <div class="file-loading-bars">
-            {[0.6, 1, 0.75, 0.9, 0.5, 0.8, 0.65, 0.95, 0.7, 0.55, 0.85, 0.4].map((w, i) => (
-              <div key={i} class="file-loading-line" style={{ width: `${w * 100}%`, animationDelay: `${i * 0.04}s` }} />
-            ))}
+    // filePath 有值但内容尚未对应该路径：延迟半秒再出骨架；更快则空白，绝不渲染旧文件 raw
+    if (fileLoadPending) {
+      if (showFileSkeleton) {
+        return (
+          <div class="file-loading">
+            <div class="file-loading-bars">
+              {[0.6, 1, 0.75, 0.9, 0.5, 0.8, 0.65, 0.95, 0.7, 0.55, 0.85, 0.4].map((w, i) => (
+                <div key={i} class="file-loading-line" style={{ width: `${w * 100}%`, animationDelay: `${i * 0.04}s` }} />
+              ))}
+            </div>
           </div>
-        </div>
-      )
+        )
+      }
+      return null
     }
 
     if (error) {
@@ -551,6 +602,15 @@ const ContentArea: FunctionalComponent<Props> = ({
         <EmptyState
           icon={<Icon name="alert" size={40} aria-hidden="true" />}
           title={`加载失败: ${error}`}
+        />
+      )
+    }
+
+    if (isBinaryContent(content)) {
+      return (
+        <EmptyState
+          icon={<Icon name="ban" size={40} aria-hidden="true" />}
+          title="不支持预览此文件类型"
         />
       )
     }
@@ -571,18 +631,19 @@ const ContentArea: FunctionalComponent<Props> = ({
         <div class="code-only-view">
           <div class="editor-wrapper">
             <Editor
+              key={filePath}
               ref={editorRef}
-              value={editContent}
+              value={editorValue}
               onChange={handleEditorChange}
               theme={theme}
-              language={getEditorLang(filePath)}
+              language={getEditorLang(filePath, content)}
             />
           </div>
         </div>
       )
     }
 
-    // Markdown 预览模式
+    // Markdown / JSONL 预览模式
     if (viewMode === 'preview') {
       return (
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -591,13 +652,27 @@ const ContentArea: FunctionalComponent<Props> = ({
             class="content-body"
             style={{ flex: 1 }}
           >
-            {!content && (
+            {/* 空文件：.jsonl 走自己的空态（逐行预览会显示"空文件"），
+                避免被误判成"未选择文件" */}
+            {!content && !isJsonl && (
               <EmptyState
                 icon={<Icon name="book" size={40} aria-hidden="true" />}
                 title="选择左侧文件进行预览"
               />
             )}
-            {content && (
+            {isJsonl && (
+              effectiveJsonlMode === 'st' && jsonlParsed?.ok
+                ? (
+                  <StChatPreview
+                    fileName={fileName}
+                    messages={jsonlParsed.messages}
+                    characterName={jsonlParsed.characterName}
+                    userName={jsonlParsed.userName}
+                  />
+                )
+                : <JsonlLinePreview content={content || ''} />
+            )}
+            {content && !isJsonl && (
               <MarkdownPreview
                 markdown={content}
                 contentRef={previewContentRef}
@@ -606,7 +681,7 @@ const ContentArea: FunctionalComponent<Props> = ({
               />
             )}
           </div>
-          <TableOfContents contentRef={previewContentRef} />
+          {!isJsonl && <TableOfContents contentRef={previewContentRef} />}
         </div>
       )
     }
@@ -621,8 +696,9 @@ const ContentArea: FunctionalComponent<Props> = ({
           </div>
           <div class="editor-wrapper">
             <Editor
+              key={filePath}
               ref={editorRef}
-              value={editContent}
+              value={editorValue}
               onChange={handleEditorChange}
               theme={theme}
               language="markdown"
@@ -636,7 +712,7 @@ const ContentArea: FunctionalComponent<Props> = ({
           </div>
           <div class="preview-pane" ref={previewPaneRef}>
             <MarkdownPreview
-              markdown={editContent}
+              markdown={editorValue}
               filePath={filePath}
               onCheckboxToggle={onSave ? handleCheckboxToggle : undefined}
             />
@@ -739,6 +815,34 @@ const ContentArea: FunctionalComponent<Props> = ({
                       >编辑</button>
                     </>
                   )}
+                  {isJsonl && filePath && (
+                    <>
+                      <button
+                        class={`btn ${viewMode === 'preview' ? 'active' : ''}`}
+                        onClick={() => setViewMode('preview')}
+                      >预览</button>
+                      <button
+                        class={`btn ${viewMode === 'code-only' ? 'active' : ''}`}
+                        onClick={() => setViewMode('code-only')}
+                        disabled={!content}
+                      >源码</button>
+                    </>
+                  )}
+                  {/* 「对话 | JSONL」切换：仅 ST 识别通过时出现（设计 §3.1） */}
+                  {isJsonl && filePath && viewMode === 'preview' && jsonlOk && (
+                    <div class="jsonl-mode-toggle" data-testid="jsonl-mode-toggle">
+                      <button
+                        class={`btn ${effectiveJsonlMode === 'st' ? 'active' : ''}`}
+                        data-testid="jsonl-mode-st"
+                        onClick={() => setJsonlPreviewMode('st')}
+                      >对话</button>
+                      <button
+                        class={`btn ${effectiveJsonlMode === 'jsonl' ? 'active' : ''}`}
+                        data-testid="jsonl-mode-jsonl"
+                        onClick={() => setJsonlPreviewMode('jsonl')}
+                      >JSONL</button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -776,6 +880,31 @@ const ContentArea: FunctionalComponent<Props> = ({
                             onClick={() => { setViewMode('edit'); setMoreMenuOpen(false) }}
                             disabled={!content}
                           >编辑模式</button>
+                        </>
+                      )}
+                      {isJsonl && (
+                        <>
+                          <button
+                            class={`header-dropdown-item${viewMode === 'preview' ? ' active' : ''}`}
+                            onClick={() => { setViewMode('preview'); setMoreMenuOpen(false) }}
+                          >预览模式</button>
+                          <button
+                            class={`header-dropdown-item${viewMode === 'code-only' ? ' active' : ''}`}
+                            onClick={() => { setViewMode('code-only'); setMoreMenuOpen(false) }}
+                            disabled={!content}
+                          >源码模式</button>
+                          {viewMode === 'preview' && jsonlOk && (
+                            <>
+                              <button
+                                class={`header-dropdown-item${effectiveJsonlMode === 'st' ? ' active' : ''}`}
+                                onClick={() => { setJsonlPreviewMode('st'); setMoreMenuOpen(false) }}
+                              >对话视图</button>
+                              <button
+                                class={`header-dropdown-item${effectiveJsonlMode === 'jsonl' ? ' active' : ''}`}
+                                onClick={() => { setJsonlPreviewMode('jsonl'); setMoreMenuOpen(false) }}
+                              >JSONL 视图</button>
+                            </>
+                          )}
                         </>
                       )}
                     </div>

@@ -9,6 +9,7 @@ import { createAuthMiddleware, createAuthRoutes } from '../auth.js'
 import { ShareStore, createShareApiRoutes, createSharePageRoutes } from '../share.js'
 import { treeCache } from '../tree-cache.js'
 import { hasReservedSegment, isReservedFilename } from '../reserved-files.js'
+import { decodeTextBuffer } from '../decodeText.js'
 
 const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.DS_Store'])
 
@@ -21,15 +22,9 @@ function anyReserved(...paths: Array<string | undefined | null>): boolean {
   return paths.some(p => typeof p === 'string' && hasReservedSegment(p))
 }
 
-const MD_EXTS    = new Set(['.md', '.markdown'])
-const CODE_EXTS  = new Set(['.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.htm', '.py', '.json',
-  '.sh', '.bash', '.zsh', '.yaml', '.yml', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.hpp',
-  '.cs', '.php', '.rb', '.swift', '.kt', '.vue', '.svelte', '.sql', '.toml', '.ini', '.conf', '.env'])
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp'])
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.ogg', '.mov', '.avi'])
-const TEXT_EXTS  = new Set(['.txt', '.log', '.csv', '.tsv', '.xml'])
 const BINARY_EXTS = new Set([...IMAGE_EXTS, ...VIDEO_EXTS])
-const SUPPORTED_EXTS = new Set([...MD_EXTS, ...CODE_EXTS, ...IMAGE_EXTS, ...VIDEO_EXTS, ...TEXT_EXTS])
 
 // 搜索约束
 const GREP_TIMEOUT_MS = 8_000
@@ -89,7 +84,8 @@ function listDir(dir: string, base: string, showHidden: boolean): FileNode[] {
         type: 'folder',
         path: relative(base, fullPath),
       })
-    } else if (stat.isFile() && SUPPORTED_EXTS.has(extname(name).toLowerCase())) {
+    } else if (stat.isFile()) {
+      // 白名单内外都列入树：未知扩展名文件仍需可见，才能按 4.2 的纯文本回落打开。
       files.push({
         name,
         type: 'file',
@@ -127,9 +123,11 @@ function buildTree(scope: string, dir: string, base: string, relPath = '', depth
     if (node.type === 'folder') {
       const childRel = node.path
       const childAbs = join(base, childRel)
+      // 磁盘上是否还有子项（文件或子目录）。递归结果可能把空叶子剪掉，
+      // 但不能因此把「只含空子目录」的父目录也丢掉。
+      const diskChildren = listDirCached(scope, childAbs, base, childRel, showHidden)
       const children = buildTree(scope, childAbs, base, childRel, depth - 1, showHidden)
-      // 与旧行为保持一致：跳过空文件夹
-      if (children.length > 0) {
+      if (children.length > 0 || diskChildren.length > 0) {
         result.push({ ...node, children })
       }
     } else {
@@ -240,8 +238,8 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       if (!realFile.startsWith(realBase)) {
         return c.json({ error: 'Forbidden' }, 403)
       }
-      const content = readFileSync(filePath, 'utf-8')
-      return c.text(content)
+      const buf = readFileSync(filePath)
+      return c.text(decodeTextBuffer(buf))
     } catch {
       return c.json({ error: 'File not found' }, 404)
     }
@@ -327,7 +325,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         ['grep', '-r', '-i', '-n',
           '--exclude-dir=.git', '--exclude-dir=node_modules', '--exclude-dir=dist',
           '--include=*.md', '--include=*.markdown',
-          '--include=*.txt', '--include=*.js', '--include=*.ts',
+          '--include=*.txt', '--include=*.jsonl', '--include=*.js', '--include=*.ts',
           '--include=*.py', '--include=*.json', '--include=*.yaml',
           '--include=*.yml', '--include=*.sh', '--include=*.css',
           '--include=*.html', '--include=*.go', '--include=*.rs',
