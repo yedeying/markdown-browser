@@ -96,6 +96,8 @@ interface Props {
   shareMode?: boolean
   /** 是否显示隐藏文件（点文件），默认隐藏 */
   showHidden?: boolean
+  /** 懒加载文件夹 children（列视图钻入时用） */
+  loadChildren?: (path: string) => void
 }
 
 const FolderView: FunctionalComponent<Props> = ({
@@ -110,6 +112,7 @@ const FolderView: FunctionalComponent<Props> = ({
   onClearClipboard,
   shareMode = false,
   showHidden = false,
+  loadChildren,
 }) => {
   // 分享弹窗
   const [shareTarget, setShareTarget] = useState<FileNode | null>(null)
@@ -797,6 +800,7 @@ const FolderView: FunctionalComponent<Props> = ({
           activeFolderRef={columnActiveFolderRef}
           onActiveFolderChange={handleColumnActiveFolder}
           truncateRequest={columnTruncateRequest}
+          loadChildren={loadChildren}
           theme={theme}
           onContextMenu={handleContextMenu}
           onLongPress={handleLongPress}

@@ -823,6 +823,19 @@
 }
 .folder-column-row.has-children::after { content: '▶'; font-size: 10px; color: var(--text-muted); margin-left: auto; flex-shrink: 0; }
 .folder-column-row.active.has-children::after { color: var(--accent); opacity: 0.8; }
+.folder-column-empty {
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.folder-column-loading {
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.folder-column-loading-quiet {
+  min-height: 40px;
+}
 
 /* Column View 右侧预览面板（flex:1 填满剩余空间） */
 .col-preview-panel {

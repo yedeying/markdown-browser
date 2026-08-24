@@ -17,6 +17,7 @@ export function useFileContent() {
 
   /** 递增世代：快速连点时只让「最后一次」请求落地，避免光标/内容往复 */
   const loadGenRef = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
 
   /** 返回值：是否真的执行了加载（false = 被 self-save 窗口抑制，调用方据此放弃后续动作） */
   const loadFile = useCallback(async (path: string, { ignoreSelfSave = false } = {}): Promise<boolean> => {
@@ -26,6 +27,9 @@ export function useFileContent() {
     }
 
     const gen = ++loadGenRef.current
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
 
     // 实时光标：路径立刻切换，不等网络；过期响应不得回写
     setCurrentPath(path)
@@ -45,7 +49,7 @@ export function useFileContent() {
     const t0 = performance.now()
     clientPerfLog('loadFile:start', { path })
     try {
-      const res = await apiFetch(withHidden(`/api/file/${encodeURI(path)}`))
+      const res = await apiFetch(withHidden(`/api/file/${encodeURI(path)}`), { signal: ac.signal })
       if (gen !== loadGenRef.current) return true
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const text = await res.text()
@@ -56,6 +60,7 @@ export function useFileContent() {
       clientPerfTimed('loadFile:ok', performance.now() - t0, { path, bytes: text.length })
     } catch (e) {
       if (gen !== loadGenRef.current) return true
+      if (e instanceof DOMException && e.name === 'AbortError') return true
       setError(String(e))
       setContent(null)
       setLoadedPath(null)

@@ -149,7 +149,7 @@ test('列视图钻入后切到列表，保持当前子目录而非父目录', as
 })
 
 // ─── T7 列视图点击文件打开预览 ────────────────────────────────────────────────
-test('T7: 列视图 → 点击文件 → 预览内容，退出 FolderView', async ({ page }) => {
+test('T7: 列视图 → 点击文件 → 列内预览，仍留在 FolderView', async ({ page }) => {
   await page.goto('/')
   await page.click('[data-testid="tree-node-notes"]')
   await page.click('[data-testid="view-btn-column"]')
@@ -157,9 +157,10 @@ test('T7: 列视图 → 点击文件 → 预览内容，退出 FolderView', asyn
   // 点击 daily.md
   await page.click('.folder-column-row:has-text("daily.md")')
 
-  // ContentArea 显示 MarkdownPreview
-  await expect(page.locator('[data-testid="markdown-preview"]')).toBeVisible()
-  await expect(page.locator('[data-testid="folder-view"]')).not.toBeVisible()
+  // 列内预览，不离开 FolderView
+  await expect(page.locator('[data-testid="folder-view"]')).toBeVisible()
+  await expect(page.locator('.col-preview-panel')).toBeVisible()
+  await expect(page.locator('.col-preview-panel-title')).toContainText('daily.md')
 })
 
 // ─── T8 面包屑导航 ────────────────────────────────────────────────────────────

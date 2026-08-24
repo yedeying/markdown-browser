@@ -112,6 +112,8 @@ interface Props {
    * 每次请求用递增 token，避免同 path 重复点击无效。
    */
   truncateRequest?: { path: string; token: number } | null
+  /** 懒加载某层 children（列内钻入大目录时用） */
+  loadChildren?: (path: string) => void
   theme: 'dark' | 'light'
   onContextMenu: (node: FileNode, e: MouseEvent) => void
   onLongPress: (node: FileNode) => void
@@ -119,6 +121,73 @@ interface Props {
   showHidden?: boolean
   sortField?: SortField
   sortOrder?: SortOrder
+}
+
+interface ColumnFolderPaneProps {
+  folderNode: FileNode
+  colIndex: number
+  childrenReady: boolean
+  children: FileNode[]
+  selectedPath: string | null
+  onRowClick: (node: FileNode, colIndex: number) => void
+  onContextMenu: (node: FileNode, e: MouseEvent) => void
+  makeLongPress: (node: FileNode) => Record<string, unknown>
+}
+
+/** 单列：children 未就绪时延迟 500ms 显示 loading，避免误显示「空文件夹」 */
+const ColumnFolderPane: FunctionalComponent<ColumnFolderPaneProps> = ({
+  folderNode,
+  colIndex,
+  childrenReady,
+  children,
+  selectedPath,
+  onRowClick,
+  onContextMenu,
+  makeLongPress,
+}) => {
+  const showLoading = useDelayedFlag(!childrenReady, 500)
+
+  return (
+    <div class="folder-column" data-testid="folder-column">
+      <div class="folder-column-header">{folderNode.name}/</div>
+      {!childrenReady ? (
+        showLoading ? (
+          <div class="folder-column-loading" data-testid="folder-column-loading">加载中…</div>
+        ) : (
+          <div class="folder-column-loading folder-column-loading-quiet" aria-hidden="true" />
+        )
+      ) : children.length === 0 ? (
+        <div class="folder-column-empty">空文件夹</div>
+      ) : (
+        children.map((node) => {
+          const isSelected = selectedPath === node.path
+          const hasChildren = node.type === 'folder' && (node.children?.length ?? 0) > 0
+          const lpHandlers = makeLongPress(node)
+          return (
+            <div
+              key={node.path}
+              class={[
+                'folder-column-row',
+                isSelected ? 'active' : '',
+                hasChildren ? 'has-children' : '',
+                node.type === 'file' && isSelected ? 'kb-focus' : '',
+              ].filter(Boolean).join(' ')}
+              data-path={node.path}
+              onClick={() => onRowClick(node, colIndex)}
+              onContextMenu={(e) => onContextMenu(node, e as MouseEvent)}
+              {...lpHandlers}
+              title={node.name}
+            >
+              <Icon name={getNodeIconName(node)} size={14} class="row-icon" aria-hidden="true" />
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {node.name}
+              </span>
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
 }
 
 const FolderColumnView: FunctionalComponent<Props> = ({
@@ -129,6 +198,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   activeFolderRef,
   onActiveFolderChange,
   truncateRequest = null,
+  loadChildren,
   theme,
   onContextMenu,
   onLongPress,
@@ -180,21 +250,27 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   const resolveFolder = (folder: FileNode): FileNode =>
     findNodeByPath(treeRef.current, folder.path) ?? folder
 
-  // 加载预览内容
+  // 加载预览内容（世代号：切换文件后丢弃过期响应）
+  const previewGenRef = useRef(0)
   const loadPreview = async (node: FileNode) => {
+    const gen = ++previewGenRef.current
     const ft = getFileType(node.name)
     // 图片/视频不需要 fetch 内容
     if (ft === 'image' || ft === 'video' || ft === 'unsupported') {
+      if (gen !== previewGenRef.current) return
       setPreview({ node, content: null, loading: false, error: null })
       return
     }
     setPreview({ node, content: null, loading: true, error: null })
     try {
       const res = await apiFetch(`/api/file/${encodeURI(node.path)}`)
+      if (gen !== previewGenRef.current) return
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const text = await res.text()
+      if (gen !== previewGenRef.current) return
       setPreview({ node, content: text, loading: false, error: null })
     } catch (e) {
+      if (gen !== previewGenRef.current) return
       setPreview({ node, content: null, loading: false, error: String(e) })
     }
   }
@@ -234,6 +310,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
 
   // 根节点切换时重置
   useEffect(() => {
+    previewGenRef.current++
     setColumnStack([rootNode])
     setSelectedInCol({})
     setPreview(null)
@@ -243,6 +320,16 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   useEffect(() => {
     setColumnStack((prev) => prev.map((n) => findNodeByPath(tree, n.path) ?? n))
   }, [tree])
+
+  // 列内目录尚未拉过 children：触发懒加载
+  useEffect(() => {
+    if (!loadChildren) return
+    for (const folder of columnStack) {
+      if (folder.children == null) {
+        loadChildren(folder.path)
+      }
+    }
+  }, [columnStack, loadChildren, tree])
 
   // 树 Enter：打开目录后选中第一列第一项
   useEffect(() => {
@@ -271,6 +358,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       })
       setPreview(null)
       setPreviewFocus(false)
+      previewGenRef.current++
       setTimeout(() => {
         if (wrapRef.current) {
           wrapRef.current.scrollLeft = wrapRef.current.scrollWidth
@@ -587,41 +675,22 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       {/* 左侧：目录列（固定宽度，横向滚动） */}
       <div class="folder-columns-wrap" ref={wrapRef}>
         {columnStack.map((folderNode, colIndex) => {
-          const children = sortNodes(filterVisible(folderNode.children || [], showHidden), sortField, sortOrder)
+          const childrenReady = folderNode.children != null
+          const children = childrenReady
+            ? sortNodes(filterVisible(folderNode.children || [], showHidden), sortField, sortOrder)
+            : []
           return (
-            <div key={`${folderNode.path}-${colIndex}`} class="folder-column">
-              <div class="folder-column-header">{folderNode.name}/</div>
-              {children.length === 0 ? (
-                <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: '13px' }}>空文件夹</div>
-              ) : (
-                children.map(node => {
-                  const isSelected = selectedInCol[colIndex] === node.path
-                  const hasChildren = node.type === 'folder' && (node.children?.length ?? 0) > 0
-                  const lpHandlers = makeLongPress(node)
-                  return (
-                    <div
-                      key={node.path}
-                      class={[
-                        'folder-column-row',
-                        isSelected ? 'active' : '',
-                        hasChildren ? 'has-children' : '',
-                        node.type === 'file' && isSelected ? 'kb-focus' : '',
-                      ].filter(Boolean).join(' ')}
-                      data-path={node.path}
-                      onClick={() => handleRowClick(node, colIndex)}
-                      onContextMenu={(e) => onContextMenu(node, e as MouseEvent)}
-                      {...lpHandlers}
-                      title={node.name}
-                    >
-                      <Icon name={getNodeIconName(node)} size={14} class="row-icon" aria-hidden="true" />
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {node.name}
-                      </span>
-                    </div>
-                  )
-                })
-              )}
-            </div>
+            <ColumnFolderPane
+              key={`${folderNode.path}-${colIndex}`}
+              folderNode={folderNode}
+              colIndex={colIndex}
+              childrenReady={childrenReady}
+              children={children}
+              selectedPath={selectedInCol[colIndex] ?? null}
+              onRowClick={handleRowClick}
+              onContextMenu={onContextMenu}
+              makeLongPress={makeLongPress}
+            />
           )
         })}
       </div>

@@ -229,7 +229,13 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
 
   const watchConnected = useSSE(watchUrl(), handleSSEEvent)
 
+  const dirName = window.__VMD_DIR_NAME__ || 'Markdown Browser'
+  const deepLinkDoneRef = useRef(false)
+  /** 导航世代：深链异步完成前若用户已点别处，丢弃过期 setSelectedNode */
+  const navGenRef = useRef(0)
+
   const handleSelect = useCallback((node: FileNode, fromSwipe = false) => {
+    navGenRef.current++
     setSelectedNode(node)
     // path='' 是根节点
     const url = buildUrl(node.path)
@@ -302,9 +308,6 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     }
   }, [handleSwipeBack, handleSwipeForward])
 
-  const dirName = window.__VMD_DIR_NAME__ || 'Markdown Browser'
-  const deepLinkDoneRef = useRef(false)
-
   // 页面初始加载：从 URL pathname 恢复文件或文件夹
   useEffect(() => {
     if (tree.length === 0) return
@@ -314,19 +317,23 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     if (!path) return
 
     deepLinkDoneRef.current = true
+    const gen = ++navGenRef.current
 
     void (async () => {
       const existing = findNodeByPath(tree, path)
       if (existing) {
+        if (gen !== navGenRef.current) return
         clientPerfLog('deepLink:hit', { path, type: existing.type, treeReady: tree.length })
         setSelectedNode(existing)
         if (existing.type === 'file') selectFile(path)
         else if (existing.type === 'folder') await loadChildren(path)
+        if (gen !== navGenRef.current) return
         window.history.replaceState({ path, isFolder: existing.type === 'folder' }, '', buildUrl(path))
         return
       }
 
       const stat = await fetchPathStat(path)
+      if (gen !== navGenRef.current) return
       if (!stat) {
         clientPerfLog('deepLink:stat-miss', { path })
         setSelectedNode({ name: path.split('/').pop() || path, type: 'file', path })
@@ -338,10 +345,12 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
       clientPerfLog('deepLink:stat', { path, type: stat.type })
       if (stat.type === 'folder') {
         await ensurePathLoaded(path, true)
+        if (gen !== navGenRef.current) return
         setSelectedNode({ name: stat.name, type: 'folder', path })
         window.history.replaceState({ path, isFolder: true }, '', buildUrl(path))
       } else {
         await ensurePathLoaded(path, false)
+        if (gen !== navGenRef.current) return
         setSelectedNode({ name: stat.name, type: 'file', path })
         selectFile(path)
         window.history.replaceState({ path, isFolder: false }, '', buildUrl(path))
@@ -349,7 +358,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     })()
   }, [tree.length > 0 ? 'loaded' : 'empty'])
 
-  // tree 变化时同步 selectedNode
+  // tree 变化时同步 selectedNode（仅刷新当前 URL 对应节点的 children 等；
+  // 深链/点击导航的世代由 navGen 保护，避免过期异步写回）
   useEffect(() => {
     if (tree.length === 0) return
     const path = stripPrefix(window.location.pathname)
@@ -361,7 +371,6 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
 
     const node = findNodeByPath(tree, path)
     if (node?.type === 'folder') {
-      clientPerfLog('deepLink:tree-sync-folder', { path })
       setSelectedNode(node)
     } else if (node?.type === 'file') {
       setSelectedNode(node)

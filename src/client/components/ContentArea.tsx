@@ -590,6 +590,7 @@ const ContentArea: FunctionalComponent<Props> = ({
           onClearClipboard={onClearClipboard}
           shareMode={isShareMode}
           showHidden={showHidden}
+          loadChildren={loadChildren}
         />
       )
     }
