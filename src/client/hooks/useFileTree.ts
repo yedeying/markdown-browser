@@ -53,12 +53,23 @@ export function useFileTree(showHidden = false) {
 
   /**
    * 加载指定路径下一层并合并到 tree；已加载过则不重复。
-   * force=true 用于失败后的手动重试。
+   * force=true 用于 mkdir/touch/失败重试：不复用可能过期的 inflight，必须重新拉取。
    */
   const loadChildren = useCallback(async (path: string, force = false) => {
     if (!force && loadedRef.current.has(path)) return
-    const existing = inflightRef.current.get(path)
-    if (existing) return existing
+
+    if (force) {
+      const stale = inflightRef.current.get(path)
+      if (stale) {
+        try { await stale } catch { /* ignore */ }
+      }
+      // 等待期间若已有新的 force 在飞，直接并入
+      const again = inflightRef.current.get(path)
+      if (again) return again
+    } else {
+      const existing = inflightRef.current.get(path)
+      if (existing) return existing
+    }
 
     const promise = (async () => {
       const t0 = performance.now()

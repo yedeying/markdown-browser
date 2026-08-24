@@ -26,6 +26,22 @@ const SAMPLES: Record<string, string> = {
   cmake: 'cmake_minimum_required(VERSION 3.10)\nproject(demo)\n',
   properties: 'foo=bar\nbaz=qux\n',
   powershell: 'Write-Host "hi"\n',
+  c: 'int main(void) {\n  return 0;\n}\n',
+  cpp: '#include <iostream>\nint main() {\n  return 0;\n}\n',
+  java: 'class Main {\n  public static void main(String[] a) {}\n}\n',
+  csharp: 'class Program {\n  static void Main() {}\n}\n',
+  kotlin: 'fun main() {\n  println("hi")\n}\n',
+  scala: 'object Main {\n  def main(args: Array[String]): Unit = {}\n}\n',
+  objectivec: '#import <Foundation/Foundation.h>\nint main() { return 0; }\n',
+  objectivecpp: '#include <iostream>\nint main() { return 0; }\n',
+  dart: 'void main() {\n  print("hi");\n}\n',
+  swift: 'print("hi")\n',
+  lua: 'print("hi")\n',
+  r: 'print("hi")\n',
+  haskell: 'main = putStrLn "hi"\n',
+  groovy: 'println "hi"\n',
+  clojure: '(println "hi")\n',
+  sass: '.a\n  color: red\n',
   plaintext: 'just text\nsecond line\n',
 }
 
@@ -49,9 +65,12 @@ test('every extension getEditorLang maps to has a working highlighter', () => {
   // getEditorLang 是唯一给 Editor 传 language 的地方；它能产出的取值
   // 必须都在 EDITOR_LANGUAGES 里，否则新增扩展名会绕过上面的用例
   const produced = new Set(
-    ['a.js', 'a.jsx', 'a.ts', 'a.tsx', 'a.css', 'a.html', 'a.htm', 'a.vue', 'a.svelte',
-      'a.json', 'a.sh', 'a.bash', 'a.zsh', 'a.yaml', 'a.yml', 'a.py', 'a.go', 'a.rs',
-      'a.sql', 'a.toml', 'a.ini', 'a.md', 'a.unknownext', 'a.rb', 'a.dockerfile',
+    ['a.js', 'a.jsx', 'a.mjs', 'a.ts', 'a.tsx', 'a.css', 'a.scss', 'a.html', 'a.htm', 'a.vue', 'a.svelte',
+      'a.json', 'a.sh', 'a.bash', 'a.zsh', 'a.ps1', 'a.yaml', 'a.yml', 'a.py', 'a.go', 'a.rs',
+      'a.sql', 'a.toml', 'a.ini', 'a.conf', 'a.md', 'a.unknownext', 'a.rb', 'a.dockerfile',
+      'a.c', 'a.h', 'a.cpp', 'a.cc', 'a.cxx', 'a.hpp', 'a.hh', 'a.m', 'a.mm',
+      'a.java', 'a.cs', 'a.kt', 'a.kts', 'a.scala', 'a.swift', 'a.dart', 'a.lua', 'a.r',
+      'a.hs', 'a.groovy', 'a.clj', 'a.php', 'a.xml',
       'Dockerfile', 'Makefile', 'Gemfile', 'CMakeLists.txt', '.editorconfig']
       .map((p) => getEditorLang(p)),
   )

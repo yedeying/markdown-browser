@@ -31,7 +31,7 @@ const FolderCard: FunctionalComponent<Props> = ({
     selectedPaths,
     selectionMode,
     onToggleSelect,
-    onEnterSelectionMode,
+    onClearSelection,
     onContextMenu,
     onLongPress,
   } = selectionProps
@@ -45,14 +45,12 @@ const FolderCard: FunctionalComponent<Props> = ({
   const lpHandlers = makeLongPress(node)
 
   const handleClick = (e: MouseEvent) => {
-    if (selectionMode) {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
       onToggleSelect(node.path, e)
       return
     }
-    if (e.ctrlKey || e.metaKey) {
-      onEnterSelectionMode(node.path)
-      return
-    }
+    // 普通点击：退出多选并打开
+    if (selectionMode) onClearSelection()
     onSelect(node)
   }
 
@@ -66,7 +64,7 @@ const FolderCard: FunctionalComponent<Props> = ({
       {...lpHandlers}
       title={node.name}
     >
-      {/* Checkbox 角标（选择模式或 hover 时显示） */}
+      {/* Checkbox：点选切换，不打开 */}
       <div
         class={`card-checkbox-wrap ${isChecked ? 'checked' : ''}`}
         onClick={(e) => { e.stopPropagation(); onToggleSelect(node.path, e as MouseEvent) }}

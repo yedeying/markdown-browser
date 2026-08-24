@@ -1,3 +1,4 @@
+import { useRef } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import type { FileNode } from '../../types.js'
 import { useLongPress } from '../hooks/useLongPress.js'
@@ -6,6 +7,7 @@ import { getNodeIconName } from '../utils/nodeIcon.js'
 import type { SortField, SortOrder } from '../utils/prefs.js'
 import type { SelectionProps } from './FolderView.js'
 import Icon from './ui/Icon.js'
+import { useMarqueeSelect } from '../hooks/useMarqueeSelect.js'
 
 interface Props {
   /** 已按 sortField/sortOrder 排序、按 showHidden 过滤过的节点（由 FolderView 统一处理） */
@@ -13,8 +15,9 @@ interface Props {
   currentPath: string | null
   onSelect: (node: FileNode) => void
   selectionProps: SelectionProps
-  /** 空白区域右键（以当前文件夹为目标）*/
+  /** 空白区域右键（无目标：新建/粘贴） */
   onBgContextMenu?: (e: MouseEvent) => void
+  onMarqueeSelect?: (paths: string[], additive: boolean) => void
   sortField: SortField
   sortOrder: SortOrder
   onSortChange: (field: SortField) => void
@@ -26,6 +29,7 @@ const FolderListView: FunctionalComponent<Props> = ({
   onSelect,
   selectionProps,
   onBgContextMenu,
+  onMarqueeSelect,
   sortField,
   sortOrder,
   onSortChange,
@@ -34,10 +38,16 @@ const FolderListView: FunctionalComponent<Props> = ({
     selectedPaths,
     selectionMode,
     onToggleSelect,
-    onEnterSelectionMode,
+    onClearSelection,
     onContextMenu,
     onLongPress,
   } = selectionProps
+
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const marquee = useMarqueeSelect(wrapRef, {
+    enabled: !!onMarqueeSelect,
+    onSelect: (paths, additive) => onMarqueeSelect?.(paths, additive),
+  })
 
   const makeLongPress = useLongPress<FileNode>({ onLongPress })
 
@@ -47,17 +57,11 @@ const FolderListView: FunctionalComponent<Props> = ({
   }
 
   const handleRowClick = (node: FileNode, e: MouseEvent) => {
-    if (selectionMode) {
-      // 选择模式下：任何点击都切换选中
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
       onToggleSelect(node.path, e)
       return
     }
-    if (e.ctrlKey || e.metaKey) {
-      // Ctrl/Cmd 点击：进入选择模式并切换
-      onEnterSelectionMode(node.path)
-      return
-    }
-    // 普通点击：打开文件/文件夹
+    if (selectionMode) onClearSelection()
     onSelect(node)
   }
 
@@ -65,14 +69,16 @@ const FolderListView: FunctionalComponent<Props> = ({
     <div
       class="folder-list"
       data-testid="folder-list"
+      ref={wrapRef}
       onContextMenu={(e) => {
-        // 只处理点在容器空白处的右键（行上的右键由行自己处理并 stopPropagation）
         onBgContextMenu?.(e as MouseEvent)
       }}
     >
       {/* 表头 */}
-      <div class={`folder-list-th ${selectionMode ? 'has-checkbox' : ''}`}>
-        {selectionMode && <div class="folder-list-th-col folder-list-checkbox-col" />}
+      <div class={`folder-list-th ${selectionMode || selectedPaths.size > 0 ? 'has-checkbox' : ''}`}>
+        {(selectionMode || selectedPaths.size > 0) && (
+          <div class="folder-list-th-col folder-list-checkbox-col" />
+        )}
         <div
           class={`folder-list-th-col folder-list-name ${sortField === 'name' ? 'sorted' : ''}`}
           style={{ cursor: 'pointer' }}
@@ -99,22 +105,21 @@ const FolderListView: FunctionalComponent<Props> = ({
         </div>
       </div>
 
-      {/* 行（已由 FolderView 按 sortField/sortOrder 排序） */}
       {nodes.map(node => {
         const isSelected = selectedPaths.has(node.path)
         const lpHandlers = makeLongPress(node)
+        const showCb = selectionMode || selectedPaths.size > 0
         return (
           <div
             key={node.path}
-            class={`folder-list-row ${currentPath === node.path ? 'active' : ''} ${isSelected ? 'selected' : ''} ${selectionMode ? 'has-checkbox' : ''}`}
+            class={`folder-list-row ${currentPath === node.path ? 'active' : ''} ${isSelected ? 'selected' : ''} ${showCb ? 'has-checkbox' : ''}`}
             data-path={node.path}
             onClick={(e) => handleRowClick(node, e as MouseEvent)}
             onContextMenu={(e) => { e.stopPropagation(); onContextMenu(node, e as MouseEvent) }}
             {...lpHandlers}
             title={node.name}
           >
-            {/* Checkbox（选择模式时显示） */}
-            {selectionMode && (
+            {showCb && (
               <div class="row-checkbox" onClick={(e) => { e.stopPropagation(); onToggleSelect(node.path, e as MouseEvent) }}>
                 <input
                   type="checkbox"
@@ -130,6 +135,17 @@ const FolderListView: FunctionalComponent<Props> = ({
           </div>
         )
       })}
+      {marquee && (
+        <div
+          class="selection-marquee"
+          style={{
+            left: `${marquee.left}px`,
+            top: `${marquee.top}px`,
+            width: `${marquee.width}px`,
+            height: `${marquee.height}px`,
+          }}
+        />
+      )}
     </div>
   )
 }

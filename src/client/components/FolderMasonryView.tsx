@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks'
+import { useRef, useState } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import type { FileNode } from '../../types.js'
 import { getFileType } from '../utils/fileType.js'
@@ -7,6 +7,7 @@ import type { SelectionProps } from './FolderView.js'
 import { assetUrl } from '../utils/fsApi.js'
 import { getNodeIconName } from '../utils/nodeIcon.js'
 import Icon from './ui/Icon.js'
+import { useMarqueeSelect } from '../hooks/useMarqueeSelect.js'
 
 interface Props {
   nodes: FileNode[]
@@ -15,6 +16,7 @@ interface Props {
   onSelect: (node: FileNode) => void
   selectionProps: SelectionProps
   onBgContextMenu?: (e: MouseEvent) => void
+  onMarqueeSelect?: (paths: string[], additive: boolean) => void
 }
 
 interface TileProps {
@@ -39,7 +41,7 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
     selectedPaths,
     selectionMode,
     onToggleSelect,
-    onEnterSelectionMode,
+    onClearSelection,
     onContextMenu,
     onLongPress,
   } = selectionProps
@@ -58,14 +60,11 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
   const lpHandlers = makeLongPress(node)
 
   const handleClick = (e: MouseEvent) => {
-    if (selectionMode) {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
       onToggleSelect(node.path, e)
       return
     }
-    if (e.ctrlKey || e.metaKey) {
-      onEnterSelectionMode(node.path)
-      return
-    }
+    if (selectionMode) onClearSelection()
     onSelect(node)
   }
 
@@ -132,10 +131,18 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
   onSelect,
   selectionProps,
   onBgContextMenu,
+  onMarqueeSelect,
 }) => {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const marquee = useMarqueeSelect(wrapRef, {
+    enabled: !!onMarqueeSelect,
+    onSelect: (paths, additive) => onMarqueeSelect?.(paths, additive),
+  })
+
   return (
     <div
       class="folder-masonry-wrap"
+      ref={wrapRef}
       onContextMenu={(e) => onBgContextMenu?.(e as MouseEvent)}
     >
       <div class="folder-masonry" data-testid="folder-masonry">
@@ -150,6 +157,17 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
           />
         ))}
       </div>
+      {marquee && (
+        <div
+          class="selection-marquee"
+          style={{
+            left: `${marquee.left}px`,
+            top: `${marquee.top}px`,
+            width: `${marquee.width}px`,
+            height: `${marquee.height}px`,
+          }}
+        />
+      )}
     </div>
   )
 }

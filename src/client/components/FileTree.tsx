@@ -11,6 +11,7 @@ import {
   isTypingTarget,
   getNavFocus,
   normalizeNavKey,
+  parentPath,
   requestColumnSelectFirst,
   scrollNavTarget,
   setNavFocus,
@@ -106,6 +107,8 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
   expandedRef.current = expanded
   const onExpandRef = useRef(onExpand)
   onExpandRef.current = onExpand
+  /** ← 折叠后禁止 auto-expand 立刻加回 */
+  const recentlyCollapsedRef = useRef<Set<string>>(new Set())
 
   const moveCursorLocal = useCallback((path: string) => {
     pendingCursorRef.current = path
@@ -147,6 +150,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
     if (!expanding) {
       next.delete(node.path)
     } else {
+      recentlyCollapsedRef.current.delete(node.path)
       for (const p of collectCompactPaths(node)) {
         next.add(p)
       }
@@ -162,6 +166,19 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
     }
   }, [onToggleFolderProp, applyExpanded])
 
+  /** 仅折叠（已折叠则 noop）；记录 suppress 防止 auto-expand 立刻加回 */
+  const collapseFolder = useCallback((node: FileNode) => {
+    if (!expandedRef.current.has(node.path)) return
+    recentlyCollapsedRef.current.add(node.path)
+    if (onToggleFolderProp) {
+      onToggleFolderProp(node)
+      return
+    }
+    const next = new Set(expandedRef.current)
+    next.delete(node.path)
+    applyExpanded(next)
+  }, [onToggleFolderProp, applyExpanded])
+
   useImperativeHandle(ref, () => ({
     collapseAll: () => {
       applyExpanded(new Set())
@@ -169,19 +186,27 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
   }))
 
   // 当前文件变化时自动展开父目录（不展开当前选中的目录本身）
+  // 仅在「钻入更深路径」时补齐祖先；从子项回到父级时不跑，避免抵消 ← 折叠
+  const prevAutoExpandPathRef = useRef<string | null>(null)
   useEffect(() => {
     if (level !== 0) return
+    const prev = prevAutoExpandPathRef.current
+    prevAutoExpandPathRef.current = currentPath
+
     if (!currentPath) return
     const parts = currentPath.split('/')
     if (parts.length <= 1) return
 
-    const prev = expandedRef.current
-    const next = new Set(prev)
+    // 上移或同路径：不强制展开（否则会把 ← 刚折叠的目录立刻加回）
+    if (prev && (prev === currentPath || prev.startsWith(currentPath + '/'))) return
+
+    const next = new Set(expandedRef.current)
     let changed = false
     let path = ''
     const toLoad: string[] = []
     for (let i = 0; i < parts.length - 1; i++) {
       path = path ? `${path}/${parts[i]}` : parts[i]
+      if (recentlyCollapsedRef.current.has(path)) continue
       if (!next.has(path)) {
         next.add(path)
         toLoad.push(path)
@@ -254,10 +279,60 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
       if (curIdx < 0) return
       const cur = visible[curIdx]
 
-      // ← / h：目录树禁用
+      // ← / h：折叠当前子目录并回到父级（同一次按键，不慢一拍）
+      // - 光标在已展开目录上：跳父级并折叠自身
+      // - 光标在子项上：跳到父目录并立刻折叠父目录
+      // 注意：必须先 onSelect 再 collapse，否则 currentPath 仍指向子路径时
+      // auto-expand effect 会把刚折叠的父目录立刻加回来（表现为慢一拍）。
       if (dir === 'left') {
         e.preventDefault()
         e.stopImmediatePropagation()
+        setNavFocus('tree')
+
+        const goRoot = () => {
+          const root: FileNode = {
+            name: window.__VMD_DIR_NAME__ || '文件库',
+            type: 'folder',
+            path: '',
+            children: nodesRef.current,
+          }
+          moveCursor('')
+          onSelect(root)
+          requestAnimationFrame(() => {
+            scrollNavTarget(document.querySelector('.sidebar-root-row'))
+          })
+        }
+        const goNode = (node: FileNode) => {
+          moveCursor(node.path)
+          onSelect(node)
+          requestAnimationFrame(() => {
+            scrollNavTarget(document.querySelector(`[data-testid="${treeNodeTestId(node.path)}"]`))
+          })
+        }
+
+        const parent = parentPath(cur.path)
+        if (cur.type === 'folder' && expandedRef.current.has(cur.path)) {
+          const toCollapse = cur
+          if (parent === null) return
+          if (parent === '') goRoot()
+          else {
+            const parentNode = findNodeByPath(nodesRef.current, parent)
+            if (parentNode) goNode(parentNode)
+          }
+          collapseFolder(toCollapse)
+          return
+        }
+
+        // 子项 / 已折叠目录：先回到父级，再折叠父级
+        if (parent === null) return
+        if (parent === '') {
+          goRoot()
+          return
+        }
+        const parentNode = findNodeByPath(nodesRef.current, parent)
+        if (!parentNode) return
+        goNode(parentNode)
+        if (parentNode.type === 'folder') collapseFolder(parentNode)
         return
       }
 
@@ -281,7 +356,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
 
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
-  }, [level, mobileMode, searchResults, onSelect, toggleFolder, moveCursor])
+  }, [level, mobileMode, searchResults, onSelect, toggleFolder, collapseFolder, moveCursor])
 
   const matchPaths = searchResults
     ? new Set(searchResults.map(r => r.filePath))

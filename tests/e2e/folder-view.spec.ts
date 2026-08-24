@@ -261,3 +261,21 @@ test('T12: 空文件夹显示空状态', async ({ page }) => {
   await expect(page.locator('[data-testid="folder-empty"]')).toBeVisible()
   await expect(page.locator('[data-testid="folder-empty"]')).toContainText('空')
 })
+
+// ─── mkdir 后空文件夹应出现在列表 ─────────────────────────────────────────────
+test('mkdir in empty folder shows new folder without reload', async ({ page }) => {
+  await page.goto('/')
+  await page.click('[data-testid="tree-node-empty-folder"]')
+  await expect(page.locator('[data-testid="folder-empty"]')).toBeVisible()
+
+  await page.getByTitle('新建文件夹').click()
+  const input = page.locator('.modal-input')
+  await expect(input).toBeVisible()
+  await input.fill('brand-new-dir')
+  await page.locator('.modal-box .btn-primary').click()
+
+  await expect(page.locator('[data-testid="folder-empty"]')).toHaveCount(0)
+  await expect(
+    page.locator('[data-path="empty-folder/brand-new-dir"], .folder-card:has-text("brand-new-dir"), .folder-list-row:has-text("brand-new-dir")').first(),
+  ).toBeVisible()
+})

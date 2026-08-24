@@ -28,6 +28,10 @@ export interface EditorHandle {
 const Editor = forwardRef<EditorHandle, Props>(({ value, onChange, theme, readOnly, language }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  /** 正在把外部 value 写入 CM，避免再触发 onChange → 回写打架 */
+  const applyingExternalRef = useRef(false)
 
   useImperativeHandle(ref, () => ({
     selectAll: () => {
@@ -66,12 +70,12 @@ const Editor = forwardRef<EditorHandle, Props>(({ value, onChange, theme, readOn
           changes: { from: 0, to: view.state.doc.length, insert: result },
           selection: { anchor: Math.min(cursor, result.length) }
         })
-        onChange?.(result)
+        onChangeRef.current?.(result)
       }
     } catch {
       // prettier format failed, ignore
     }
-  }, [onChange, readOnly, isMarkdown])
+  }, [readOnly, isMarkdown])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -93,8 +97,8 @@ const Editor = forwardRef<EditorHandle, Props>(({ value, onChange, theme, readOn
         },
       }),
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-          onChange?.(update.state.doc.toString())
+        if (update.docChanged && !applyingExternalRef.current) {
+          onChangeRef.current?.(update.state.doc.toString())
         }
       }),
       EditorView.domEventHandlers({
@@ -125,18 +129,19 @@ const Editor = forwardRef<EditorHandle, Props>(({ value, onChange, theme, readOn
       view.destroy()
       viewRef.current = null
     }
-  }, [theme, language]) // theme 或 language 变化时重建编辑器
+  }, [theme, language, formatWithPrettier, readOnly]) // theme / language / readOnly 变化时重建；不含 value/onChange
 
-  // value 变化时更新内容（切换文件）
+  // 外部 value 变化时更新内容（切换文件 / 静默重载）；输入本身不走这里
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
     const current = view.state.doc.toString()
-    if (current !== value) {
-      view.dispatch({
-        changes: { from: 0, to: current.length, insert: value }
-      })
-    }
+    if (current === value) return
+    applyingExternalRef.current = true
+    view.dispatch({
+      changes: { from: 0, to: current.length, insert: value },
+    })
+    applyingExternalRef.current = false
   }, [value])
 
   return (

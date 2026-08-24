@@ -28,6 +28,16 @@ import { perl } from '@codemirror/legacy-modes/mode/perl'
 import { cmake } from '@codemirror/legacy-modes/mode/cmake'
 import { properties } from '@codemirror/legacy-modes/mode/properties'
 import { powerShell } from '@codemirror/legacy-modes/mode/powershell'
+import {
+  c, cpp, java, csharp, kotlin, scala, objectiveC, objectiveCpp, dart,
+} from '@codemirror/legacy-modes/mode/clike'
+import { swift } from '@codemirror/legacy-modes/mode/swift'
+import { lua } from '@codemirror/legacy-modes/mode/lua'
+import { r } from '@codemirror/legacy-modes/mode/r'
+import { haskell } from '@codemirror/legacy-modes/mode/haskell'
+import { groovy } from '@codemirror/legacy-modes/mode/groovy'
+import { clojure } from '@codemirror/legacy-modes/mode/clojure'
+import { sass } from '@codemirror/legacy-modes/mode/sass'
 import type { Extension } from '@codemirror/state'
 
 /** getEditorLang 可能返回的全部取值，加上 undefined（按 markdown 处理） */
@@ -51,6 +61,22 @@ export const EDITOR_LANGUAGES = [
   'cmake',
   'properties',
   'powershell',
+  'c',
+  'cpp',
+  'java',
+  'csharp',
+  'kotlin',
+  'scala',
+  'objectivec',
+  'objectivecpp',
+  'dart',
+  'swift',
+  'lua',
+  'r',
+  'haskell',
+  'groovy',
+  'clojure',
+  'sass',
   'plaintext',
 ] as const
 
@@ -74,6 +100,22 @@ export function getLangExtension(language?: string): Extension {
     case 'cmake':      return StreamLanguage.define(cmake)
     case 'properties': return StreamLanguage.define(properties)
     case 'powershell': return StreamLanguage.define(powerShell)
+    case 'c':          return StreamLanguage.define(c)
+    case 'cpp':        return StreamLanguage.define(cpp)
+    case 'java':       return StreamLanguage.define(java)
+    case 'csharp':     return StreamLanguage.define(csharp)
+    case 'kotlin':     return StreamLanguage.define(kotlin)
+    case 'scala':      return StreamLanguage.define(scala)
+    case 'objectivec': return StreamLanguage.define(objectiveC)
+    case 'objectivecpp': return StreamLanguage.define(objectiveCpp)
+    case 'dart':       return StreamLanguage.define(dart)
+    case 'swift':      return StreamLanguage.define(swift)
+    case 'lua':        return StreamLanguage.define(lua)
+    case 'r':          return StreamLanguage.define(r)
+    case 'haskell':    return StreamLanguage.define(haskell)
+    case 'groovy':     return StreamLanguage.define(groovy)
+    case 'clojure':    return StreamLanguage.define(clojure)
+    case 'sass':       return StreamLanguage.define(sass)
     case 'plaintext':  return []
     default:           return markdown()    // 默认 markdown（含 undefined）
   }

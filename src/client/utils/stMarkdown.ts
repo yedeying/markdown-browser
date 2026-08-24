@@ -2,16 +2,10 @@
 // 设计见 docs/superpowers/specs/2026-08-20-st-chat-html-layout-design.md
 // 与 docs/superpowers/specs/2026-08-20-jsonl-st-preview-design.md §3。
 //
-// 为什么不能像最初实现那样直接用从 'marked' 导入的全局单例：
-// MarkdownPreview 每次渲染都会调用 `marked.use({ renderer, ... })`，把自己的
-// link renderer 装到这个全局单例上——其中把 href 未经转义地拼进内联
-// onclick 字符串（用于站内 .md 跳转）。这个装载是**永久性**的：只要应用里
-// 渲染过一次任意 .md 文件，全局单例就会一直带着这个 renderer。此后任何直接
-// `marked.parse()` 的地方（包括气泡）都会继承它——精心构造的 mes 链接的 href
-// 若包含单引号，就可能从 onclick 属性里逃逸执行任意 JS。
-//
-// 因此这里每次渲染都创建全新的 `Marked` 实例，与全局单例、与其他气泡都完全
-// 隔离，且自带的 renderer 从不生成任何内联事件属性（onclick 等）。
+// 为何不用从 'marked' 导入的全局单例：历史上 MarkdownPreview 曾在每次渲染
+// 调用 `marked.use({ renderer })`，扩展会永久叠到全局单例上（编辑连打会卡死，
+// 且不安全的 link renderer 会泄漏到其它 parse 调用）。气泡侧始终用全新
+// `Marked` 实例；主预览亦已改为 `parseMarkdownPreview` 隔离实例。
 import { Marked } from 'marked'
 
 // href 是 marked 里唯一没有被预先转义/转换过的原始字段，手工拼进 HTML 属性前

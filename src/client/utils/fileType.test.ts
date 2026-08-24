@@ -76,9 +76,23 @@ test('isJsonlPath centralizes .jsonl detection: case-insensitive, nested paths, 
   expect(isJsonlPath('')).toBe(false)
 })
 
-test('isBinaryContent detects NUL byte in loaded text', () => {
-  expect(isBinaryContent('plain text')).toBe(false)
-  expect(isBinaryContent('hello\u0000world')).toBe(true)
+test('C/C++ and common aliases map to editor highlighters', () => {
+  expect(getFileType('main.c')).toBe('code')
+  expect(getFileType('main.cc')).toBe('code')
+  expect(getFileType('main.cpp')).toBe('code')
+  expect(getEditorLang('main.c')).toBe('c')
+  expect(getEditorLang('main.h')).toBe('c')
+  expect(getEditorLang('main.cpp')).toBe('cpp')
+  expect(getEditorLang('main.cc')).toBe('cpp')
+  expect(getEditorLang('main.cxx')).toBe('cpp')
+  expect(getEditorLang('main.hpp')).toBe('cpp')
+  expect(getEditorLang('App.m')).toBe('objectivec')
+  expect(getEditorLang('App.mm')).toBe('objectivecpp')
+  expect(getEditorLang('Main.java')).toBe('java')
+  expect(getEditorLang('Program.cs')).toBe('csharp')
+  expect(getEditorLang('a.kt')).toBe('kotlin')
+  expect(getEditorLang('a.ini')).toBe('properties')
+  expect(getEditorLang('a.scss')).toBe('sass')
 })
 
 test('code-only-view layout allows scrolling', () => {

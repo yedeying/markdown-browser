@@ -97,7 +97,7 @@ interface Props {
   tree?: FileNode[]
   onSelectNode?: (node: FileNode) => void
   /** 懒加载：文件夹 children 未就绪时触发拉取 */
-  loadChildren?: (path: string) => void
+  loadChildren?: (path: string, force?: boolean) => void
   // 剪贴板（App 级别管理）
   clipboard?: ClipboardState | null
   onCopy?: (nodes: FileNode[]) => void
@@ -173,6 +173,11 @@ const ContentArea: FunctionalComponent<Props> = ({
 
   const [editContent, setEditContent] = useState(content || '')
   const [unsaved, setUnsaved] = useState(false)
+  /** 编辑态右侧预览节流，避免每键全量 marked/katex */
+  const [livePreviewMd, setLivePreviewMd] = useState(content || '')
+  const livePreviewAtRef = useRef(0)
+  const livePreviewTrailRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const livePreviewPendingRef = useRef(content || '')
   const [saving, setSaving] = useState(false)
   // SSE 检测到磁盘变化、但本地有未保存编辑时：不静默覆盖，弹出提示条让用户选择
   const [externalUpdatePending, setExternalUpdatePending] = useState(false)
@@ -209,6 +214,46 @@ const ContentArea: FunctionalComponent<Props> = ({
   const editorValue = unsaved
     ? editContent
     : (contentReady && content !== null ? content : editContent)
+
+  // 双栏编辑：预览节流 ~50ms（leading + trailing，连打时定期刷新）
+  livePreviewPendingRef.current = editorValue
+  useEffect(() => {
+    if (viewMode !== 'edit') {
+      if (livePreviewTrailRef.current) {
+        clearTimeout(livePreviewTrailRef.current)
+        livePreviewTrailRef.current = null
+      }
+      setLivePreviewMd(editorValue)
+      return
+    }
+
+    const INTERVAL = 50
+    const elapsed = Date.now() - livePreviewAtRef.current
+    if (elapsed >= INTERVAL) {
+      if (livePreviewTrailRef.current) {
+        clearTimeout(livePreviewTrailRef.current)
+        livePreviewTrailRef.current = null
+      }
+      livePreviewAtRef.current = Date.now()
+      setLivePreviewMd(editorValue)
+      return
+    }
+
+    // 已有 trailing：只更新 pending，不重置计时（否则会退化成防抖）
+    if (livePreviewTrailRef.current) return
+    livePreviewTrailRef.current = setTimeout(() => {
+      livePreviewTrailRef.current = null
+      livePreviewAtRef.current = Date.now()
+      setLivePreviewMd(livePreviewPendingRef.current)
+    }, INTERVAL - elapsed)
+  }, [editorValue, viewMode])
+
+  useEffect(() => () => {
+    if (livePreviewTrailRef.current) {
+      clearTimeout(livePreviewTrailRef.current)
+      livePreviewTrailRef.current = null
+    }
+  }, [])
 
   const handleEditorChange = useCallback((value: string) => {
     setEditContent(value)
@@ -656,7 +701,7 @@ const ContentArea: FunctionalComponent<Props> = ({
       )
     }
 
-    if (isBinaryContent(content)) {
+    if (content !== null && isBinaryContent(content)) {
       return (
         <EmptyState
           icon={<Icon name="ban" size={40} aria-hidden="true" />}
@@ -702,13 +747,22 @@ const ContentArea: FunctionalComponent<Props> = ({
             class="content-body"
             style={{ flex: 1 }}
           >
-            {/* 空文件：.jsonl 走自己的空态（逐行预览会显示"空文件"），
-                避免被误判成"未选择文件" */}
-            {!content && !isJsonl && (
-              <EmptyState
-                icon={<Icon name="book" size={40} aria-hidden="true" />}
-                title="选择左侧文件进行预览"
-              />
+            {/* 空 md：content======='' 仍是已选中文件，勿当成「未选择」；空 jsonl 由 JsonlLinePreview 自带空态 */}
+            {contentReady && content !== null && !isJsonl && (
+              content === '' ? (
+                <EmptyState
+                  icon={<Icon name="file-text" size={40} aria-hidden="true" />}
+                  title="空文件"
+                  description="点击「编辑」开始写作"
+                />
+              ) : (
+                <MarkdownPreview
+                  markdown={content}
+                  contentRef={previewContentRef}
+                  filePath={filePath}
+                  onCheckboxToggle={onSave ? handleCheckboxToggle : undefined}
+                />
+              )
             )}
             {isJsonl && (
               effectiveJsonlMode === 'st' && jsonlParsed?.ok
@@ -721,14 +775,6 @@ const ContentArea: FunctionalComponent<Props> = ({
                   />
                 )
                 : <JsonlLinePreview content={content || ''} />
-            )}
-            {content && !isJsonl && (
-              <MarkdownPreview
-                markdown={content}
-                contentRef={previewContentRef}
-                filePath={filePath}
-                onCheckboxToggle={onSave ? handleCheckboxToggle : undefined}
-              />
             )}
           </div>
           {!isJsonl && <TableOfContents contentRef={previewContentRef} />}
@@ -762,7 +808,7 @@ const ContentArea: FunctionalComponent<Props> = ({
           </div>
           <div class="preview-pane" ref={previewPaneRef}>
             <MarkdownPreview
-              markdown={editorValue}
+              markdown={livePreviewMd}
               filePath={filePath}
               onCheckboxToggle={onSave ? handleCheckboxToggle : undefined}
             />
@@ -863,7 +909,7 @@ const ContentArea: FunctionalComponent<Props> = ({
                       <button
                         class={`btn ${viewMode === 'edit' ? 'active' : ''}`}
                         onClick={() => setViewMode('edit')}
-                        disabled={!content}
+                        disabled={!contentReady}
                       >编辑</button>
                     </>
                   )}
@@ -876,7 +922,7 @@ const ContentArea: FunctionalComponent<Props> = ({
                       <button
                         class={`btn ${viewMode === 'code-only' ? 'active' : ''}`}
                         onClick={() => setViewMode('code-only')}
-                        disabled={!content}
+                        disabled={!contentReady}
                       >源码</button>
                     </>
                   )}
@@ -930,7 +976,7 @@ const ContentArea: FunctionalComponent<Props> = ({
                           <button
                             class={`header-dropdown-item${viewMode === 'edit' ? ' active' : ''}`}
                             onClick={() => { setViewMode('edit'); setMoreMenuOpen(false) }}
-                            disabled={!content}
+                            disabled={!contentReady}
                           >编辑模式</button>
                         </>
                       )}
@@ -943,7 +989,7 @@ const ContentArea: FunctionalComponent<Props> = ({
                           <button
                             class={`header-dropdown-item${viewMode === 'code-only' ? ' active' : ''}`}
                             onClick={() => { setViewMode('code-only'); setMoreMenuOpen(false) }}
-                            disabled={!content}
+                            disabled={!contentReady}
                           >源码模式</button>
                           {viewMode === 'preview' && jsonlOk && (
                             <>

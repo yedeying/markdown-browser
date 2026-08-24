@@ -13,9 +13,9 @@ export function folderHasMedia(nodes: FileNode[]): boolean {
   return nodes.some(isMediaFile)
 }
 
-/** 瀑布流内容：仅文件夹 + 媒体，保持原顺序。 */
+/** 瀑布流内容：仅图片/视频，不含文件夹与其它文件。 */
 export function filterMasonryNodes(nodes: FileNode[]): FileNode[] {
-  return nodes.filter((n) => n.type === 'folder' || isMediaFile(n))
+  return nodes.filter(isMediaFile)
 }
 
 /** Lightbox 播放列表：仅媒体文件，保持原顺序。 */

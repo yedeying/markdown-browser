@@ -27,7 +27,7 @@ test('folderHasMedia is true when any child is media', () => {
   expect(folderHasMedia([file('v.webm', 'v.webm')])).toBe(true)
 })
 
-test('filterMasonryNodes keeps folders and media, drops other files', () => {
+test('filterMasonryNodes keeps only media, drops folders and other files', () => {
   const nodes = [
     folder('sub', 'sub'),
     file('a.md', 'a.md'),
@@ -35,7 +35,7 @@ test('filterMasonryNodes keeps folders and media, drops other files', () => {
     file('c.ts', 'c.ts'),
     file('d.mp4', 'd.mp4'),
   ]
-  expect(filterMasonryNodes(nodes).map((n) => n.path)).toEqual(['sub', 'b.png', 'd.mp4'])
+  expect(filterMasonryNodes(nodes).map((n) => n.path)).toEqual(['b.png', 'd.mp4'])
 })
 
 test('buildMediaPlaylist is media-only in order', () => {

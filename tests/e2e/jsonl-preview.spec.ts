@@ -127,6 +127,18 @@ test('empty .jsonl shows the JSONL empty state, not the "select a file" placehol
   await expect(page.getByText('选择左侧文件进行预览')).toHaveCount(0)
 })
 
+test('empty .md shows empty-file state and allows edit', async ({ page }) => {
+  await page.goto('/')
+  await page.click('[data-testid="tree-node-empty.md"]')
+
+  await expect(page.getByText('选择左侧文件进行预览')).toHaveCount(0)
+  await expect(page.locator('.empty-state-text', { hasText: '空文件' })).toBeVisible()
+  const editBtn = page.locator('.desktop-btn-group button', { hasText: '编辑' })
+  await expect(editBtn).toBeEnabled()
+  await editBtn.click()
+  await expect(page.locator('.editor-view .cm-editor')).toBeVisible()
+})
+
 test('column view previews ST .jsonl as chat bubbles', async ({ page }) => {
   await page.goto('/')
   await page.click('.sidebar-root-row')

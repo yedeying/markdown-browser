@@ -67,10 +67,13 @@ test('folder containing only a fully unknown extension (.xyz) still appears and 
   expect(fileNode?.type).toBe('file')
 })
 
-test('a truly empty directory (no children on disk) is still omitted, preserving prior behavior', async () => {
+test('a truly empty directory appears in the listing (mkdir 可见)', async () => {
   const res = await app.request('/api/files?path=&depth=2')
   const tree = await res.json() as FileNode[]
-  expect(findFolder(tree, 'truly-empty')).toBeUndefined()
+  const empty = findFolder(tree, 'truly-empty')
+  expect(empty).toBeDefined()
+  expect(empty!.type).toBe('folder')
+  expect(empty!.children ?? []).toEqual([])
 })
 
 test('a folder whose only child is an empty subdirectory still appears', async () => {
@@ -78,9 +81,9 @@ test('a folder whose only child is an empty subdirectory still appears', async (
   const tree = await res.json() as FileNode[]
   const outer = findFolder(tree, 'outer')
   expect(outer).toBeDefined()
-  // 空叶子 inner 可以继续省略；关键是 outer 不被连带丢掉
   const inner = (outer!.children ?? []).find(c => c.name === 'inner')
-  expect(inner === undefined || inner.type === 'folder').toBe(true)
+  expect(inner).toBeDefined()
+  expect(inner!.type).toBe('folder')
 })
 
 test('whitelisted files are unaffected by the change', async () => {

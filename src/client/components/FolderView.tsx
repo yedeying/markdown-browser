@@ -49,6 +49,25 @@ function countGridCols(testid: string = 'folder-grid'): number {
   return Math.max(1, cols)
 }
 
+/** 键盘移动光标：先改 DOM class，再同步 React state，避免整表重绘前边框/底色脱节 */
+function applyKbFocus(mode: 'grid' | 'masonry', path: string): Element | null {
+  const sel = mode === 'masonry' ? '.masonry-tile.kb-focus' : '.folder-card.kb-focus'
+  for (const el of document.querySelectorAll(sel)) el.classList.remove('kb-focus')
+  const next = document.querySelector(`[data-path="${CSS.escape(path)}"]`)
+  next?.classList.add('kb-focus')
+  return next
+}
+
+function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
+  for (const n of nodes) {
+    if (n.path === path) return n
+    if (n.children) {
+      const hit = findNodeByPath(n.children, path)
+      if (hit) return hit
+    }
+  }
+  return null
+}
 
 type CardSize = 's' | 'm' | 'l'
 
@@ -77,6 +96,8 @@ export interface SelectionProps {
   selectionMode: boolean
   onToggleSelect: (path: string, e?: MouseEvent) => void
   onEnterSelectionMode: (path: string) => void
+  /** 普通点击：退出多选后再打开 */
+  onClearSelection: () => void
   onContextMenu: (node: FileNode, e: MouseEvent) => void
   onLongPress: (node: FileNode) => void
 }
@@ -96,8 +117,8 @@ interface Props {
   shareMode?: boolean
   /** 是否显示隐藏文件（点文件），默认隐藏 */
   showHidden?: boolean
-  /** 懒加载文件夹 children（列视图钻入时用） */
-  loadChildren?: (path: string) => void
+  /** 懒加载文件夹 children（列视图钻入 / 新建后强制刷新） */
+  loadChildren?: (path: string, force?: boolean) => void
 }
 
 const FolderView: FunctionalComponent<Props> = ({
@@ -137,7 +158,12 @@ const FolderView: FunctionalComponent<Props> = ({
   const [lastClickedPath, setLastClickedPath] = useState<string | null>(null)
 
   // ── 右键菜单状态 ──────────────────────────────────────────
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; node: FileNode } | null>(null)
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number
+    y: number
+    /** null = 空白处（无目标菜单） */
+    node: FileNode | null
+  } | null>(null)
 
   // ── 弹窗状态 ──────────────────────────────────────────────
   const [modal, setModal] = useState<{
@@ -152,20 +178,31 @@ const FolderView: FunctionalComponent<Props> = ({
   // ── loading 防重入 ─────────────────────────────────────────
   const [busy, setBusy] = useState(false)
 
-  // 隐藏文件过滤 + 排序（列表/网格/列视图共用同一份处理后的列表，保持一致）
-  const children = sortNodes(filterVisible(node.children || [], showHidden), sortPref.field, sortPref.order)
-  const hasMedia = folderHasMedia(children)
-  const effectiveView: FolderViewPref =
-    viewMode === 'masonry' && !hasMedia ? 'grid' : viewMode
-  const masonryNodes = filterMasonryNodes(children)
-  const dirName = window.__VMD_DIR_NAME__ || '文件库'
-
   // Lightbox（文件夹内打开媒体）
   const [lightbox, setLightbox] = useState<{ startPath: string } | null>(null)
   /** 列视图当前浏览目录（最深一列），切出列视图时同步到外层 */
   const columnActiveFolderRef = useRef<FileNode | null>(null)
-  /** 列内钻入路径（仅影响面包屑展示，不改外层 selectedNode） */
+  /** 列内钻入路径（仅影响面包屑展示 / 瀑布流可见性，不改外层 selectedNode） */
   const [columnBrowsePath, setColumnBrowsePath] = useState<string | null>(null)
+
+  // 隐藏文件过滤 + 排序（列表/网格/列视图共用同一份处理后的列表，保持一致）
+  const children = sortNodes(filterVisible(node.children || [], showHidden), sortPref.field, sortPref.order)
+  // 列视图：瀑布流入口按「当前选中列」目录判断，而非外层 FolderView 根
+  const mediaScopeChildren = (() => {
+    if (viewMode !== 'column' || columnBrowsePath == null || columnBrowsePath === node.path) {
+      return children
+    }
+    const folder = columnBrowsePath === ''
+      ? node
+      : (findNodeByPath(tree, columnBrowsePath) ?? columnActiveFolderRef.current)
+    if (!folder || folder.path !== columnBrowsePath) return children
+    return sortNodes(filterVisible(folder.children || [], showHidden), sortPref.field, sortPref.order)
+  })()
+  const hasMedia = folderHasMedia(mediaScopeChildren)
+  const effectiveView: FolderViewPref =
+    viewMode === 'masonry' && !hasMedia ? 'grid' : viewMode
+  const masonryNodes = filterMasonryNodes(children)
+  const dirName = window.__VMD_DIR_NAME__ || '文件库'
 
   const handleColumnActiveFolder = useCallback((folder: FileNode) => {
     setColumnBrowsePath(folder.path)
@@ -206,11 +243,31 @@ const FolderView: FunctionalComponent<Props> = ({
   const masonryNodesRef = useRef(masonryNodes)
   const openNodeRef = useRef(openNode)
   const onSelectRef = useRef(onSelect)
+  /** 列数缓存：避免每次方向键强制 layout 量一遍 */
+  const gridColsCacheRef = useRef<{ testid: string; cols: number } | null>(null)
   gridFocusPathRef.current = gridFocusPath
   childrenRef.current = children
   masonryNodesRef.current = masonryNodes
   openNodeRef.current = openNode
   onSelectRef.current = onSelect
+
+  useEffect(() => {
+    const invalidate = () => { gridColsCacheRef.current = null }
+    window.addEventListener('resize', invalidate)
+    return () => window.removeEventListener('resize', invalidate)
+  }, [])
+
+  useEffect(() => {
+    gridColsCacheRef.current = null
+  }, [children.length, masonryNodes.length, cardSize])
+
+  /** 网格/瀑布流：点击时同步键盘光标并退出多选 */
+  const openNodeFromGrid = useCallback((target: FileNode) => {
+    setSelectionMode(false)
+    setSelectedPaths(new Set())
+    setGridFocusPath(target.path)
+    openNode(target)
+  }, [openNode])
 
   // 切换文件夹时清空选中
   useEffect(() => {
@@ -221,10 +278,12 @@ const FolderView: FunctionalComponent<Props> = ({
     setGridFocusPath(null)
     setLightbox(null)
     setColumnBrowsePath(null)
+    gridColsCacheRef.current = null
   }, [node.path])
 
   useEffect(() => {
     setGridFocusPath(null)
+    gridColsCacheRef.current = null
     if (effectiveView !== 'column') setColumnBrowsePath(null)
   }, [effectiveView])
 
@@ -243,7 +302,11 @@ const FolderView: FunctionalComponent<Props> = ({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (getNavFocus() !== 'folder') return
-      if (selectionMode) return
+      // 键盘移动光标时退出多选
+      if (selectionMode) {
+        setSelectionMode(false)
+        setSelectedPaths(new Set())
+      }
       if (modal || ctxMenu || bottomSheet || shareTarget || lightbox) return
       if (isTypingTarget(e.target)) return
       if (isOverlayBlocking()) return
@@ -300,7 +363,7 @@ const FolderView: FunctionalComponent<Props> = ({
         return
       }
 
-      // grid / masonry
+      // grid / masonry：方向键只移动光标；Enter 打开（不再用 → 进目录）
       if (dir === 'enter') {
         e.preventDefault()
         e.stopImmediatePropagation()
@@ -327,31 +390,27 @@ const FolderView: FunctionalComponent<Props> = ({
       if (dir !== 'up' && dir !== 'down' && dir !== 'left' && dir !== 'right') return
       e.preventDefault()
 
-      // 焦点在目录上时，l/→ 进入该目录（而非仅右移）
-      if (dir === 'right') {
-        const focusPath = gridFocusPathRef.current
-        const cur = focusPath ? list.find((n) => n.path === focusPath) : null
-        if (cur?.type === 'folder') {
-          onSelectRef.current(cur)
-          return
-        }
+      const testid = mode === 'masonry' ? 'folder-masonry' : 'folder-grid'
+      let cols = gridColsCacheRef.current?.testid === testid
+        ? gridColsCacheRef.current.cols
+        : 0
+      if (!cols) {
+        cols = countGridCols(testid)
+        gridColsCacheRef.current = { testid, cols }
       }
-
-      const cols = countGridCols(mode === 'masonry' ? 'folder-masonry' : 'folder-grid')
       const focusPath = gridFocusPathRef.current
       const curIdx = focusPath
         ? list.findIndex((n) => n.path === focusPath)
-        : currentFilePath
-          ? list.findIndex((n) => n.path === currentFilePath)
-          : -1
+        : -1
       const nextIdx = stepGridIndex(curIdx, list.length, cols, dir)
       if (nextIdx < 0 || nextIdx === curIdx) return
       const next = list[nextIdx]
       setNavFocus('folder')
+      // 同帧改 DOM，再 setState；去掉 rAF，减少「边框已到、底色未到」的观感
+      gridFocusPathRef.current = next.path
+      const el = applyKbFocus(mode, next.path)
       setGridFocusPath(next.path)
-      requestAnimationFrame(() => {
-        scrollNavTarget(document.querySelector(`[data-path="${CSS.escape(next.path)}"]`))
-      })
+      scrollNavTarget(el)
     }
 
     window.addEventListener('keydown', handler, true)
@@ -367,7 +426,21 @@ const FolderView: FunctionalComponent<Props> = ({
   ])
 
   // ── 多选逻辑 ───────────────────────────────────────────────
+  const clearMultiSelect = useCallback(() => {
+    setSelectionMode(false)
+    setSelectedPaths(new Set())
+  }, [])
+
+  /** 网格空白点击：取消多选与键盘单选光标 */
+  const clearGridSelection = useCallback(() => {
+    setSelectionMode(false)
+    setSelectedPaths(new Set())
+    setGridFocusPath(null)
+  }, [])
+
   const handleToggleSelect = useCallback((path: string, e?: MouseEvent) => {
+    setSelectionMode(true)
+    setGridFocusPath(null)
     setLastClickedPath(path)
     if (e?.shiftKey && lastClickedPath) {
       const allPaths = children.map(n => n.path)
@@ -375,7 +448,7 @@ const FolderView: FunctionalComponent<Props> = ({
       const to = allPaths.indexOf(path)
       if (from !== -1 && to !== -1) {
         const range = allPaths.slice(Math.min(from, to), Math.max(from, to) + 1)
-        setSelectedPaths(prev => new Set([...prev, ...range]))
+        setSelectedPaths(new Set(range))
         return
       }
     }
@@ -383,21 +456,39 @@ const FolderView: FunctionalComponent<Props> = ({
       const next = new Set(prev)
       if (next.has(path)) next.delete(path)
       else next.add(path)
+      if (next.size === 0) setSelectionMode(false)
       return next
     })
   }, [children, lastClickedPath])
 
   const handleEnterSelectionMode = useCallback((path: string) => {
     setSelectionMode(true)
+    setGridFocusPath(null)
     setSelectedPaths(new Set([path]))
     setLastClickedPath(path)
+  }, [])
+
+  /** 框选：additive=true 时并入已选，否则替换 */
+  const handleMarqueeSelect = useCallback((paths: string[], additive: boolean) => {
+    if (paths.length === 0) return
+    setSelectionMode(true)
+    setGridFocusPath(null)
+    setSelectedPaths(prev => {
+      if (additive) return new Set([...prev, ...paths])
+      return new Set(paths)
+    })
+    setLastClickedPath(paths[paths.length - 1] ?? null)
   }, [])
 
   // ── 文件管理操作 ──────────────────────────────────────────
   /** 获取"当前操作"的节点列表：多选有效则用多选，否则用右键目标 */
   const getTargetNodes = (fallbackNode: FileNode): FileNode[] => {
-    if (selectedPaths.size > 0 && selectedPaths.has(fallbackNode.path)) {
+    if (selectedPaths.size > 1 && selectedPaths.has(fallbackNode.path)) {
       return children.filter(n => selectedPaths.has(n.path))
+    }
+    // 仅选中一项且右键该项：仍按单项目标（菜单不含「N 项」）
+    if (selectedPaths.size === 1 && selectedPaths.has(fallbackNode.path)) {
+      return [fallbackNode]
     }
     return [fallbackNode]
   }
@@ -433,12 +524,17 @@ const FolderView: FunctionalComponent<Props> = ({
   const handleMkdir = async (name: string) => {
     if (busy) return
     setBusy(true)
-    const newPath = node.path ? `${node.path}/${name}` : name
+    const parent =
+      effectiveView === 'column' && columnBrowsePath != null
+        ? columnBrowsePath
+        : node.path
+    const newPath = parent ? `${parent}/${name}` : name
     const res = await fsApi.mkdir(newPath)
     setBusy(false)
     setModal(null)
     if (res.ok) {
       showToast('文件夹已创建', 'success')
+      void loadChildren?.(parent, true)
     } else {
       showToast(`创建失败: ${res.error}`, 'error')
     }
@@ -447,12 +543,17 @@ const FolderView: FunctionalComponent<Props> = ({
   const handleTouch = async (name: string) => {
     if (busy) return
     setBusy(true)
-    const newPath = node.path ? `${node.path}/${name}` : name
+    const parent =
+      effectiveView === 'column' && columnBrowsePath != null
+        ? columnBrowsePath
+        : node.path
+    const newPath = parent ? `${parent}/${name}` : name
     const res = await fsApi.touch(newPath)
     setBusy(false)
     setModal(null)
     if (res.ok) {
       showToast('文件已创建', 'success')
+      void loadChildren?.(parent, true)
     } else {
       showToast(`创建失败: ${res.error}`, 'error')
     }
@@ -462,7 +563,11 @@ const FolderView: FunctionalComponent<Props> = ({
     if (!clipboard || busy) return
     setBusy(true)
     const paths = clipboard.nodes.map(n => n.path)
-    const dest = node.path
+    // 列视图空白粘贴到当前浏览列；根目录 path 为 ''
+    const dest =
+      effectiveView === 'column' && columnBrowsePath != null
+        ? columnBrowsePath
+        : node.path
     const res = clipboard.mode === 'copy'
       ? await fsApi.copy(paths, dest)
       : await fsApi.move(paths, dest)
@@ -477,6 +582,30 @@ const FolderView: FunctionalComponent<Props> = ({
   }
 
   // ── 右键菜单项构造 ─────────────────────────────────────────
+  /** 空白处：仅新建 / 粘贴，不以当前文件夹为「目标」 */
+  const buildBgCtxMenuItems = (): ContextMenuItem[] => {
+    if (shareMode) return []
+    return [
+      {
+        label: '新建文件夹',
+        icon: 'folder-plus',
+        onClick: () => setModal({ mode: 'mkdir' }),
+      },
+      {
+        label: '新建文件',
+        icon: 'file-plus',
+        onClick: () => setModal({ mode: 'touch' }),
+      },
+      {
+        label: '粘贴',
+        icon: 'paste',
+        separator: true,
+        disabled: !clipboard,
+        onClick: handlePaste,
+      },
+    ]
+  }
+
   const buildCtxMenuItems = (target: FileNode): ContextMenuItem[] => {
     const targets = getTargetNodes(target)
     const isMulti = targets.length > 1
@@ -552,11 +681,75 @@ const FolderView: FunctionalComponent<Props> = ({
     ]
   }
 
+  const openBgCtxMenu = useCallback((e: MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (shareMode) return
+    setCtxMenu({ x: e.clientX, y: e.clientY, node: null })
+  }, [shareMode])
+
   // ── 右键处理（PC）────────────────────────────────────────
   const handleContextMenu = useCallback((targetNode: FileNode, e: MouseEvent) => {
     e.preventDefault()
+    e.stopPropagation()
+    // 右键未选中项：取消多选，仅以该项为目标；右键已选中项：保留多选菜单
+    setSelectedPaths(prev => {
+      if (prev.size > 0 && !prev.has(targetNode.path)) {
+        setSelectionMode(false)
+        return new Set()
+      }
+      return prev
+    })
     setCtxMenu({ x: e.clientX, y: e.clientY, node: targetNode })
   }, [])
+
+  /** 菜单已打开时再次右键：命中测试后在新位置打开定制菜单 */
+  const handleCtxMenuRelocate = useCallback((e: MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const x = e.clientX
+    const y = e.clientY
+    const overlay = document.querySelector('.ctx-overlay') as HTMLElement | null
+    const menuEl = document.querySelector('.ctx-menu') as HTMLElement | null
+    if (overlay) overlay.style.pointerEvents = 'none'
+    if (menuEl) menuEl.style.pointerEvents = 'none'
+    const el = document.elementFromPoint(x, y) as HTMLElement | null
+    if (overlay) overlay.style.pointerEvents = ''
+    if (menuEl) menuEl.style.pointerEvents = ''
+
+    if (!el) {
+      setCtxMenu(null)
+      return
+    }
+    const pathEl = el.closest('[data-path]') as HTMLElement | null
+    const path = pathEl?.dataset?.path
+    if (path) {
+      const hit =
+        childrenRef.current.find(n => n.path === path)
+        ?? masonryNodesRef.current.find(n => n.path === path)
+        ?? findNodeByPath(tree, path)
+      if (hit) {
+        setSelectedPaths(prev => {
+          if (prev.size > 0 && !prev.has(hit.path)) {
+            setSelectionMode(false)
+            return new Set()
+          }
+          return prev
+        })
+        setCtxMenu({ x, y, node: hit })
+        return
+      }
+    }
+    if (el.closest('[data-testid="folder-view"]')) {
+      if (shareMode) {
+        setCtxMenu(null)
+        return
+      }
+      setCtxMenu({ x, y, node: null })
+      return
+    }
+    setCtxMenu(null)
+  }, [tree, shareMode])
 
   // ── 长按处理（移动端）────────────────────────────────────
   const handleLongPress = useCallback((targetNode: FileNode) => {
@@ -599,6 +792,7 @@ const FolderView: FunctionalComponent<Props> = ({
     selectionMode,
     onToggleSelect: handleToggleSelect,
     onEnterSelectionMode: handleEnterSelectionMode,
+    onClearSelection: clearMultiSelect,
     onContextMenu: handleContextMenu,
     onLongPress: handleLongPress,
   }
@@ -648,6 +842,8 @@ const FolderView: FunctionalComponent<Props> = ({
       class="folder-view"
       data-testid="folder-view"
       onPointerDown={() => setNavFocus('folder')}
+      // 捕获阶段统一吃掉浏览器菜单，避免卡片间隙等漏网
+      onContextMenuCapture={(e) => { e.preventDefault() }}
     >
       {/* ── 工具栏 ─────────────────────────────────────────── */}
       {selectionMode ? (
@@ -756,7 +952,7 @@ const FolderView: FunctionalComponent<Props> = ({
       {/* ── 内容区 ─────────────────────────────────────────── */}
       {children.length === 0 ? (
         <div class="empty-state" data-testid="folder-empty" style={{ flex: 1 }}
-          onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, node }) }}
+          onContextMenu={openBgCtxMenu}
         >
           <div class="empty-state-icon"><Icon name="inbox" size={40} aria-hidden="true" /></div>
           <div class="empty-state-text">空文件夹</div>
@@ -767,29 +963,33 @@ const FolderView: FunctionalComponent<Props> = ({
           currentPath={currentFilePath}
           onSelect={openNode}
           selectionProps={selectionProps}
-          onBgContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, node }) }}
+          onBgContextMenu={openBgCtxMenu}
           sortField={sortPref.field}
           sortOrder={sortPref.order}
           onSortChange={handleSortChange}
+          onMarqueeSelect={handleMarqueeSelect}
         />
       ) : effectiveView === 'grid' ? (
         <FolderGridView
           nodes={children}
           cardSize={cardSize}
-          currentPath={currentFilePath}
-          focusPath={gridFocusPath}
-          onSelect={openNode}
+          currentPath={null}
+          focusPath={selectionMode ? null : gridFocusPath}
+          onSelect={openNodeFromGrid}
           selectionProps={selectionProps}
-          onBgContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, node }) }}
+          onBgContextMenu={openBgCtxMenu}
+          onMarqueeSelect={handleMarqueeSelect}
+          onBlankClick={clearGridSelection}
         />
       ) : effectiveView === 'masonry' ? (
         <FolderMasonryView
           nodes={masonryNodes}
-          currentPath={currentFilePath}
-          focusPath={gridFocusPath}
-          onSelect={openNode}
+          currentPath={null}
+          focusPath={selectionMode ? null : gridFocusPath}
+          onSelect={openNodeFromGrid}
           selectionProps={selectionProps}
-          onBgContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, node }) }}
+          onBgContextMenu={openBgCtxMenu}
+          onMarqueeSelect={handleMarqueeSelect}
         />
       ) : (
         <FolderColumnView
@@ -804,6 +1004,7 @@ const FolderView: FunctionalComponent<Props> = ({
           theme={theme}
           onContextMenu={handleContextMenu}
           onLongPress={handleLongPress}
+          onBgContextMenu={openBgCtxMenu}
           showHidden={showHidden}
           sortField={sortPref.field}
           sortOrder={sortPref.order}
@@ -823,8 +1024,9 @@ const FolderView: FunctionalComponent<Props> = ({
         <ContextMenu
           x={ctxMenu.x}
           y={ctxMenu.y}
-          items={buildCtxMenuItems(ctxMenu.node)}
+          items={ctxMenu.node ? buildCtxMenuItems(ctxMenu.node) : buildBgCtxMenuItems()}
           onClose={() => setCtxMenu(null)}
+          onContextMenuAt={handleCtxMenuRelocate}
         />
       )}
 

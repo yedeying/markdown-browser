@@ -10,6 +10,11 @@ export interface FileWatcher {
   close: () => void
   /** 订阅内部事件（供缓存失效使用；不走 SSE 通道） */
   onEvent: (listener: (e: WatchEvent) => void) => () => void
+  /**
+   * 主动通知目录列表变化（文件 API 写成功后调用）。
+   * 不依赖 OS watcher，避免删改后缓存/SSE 漏更新。
+   */
+  notifyTreeChange: (affectedPath: string) => void
 }
 
 const DEBOUNCE_MS = 200
@@ -102,6 +107,9 @@ export function createWatcher(target: string): FileWatcher {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
+    notifyTreeChange() {
+      /* 单文件模式无目录树 */
+    },
   }
 }
 
@@ -165,6 +173,10 @@ export function createDirWatcher(basePath: string): FileWatcher {
     onEvent(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)
+    },
+    notifyTreeChange(affectedPath: string) {
+      const normalized = affectedPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      broadcast({ type: 'tree-change', affectedPath: normalized })
     },
   }
 }

@@ -455,8 +455,12 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
             themeToggle={<ThemeToggle theme={theme} onToggle={onThemeToggle} />}
             onOpenSettings={() => setSettingsOpen(true)}
           selectedNode={
-            // 根节点（path=''）时动态带入最新 tree，避免 tree 更新后 children 过期
-            selectedNode?.path === '' ? makeRootNode(tree, dirName) : selectedNode
+            // 始终用 tree 上的最新节点渲染文件夹，避免 mkdir/SSE 后 selectedNode 快照 children 过期
+            selectedNode?.type === 'folder'
+              ? (selectedNode.path === ''
+                ? makeRootNode(tree, dirName)
+                : (findNodeByPath(tree, selectedNode.path) ?? selectedNode))
+              : selectedNode
           }
           tree={tree}
           onSelectNode={handleSelect}

@@ -17,9 +17,11 @@ interface Props {
   y: number
   items: ContextMenuItem[]
   onClose: () => void
+  /** 菜单已打开时再次右键：在新位置打开定制菜单（禁止浏览器默认菜单） */
+  onContextMenuAt?: (e: MouseEvent) => void
 }
 
-const ContextMenu: FunctionalComponent<Props> = ({ x, y, items, onClose }) => {
+const ContextMenu: FunctionalComponent<Props> = ({ x, y, items, onClose, onContextMenuAt }) => {
   const menuRef = useRef<HTMLDivElement>(null)
 
   // 边界检测：确保菜单不超出 viewport
@@ -40,14 +42,33 @@ const ContextMenu: FunctionalComponent<Props> = ({ x, y, items, onClose }) => {
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
 
+  const handleOverlayContextMenu = (e: MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (onContextMenuAt) onContextMenuAt(e)
+    else onClose()
+  }
+
   const menu = (
     <>
-      {/* 全屏透明遮罩，点击关闭 */}
-      <div class="ctx-overlay" onClick={onClose} />
+      {/* 全屏透明遮罩：左键关闭；右键交给外层改到新位置的定制菜单 */}
+      <div
+        class="ctx-overlay"
+        onMouseDown={(e) => {
+          // 右键不要触发后续 click 关闭，留给 contextmenu
+          if (e.button === 2) e.preventDefault()
+        }}
+        onClick={(e) => {
+          if (e.button !== 0) return
+          onClose()
+        }}
+        onContextMenu={handleOverlayContextMenu}
+      />
       <div
         ref={menuRef}
         class="ctx-menu"
         style={{ left: `${x}px`, top: `${y}px` }}
+        onContextMenu={handleOverlayContextMenu}
       >
         {items.map((item, i) => (
           <>

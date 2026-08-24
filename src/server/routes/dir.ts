@@ -157,11 +157,9 @@ function buildTree(scope: string, dir: string, base: string, relPath = '', depth
       // 磁盘上是否还有子项（文件或子目录）。递归结果可能把空叶子剪掉，
       // 但不能因此把「只含空子目录」的父目录也丢掉。
       childListCalls++
-      const diskChildren = listDirCached(scope, childAbs, base, childRel, showHidden)
       const children = buildTree(scope, childAbs, base, childRel, depth - 1, showHidden)
-      if (children.length > 0 || diskChildren.length > 0) {
-        result.push({ ...node, children })
-      }
+      // 空文件夹也要出现在列表里，否则 mkdir 后「创建成功但看不见」
+      result.push({ ...node, children })
     } else {
       result.push(node)
     }
@@ -197,6 +195,40 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       }
     }
   })
+
+  const normalizeRel = (p: string) => p.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  const parentRel = (p: string) => {
+    const n = normalizeRel(p)
+    const i = n.lastIndexOf('/')
+    return i === -1 ? '' : n.slice(0, i)
+  }
+
+  /**
+   * 写盘成功后立刻失效缓存并推 SSE。
+   * paths：被增删改的节点（会失效自身+祖先，并通知父目录）
+   * dirs：子项集合变化的目录（直接通知该目录）
+   * 不依赖 OS watcher，避免删改后列表仍命中旧缓存。
+   */
+  function afterTreeMutation(opts: { paths?: string[]; dirs?: string[] }) {
+    const notifyDirs = new Set<string>()
+    for (const raw of opts.paths ?? []) {
+      if (typeof raw !== 'string') continue
+      const n = normalizeRel(raw)
+      treeCache.invalidatePath(cacheScope, n)
+      treeCache.invalidatePath(hiddenCacheScope, n)
+      notifyDirs.add(parentRel(n))
+    }
+    for (const raw of opts.dirs ?? []) {
+      if (typeof raw !== 'string') continue
+      const n = normalizeRel(raw)
+      treeCache.invalidatePath(cacheScope, n)
+      treeCache.invalidatePath(hiddenCacheScope, n)
+      notifyDirs.add(n)
+    }
+    for (const d of notifyDirs) {
+      watcher.notifyTreeChange(d)
+    }
+  }
 
   // CORS headers for all responses
   app.use('*', async (c, next) => {
@@ -613,6 +645,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         await fsp.rm(abs, { recursive: true, force: true })
         deleted++
       }
+      afterTreeMutation({ paths })
       return c.json({ ok: true, deleted })
     } catch (e: unknown) {
       return c.json({ ok: false, error: String(e) }, 400)
@@ -637,7 +670,9 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       // 确保 newAbs 也在 basePath 内
       assertSafe(relative(basePath, newAbs), basePath)
       await fsp.rename(abs, newAbs)
-      return c.json({ ok: true, newPath: relative(basePath, newAbs) })
+      const newPath = relative(basePath, newAbs)
+      afterTreeMutation({ paths: [p, newPath] })
+      return c.json({ ok: true, newPath })
     } catch (e: unknown) {
       return c.json({ ok: false, error: String(e) }, 400)
     }
@@ -647,7 +682,8 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   app.post('/api/fs/move', async (c) => {
     try {
       const { paths, dest } = await c.req.json() as { paths: string[]; dest: string }
-      if (!Array.isArray(paths) || !dest) {
+      // dest 允许 ''（根目录）
+      if (!Array.isArray(paths) || typeof dest !== 'string') {
         return c.json({ ok: false, error: 'paths and dest required' }, 400)
       }
       // 目标文件名沿用源文件名，挡住源路径即挡住了目标
@@ -675,6 +711,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         }
         moved++
       }
+      afterTreeMutation({ paths, dirs: [dest] })
       return c.json({ ok: true, moved })
     } catch (e: unknown) {
       return c.json({ ok: false, error: String(e) }, 400)
@@ -685,7 +722,8 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   app.post('/api/fs/copy', async (c) => {
     try {
       const { paths, dest } = await c.req.json() as { paths: string[]; dest: string }
-      if (!Array.isArray(paths) || !dest) {
+      // dest 允许 ''（根目录）
+      if (!Array.isArray(paths) || typeof dest !== 'string') {
         return c.json({ ok: false, error: 'paths and dest required' }, 400)
       }
       if (anyReserved(...paths, dest)) {
@@ -701,6 +739,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         await fsp.cp(abs, targetAbs, { recursive: true })
         copied++
       }
+      afterTreeMutation({ dirs: [dest] })
       return c.json({ ok: true, copied })
     } catch (e: unknown) {
       return c.json({ ok: false, error: String(e) }, 400)
@@ -717,6 +756,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       }
       const abs = assertSafe(p, basePath)
       await fsp.mkdir(abs, { recursive: true })
+      afterTreeMutation({ paths: [p] })
       return c.json({ ok: true })
     } catch (e: unknown) {
       return c.json({ ok: false, error: String(e) }, 400)
@@ -736,6 +776,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       await fsp.mkdir(dirname(abs), { recursive: true })
       // flag:'ax' = exclusive create，文件已存在时报错
       await fsp.writeFile(abs, '', { flag: 'ax' })
+      afterTreeMutation({ paths: [p] })
       return c.json({ ok: true })
     } catch (e: unknown) {
       const err = e as NodeJS.ErrnoException

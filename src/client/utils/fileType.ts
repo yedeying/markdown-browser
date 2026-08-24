@@ -3,20 +3,32 @@ export type FileType = 'markdown' | 'code' | 'image' | 'video' | 'text' | 'unsup
 const MD_EXTS = new Set(['.md', '.markdown'])
 
 const CODE_EXTS = new Set([
-  '.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.htm',
-  '.py', '.json', '.sh', '.bash', '.zsh',
-  '.yaml', '.yml', '.go', '.rs', '.java',
-  '.c', '.cpp', '.h', '.hpp', '.cs', '.php',
-  '.rb', '.swift', '.kt', '.vue', '.svelte',
-  '.sql', '.toml', '.ini', '.conf', '.env',
+  '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts',
+  '.css', '.scss', '.sass', '.less',
+  '.html', '.htm', '.vue', '.svelte',
+  '.py', '.pyw', '.pyi',
+  '.json', '.jsonc',
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.psm1',
+  '.yaml', '.yml',
+  '.go', '.rs',
+  '.java', '.kt', '.kts', '.scala', '.sc', '.groovy', '.gradle',
+  '.c', '.h',
+  '.cpp', '.cc', '.cxx', '.c++', '.hpp', '.hh', '.hxx', '.h++',
+  '.m', '.mm',
+  '.cs', '.fs', '.fsx',
+  '.php', '.rb', '.swift', '.dart',
+  '.lua', '.r',
+  '.hs', '.lhs', '.clj', '.cljs', '.cljc',
+  '.sql', '.toml', '.ini', '.conf', '.cfg', '.env', '.properties',
   '.dockerfile', '.makefile',
+  '.xml',
 ])
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp'])
 
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.ogg', '.mov', '.avi'])
 
-const TEXT_EXTS = new Set(['.txt', '.log', '.csv', '.tsv', '.xml', '.jsonl'])
+const TEXT_EXTS = new Set(['.txt', '.log', '.csv', '.tsv', '.jsonl'])
 
 /** 常见无后缀 / 特殊 basename → 编辑器语言（小写 key） */
 const KNOWN_BASENAME_LANG: Record<string, string> = {
@@ -135,21 +147,40 @@ export function getEditorLang(path: string, content?: string | null): string {
 
   const ext = getExtension(path)
   if (ext) {
-    if (['.js', '.jsx'].includes(ext))                          return 'javascript'
-    if (['.ts', '.tsx'].includes(ext))                          return 'typescript'
+    if (['.js', '.jsx', '.mjs', '.cjs'].includes(ext))           return 'javascript'
+    if (['.ts', '.tsx', '.mts', '.cts'].includes(ext))           return 'typescript'
     if (['.css'].includes(ext))                                 return 'css'
-    if (['.html', '.htm', '.vue', '.svelte'].includes(ext))     return 'html'
-    if (['.json', '.jsonl'].includes(ext))                      return 'json'
-    if (['.sh', '.bash', '.zsh'].includes(ext))                 return 'shell'
+    if (['.scss', '.sass', '.less'].includes(ext))              return 'sass'
+    if (['.html', '.htm', '.vue', '.svelte', '.xml', '.php'].includes(ext)) return 'html'
+    if (['.json', '.jsonc', '.jsonl'].includes(ext))            return 'json'
+    if (['.sh', '.bash', '.zsh', '.fish'].includes(ext))        return 'shell'
+    if (['.ps1', '.psm1'].includes(ext))                        return 'powershell'
     if (['.yaml', '.yml'].includes(ext))                        return 'yaml'
-    if (['.py'].includes(ext))                                  return 'python'
+    if (['.py', '.pyw', '.pyi'].includes(ext))                  return 'python'
     if (['.go'].includes(ext))                                  return 'go'
     if (['.rs'].includes(ext))                                  return 'rust'
     if (['.sql'].includes(ext))                                 return 'sql'
     if (['.toml'].includes(ext))                                return 'toml'
+    if (['.ini', '.conf', '.cfg', '.env', '.properties'].includes(ext)) return 'properties'
     if (['.rb'].includes(ext))                                  return 'ruby'
     if (['.dockerfile'].includes(ext))                          return 'dockerfile'
     if (['.pl', '.pm'].includes(ext))                           return 'perl'
+    if (['.c', '.h'].includes(ext))                             return 'c'
+    if (['.cpp', '.cc', '.cxx', '.c++', '.hpp', '.hh', '.hxx', '.h++'].includes(ext)) return 'cpp'
+    if (['.m'].includes(ext))                                   return 'objectivec'
+    if (['.mm'].includes(ext))                                  return 'objectivecpp'
+    if (['.java'].includes(ext))                                return 'java'
+    if (['.cs'].includes(ext))                                  return 'csharp'
+    if (['.kt', '.kts'].includes(ext))                          return 'kotlin'
+    if (['.scala', '.sc'].includes(ext))                        return 'scala'
+    if (['.swift'].includes(ext))                               return 'swift'
+    if (['.dart'].includes(ext))                                return 'dart'
+    if (['.lua'].includes(ext))                                 return 'lua'
+    if (['.r'].includes(ext))                                   return 'r'
+    if (['.hs', '.lhs'].includes(ext))                          return 'haskell'
+    if (['.groovy', '.gradle'].includes(ext))                   return 'groovy'
+    if (['.clj', '.cljs', '.cljc'].includes(ext))               return 'clojure'
+    if (['.md', '.markdown'].includes(ext))                     return 'markdown'
     // 未知扩展名：再试 shebang
   }
 
