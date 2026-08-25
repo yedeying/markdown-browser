@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'preact/hooks'
 import type { FileNode } from '../../types.js'
 import { apiFetch, withHidden } from '../utils/fsApi.js'
 import { clientPerfLog, clientPerfTimed } from '../utils/perfLog.js'
+import { patchChildren } from '../utils/treePatch.js'
 
 /**
  * 懒加载文件树。
@@ -21,6 +22,8 @@ export function useFileTree(showHidden = false) {
   const loadedRef = useRef<Set<string>>(new Set())
   // 正在加载的路径，避免重复请求
   const inflightRef = useRef<Map<string, Promise<void>>>(new Map())
+  /** 每路径世代：晚到的响应不得写回 tree（含与 refresh 并行） */
+  const fetchGenRef = useRef<Map<string, number>>(new Map())
 
   /** 拉取指定路径下一层 */
   const fetchLevel = useCallback(async (path: string): Promise<FileNode[]> => {
@@ -38,44 +41,36 @@ export function useFileTree(showHidden = false) {
     return data
   }, [showHidden])
 
-  /** 递归更新 tree：将 target path 的 children 替换为新数据 */
-  const patchChildren = (nodes: FileNode[], targetPath: string, newChildren: FileNode[]): FileNode[] => {
-    if (targetPath === '') return newChildren
-    return nodes.map(n => {
-      if (n.type !== 'folder') return n
-      if (n.path === targetPath) return { ...n, children: newChildren }
-      if (targetPath.startsWith(n.path + '/') && n.children) {
-        return { ...n, children: patchChildren(n.children, targetPath, newChildren) }
-      }
-      return n
-    })
+  const bumpGen = (path: string): number => {
+    const gen = (fetchGenRef.current.get(path) ?? 0) + 1
+    fetchGenRef.current.set(path, gen)
+    return gen
   }
 
   /**
    * 加载指定路径下一层并合并到 tree；已加载过则不重复。
-   * force=true 用于 mkdir/touch/失败重试：不复用可能过期的 inflight，必须重新拉取。
+   * force=true 用于 mkdir/touch/失败重试：使在飞请求过期并重新拉取。
    */
   const loadChildren = useCallback(async (path: string, force = false) => {
     if (!force && loadedRef.current.has(path)) return
 
-    if (force) {
-      const stale = inflightRef.current.get(path)
-      if (stale) {
-        try { await stale } catch { /* ignore */ }
-      }
-      // 等待期间若已有新的 force 在飞，直接并入
-      const again = inflightRef.current.get(path)
-      if (again) return again
-    } else {
+    if (!force) {
       const existing = inflightRef.current.get(path)
       if (existing) return existing
     }
 
+    // 先抬世代，再启动 fetch：任何在飞的旧请求完成时都会被丢弃
+    const gen = bumpGen(path)
+
     const promise = (async () => {
       const t0 = performance.now()
-      clientPerfLog('loadChildren:start', { path: path || '(root)', force })
+      clientPerfLog('loadChildren:start', { path: path || '(root)', force, gen })
       try {
         const children = await fetchLevel(path)
+        if (fetchGenRef.current.get(path) !== gen) {
+          clientPerfLog('loadChildren:stale', { path: path || '(root)', gen })
+          return
+        }
         setTree(prev => patchChildren(prev, path, children))
         loadedRef.current.add(path)
         setChildErrors(prev => {
@@ -89,11 +84,14 @@ export function useFileTree(showHidden = false) {
           children: children.length,
         })
       } catch (e) {
+        if (fetchGenRef.current.get(path) !== gen) return
         // 保留已有结构，但记录错误：调用方（文件夹视图）据此显示错误与重试入口
         setChildErrors(prev => ({ ...prev, [path]: String(e) }))
         clientPerfLog('loadChildren:error', { path: path || '(root)', error: String(e) })
       } finally {
-        inflightRef.current.delete(path)
+        if (inflightRef.current.get(path) === promise) {
+          inflightRef.current.delete(path)
+        }
       }
     })()
     inflightRef.current.set(path, promise)
@@ -116,24 +114,33 @@ export function useFileTree(showHidden = false) {
         clientPerfLog('refresh:skip-unloaded', { path: affectedPath || '(root)' })
         return
       }
+      const gen = bumpGen(affectedPath)
       try {
         const children = await fetchLevel(affectedPath)
+        if (fetchGenRef.current.get(affectedPath) !== gen) {
+          clientPerfLog('refresh:stale', { path: affectedPath || '(root)', gen })
+          return
+        }
         setTree(prev => patchChildren(prev, affectedPath, children))
         loadedRef.current.add(affectedPath)
       } catch { /* ignore */ }
       return
     }
+    const gen = bumpGen('')
     try {
       setLoading(true)
       const root = await fetchLevel('')
+      if (fetchGenRef.current.get('') !== gen) return
+      // 全量根刷新：不保留旧子树（showHidden 切换等）
       setTree(root)
       loadedRef.current = new Set([''])
       setChildErrors({})
       setError(null)
     } catch (e) {
+      if (fetchGenRef.current.get('') !== gen) return
       setError(String(e))
     } finally {
-      setLoading(false)
+      if (fetchGenRef.current.get('') === gen) setLoading(false)
     }
   }, [fetchLevel])
 

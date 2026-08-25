@@ -378,20 +378,30 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       if (!rootNode.path) {
         next[0] = { ...next[0], children: tree }
       }
+      // 路径序列未变且节点引用未变时保留 prev，避免无谓重渲染清掉浏览进度
+      if (
+        next.length === prev.length
+        && next.every((n, i) => n === prev[i])
+      ) {
+        return prev
+      }
       return next
     })
     setSelectedInCol((prev) => {
       const next: Record<number, string> = {}
+      let changed = false
       for (const [k, v] of Object.entries(prev)) {
         if (findNodeByPath(tree, v)) next[Number(k)] = v
+        else changed = true
       }
+      if (!changed && Object.keys(next).length === Object.keys(prev).length) return prev
       return next
     })
     setPreview((p) => {
       if (!p) return p
       return findNodeByPath(tree, p.node.path) ? p : null
     })
-  }, [tree, rootNode])
+  }, [tree, rootNode.path])
 
   // 列内目录尚未拉过 children：触发懒加载
   useEffect(() => {

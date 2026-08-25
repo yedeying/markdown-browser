@@ -358,23 +358,24 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     })()
   }, [tree.length > 0 ? 'loaded' : 'empty'])
 
-  // tree 变化时同步 selectedNode（仅刷新当前 URL 对应节点的 children 等；
-  // 深链/点击导航的世代由 navGen 保护，避免过期异步写回）
+  // tree 变化时：仅在 URL 对应节点「出现 / 类型变化 / 路径变化」时更新 selectedNode。
+  // 同路径不重写——文件夹 children 已在渲染时从 tree 解析；避免延迟 load 触发无意义
+  // setSelectedNode，把树/列光标拽回或清空浏览进度。
   useEffect(() => {
     if (tree.length === 0) return
     const path = stripPrefix(window.location.pathname)
 
     if (!path) {
-      setSelectedNode(makeRootNode(tree, dirName))
+      setSelectedNode((prev) => (prev?.path === '' ? prev : makeRootNode(tree, dirName)))
       return
     }
 
     const node = findNodeByPath(tree, path)
-    if (node?.type === 'folder') {
-      setSelectedNode(node)
-    } else if (node?.type === 'file') {
-      setSelectedNode(node)
-    }
+    if (!node) return
+    setSelectedNode((prev) => {
+      if (prev?.path === node.path && prev?.type === node.type) return prev
+      return node
+    })
   }, [tree])
 
   // 浏览器前进/后退
