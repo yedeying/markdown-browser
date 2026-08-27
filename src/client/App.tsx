@@ -15,7 +15,8 @@ import AdminPanel from './components/AdminPanel.js'
 import MountSelector from './components/MountSelector.js'
 import SettingsDialog from './components/SettingsDialog.js'
 import { watchUrl, fetchPathStat } from './utils/fsApi.js'
-import { usePref } from './hooks/usePref.js'
+import { revealHiddenForPath, isHiddenPath } from './utils/hiddenFiles.js'
+import { getShowHidden, setShowHidden, subscribePref } from './utils/prefs.js'
 import type { FileNode, WatchEvent } from '../types.js'
 import type { ClipboardState } from './components/FolderView.js'
 import { clientPerfLog } from './utils/perfLog.js'
@@ -174,18 +175,7 @@ interface DirModeProps {
 }
 
 const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, mountAlias }) => {
-  // 隐藏文件（点文件）显隐，默认隐藏；侧边栏与文件夹视图共享同一状态。
-  // 服务端默认不返回点文件，因此这个开关也是 tree / search 请求的参数。
-  const [showHidden, setShowHiddenState] = usePref('showHidden')
-  const handleToggleShowHidden = useCallback(() => {
-    setShowHiddenState(!showHidden)
-  }, [showHidden])
-
-  const { tree, loading: treeLoading, childErrors, refresh, loadChildren, ensurePathLoaded } = useFileTree(showHidden)
-  const { content, loadedPath, loading, error, currentPath, loadFile, selectFile, saveFile, setContentForPath } = useFileContent()
-  const { query, setQuery, searchType, setSearchType, results, loading: searchLoading } = useSearch(tree, showHidden)
-
-  // 多挂载模式：URL 前缀 /m/alias
+  // 多挂载模式：URL 前缀 /m/alias（须先算出来，供首屏隐藏直链引导）
   const urlPrefix = mountAlias ? `/m/${mountAlias}` : ''
   const buildUrl = (p: string) => `${urlPrefix}${p ? `/${p}` : '/'}`
   const stripPrefix = (pathname: string) => {
@@ -204,6 +194,21 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
       return raw
     }
   }
+
+  // 隐藏文件显隐：与 usePref 等价，但首屏若 URL 含隐藏段则同步打开开关，
+  // 使首轮 tree/stat/file 即带 showHidden=1（避免先 404 再重拉）。
+  const [showHidden, setShowHiddenState] = useState(() => {
+    revealHiddenForPath(stripPrefix(window.location.pathname))
+    return getShowHidden()
+  })
+  useEffect(() => subscribePref('showHidden', setShowHiddenState), [])
+  const handleToggleShowHidden = useCallback(() => {
+    setShowHidden(!showHidden)
+  }, [showHidden])
+
+  const { tree, loading: treeLoading, childErrors, refresh, loadChildren, ensurePathLoaded } = useFileTree(showHidden)
+  const { content, loadedPath, loading, error, currentPath, loadFile, selectFile, saveFile, setContentForPath } = useFileContent()
+  const { query, setQuery, searchType, setSearchType, results, loading: searchLoading } = useSearch(tree, showHidden)
 
   // selectedNode 记录当前选中项（可以是文件夹或文件）
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
@@ -235,6 +240,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   const navGenRef = useRef(0)
 
   const handleSelect = useCallback((node: FileNode, fromSwipe = false) => {
+    // 选中隐藏路径时打开开关（与直链同一并集策略）
+    revealHiddenForPath(node.path)
     navGenRef.current++
     setSelectedNode(node)
     // path='' 是根节点
@@ -316,6 +323,13 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     const path = stripPrefix(window.location.pathname)
     if (!path) return
 
+    // 隐藏直链：首屏已 reveal；若状态尚未为 true 则再推一把并等待
+    if (isHiddenPath(path) && !showHidden) {
+      revealHiddenForPath(path)
+      setShowHidden(true)
+      return
+    }
+
     deepLinkDoneRef.current = true
     const gen = ++navGenRef.current
 
@@ -356,7 +370,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
         window.history.replaceState({ path, isFolder: false }, '', buildUrl(path))
       }
     })()
-  }, [tree.length > 0 ? 'loaded' : 'empty'])
+  }, [tree.length > 0 ? 'loaded' : 'empty', showHidden])
 
   // tree 变化时：仅在 URL 对应节点「出现 / 类型变化 / 路径变化」时更新 selectedNode。
   // 同路径不重写——文件夹 children 已在渲染时从 tree 解析；避免延迟 load 触发无意义
@@ -382,6 +396,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   const handlePopState = useCallback((e: PopStateEvent) => {
     const path = e.state?.path ?? stripPrefix(window.location.pathname)
     const isFolder = e.state?.isFolder
+    revealHiddenForPath(path)
 
     if (!path) {
       setSelectedNode(makeRootNode(tree, dirName))

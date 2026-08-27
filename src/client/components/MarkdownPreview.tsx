@@ -4,6 +4,12 @@ import mermaid from 'mermaid'
 import 'katex/dist/katex.min.css'
 import renderMathInElement from 'katex/dist/contrib/auto-render'
 import { parseMarkdownPreview } from '../utils/parseMarkdownPreview.js'
+import {
+  setupMarkdownHeadingFolds,
+  toggleHeadingFold,
+  expandHeadingAncestors,
+  findElementByDomId,
+} from '../utils/mdHeadingFold.js'
 
 mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' })
 
@@ -17,11 +23,14 @@ interface Props {
 
 const MarkdownPreview: FunctionalComponent<Props> = ({ markdown, contentRef, className, filePath, onCheckboxToggle }) => {
   const containerRef = useRef<HTMLDivElement>(null)
+  const filePathRef = useRef(filePath)
+  filePathRef.current = filePath
 
   useEffect(() => {
     if (!containerRef.current) return
 
     containerRef.current.innerHTML = parseMarkdownPreview(markdown, filePath)
+    setupMarkdownHeadingFolds(containerRef.current, filePath)
 
     // 渲染后按 DOM 文档顺序重新给 checkbox 编号
     // （marked 的 listitem 是从内到外渲染，导致索引是后序；DOM 顺序是先序，和源码行顺序一致）
@@ -65,19 +74,37 @@ const MarkdownPreview: FunctionalComponent<Props> = ({ markdown, contentRef, cla
       })
     })
 
+    // URL hash：展开祖先后滚动
+    const hash = window.location.hash.replace(/^#/, '')
+    if (hash) {
+      expandHeadingAncestors(containerRef.current, hash, filePath)
+      requestAnimationFrame(() => {
+        findElementByDomId(containerRef.current!, hash)?.scrollIntoView({ block: 'start' })
+      })
+    }
+
     // 暴露 ref
     if (contentRef) {
       contentRef.current = containerRef.current
     }
   }, [markdown, filePath])
 
-  // 复制按钮 + checkbox 事件委托
+  // 复制按钮 + checkbox + 标题折叠 事件委托
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
 
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
+
+      const foldBtn = target.closest('.md-fold-toggle')
+      if (foldBtn && el.contains(foldBtn)) {
+        e.preventDefault()
+        e.stopPropagation()
+        const section = foldBtn.closest('.md-fold') as HTMLElement | null
+        if (section) toggleHeadingFold(section, filePathRef.current)
+        return
+      }
 
       // 复制按钮
       if (target.classList.contains('copy-btn')) {
@@ -99,23 +126,17 @@ const MarkdownPreview: FunctionalComponent<Props> = ({ markdown, contentRef, cla
       }
 
       // checkbox 勾选
-      // 支持点击 checkbox 本身、.task-text 文字、或整个 .task-list-item 行
-      // 注意：直接点 checkbox 时浏览器已翻转 checked；点文字时需手动翻转
       {
         let cb: HTMLInputElement | null = null
         let browserAlreadyToggled = false
 
         if (target.classList.contains('task-checkbox')) {
-          // 直接点 checkbox：浏览器已翻转
           cb = target as HTMLInputElement
           browserAlreadyToggled = true
         } else {
-          // 点文字或行：找最近的 task-list-item 里的 checkbox
-          // 但如果点的是链接、按钮等交互元素则不拦截
           if ((target as HTMLElement).closest('a, button')) return
           const li = target.closest('.task-list-item')
           if (li) {
-            // 只取本层直属 checkbox（不跨子列表）
             cb = li.querySelector(':scope > .task-checkbox, :scope > p > .task-checkbox')
           }
         }
@@ -124,7 +145,6 @@ const MarkdownPreview: FunctionalComponent<Props> = ({ markdown, contentRef, cla
           const idx = cb.dataset.taskIdx
           if (idx !== undefined && onCheckboxToggle) {
             if (!browserAlreadyToggled) {
-              // 手动翻转 DOM，保证视觉立即响应
               cb.checked = !cb.checked
             }
             onCheckboxToggle(parseInt(idx, 10), cb.checked)

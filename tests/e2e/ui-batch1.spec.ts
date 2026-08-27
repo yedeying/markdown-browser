@@ -147,6 +147,13 @@ test('2f-server: opening a hidden file still works once the toggle is on', async
   await expect(page.locator('[data-testid="markdown-preview"]')).toContainText('Hidden Note')
 })
 
+test('2f: deep link into a dot-directory auto-enables show hidden and opens the file', async ({ page }) => {
+  // 直链 .private/... 时不应因默认隐藏而 /api/stat 404；应打开开关并渲染内容
+  await page.goto('/.private/plain-name.md')
+  await expect(page.locator('[data-testid="toggle-hidden-files"]')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('[data-testid="markdown-preview"]')).toContainText('Plain Name', { timeout: 15000 })
+})
+
 test('2f-bugfix: name search does not leak a plain-named file nested inside a dot-directory', async ({ page }) => {
   await page.goto('/')
 

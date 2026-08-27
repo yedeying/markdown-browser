@@ -777,7 +777,7 @@ const ContentArea: FunctionalComponent<Props> = ({
                 : <JsonlLinePreview content={content || ''} />
             )}
           </div>
-          {!isJsonl && <TableOfContents contentRef={previewContentRef} />}
+          {!isJsonl && <TableOfContents contentRef={previewContentRef} filePath={filePath} />}
         </div>
       )
     }

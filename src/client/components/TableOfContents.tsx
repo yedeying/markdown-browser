@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
+import { expandHeadingAncestors, findElementByDomId } from '../utils/mdHeadingFold.js'
 
 interface TocItem {
   id: string
@@ -9,9 +10,11 @@ interface TocItem {
 
 interface Props {
   contentRef: { current: HTMLElement | null }
+  /** 用于折叠状态写回 sessionStorage */
+  filePath?: string | null
 }
 
-const TableOfContents: FunctionalComponent<Props> = ({ contentRef }) => {
+const TableOfContents: FunctionalComponent<Props> = ({ contentRef, filePath }) => {
   const [items, setItems] = useState<TocItem[]>([])
   const [activeId, setActiveId] = useState('')
 
@@ -63,7 +66,10 @@ const TableOfContents: FunctionalComponent<Props> = ({ contentRef }) => {
                 data-target={item.id}
                 onClick={(e) => {
                   e.preventDefault()
-                  const target = contentRef.current?.querySelector(`#${item.id}`)
+                  const root = contentRef.current
+                  if (!root) return
+                  expandHeadingAncestors(root, item.id, filePath)
+                  const target = findElementByDomId(root, item.id)
                   target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                 }}
               >

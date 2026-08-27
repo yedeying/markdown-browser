@@ -1,5 +1,32 @@
-import { test, expect } from 'bun:test'
-import { isDotfile, filterVisible, filterTree, isHiddenPath } from './hiddenFiles.ts'
+import { test, expect, beforeEach } from 'bun:test'
+import { isDotfile, filterVisible, filterTree, isHiddenPath, revealHiddenForPath } from './hiddenFiles.ts'
+import { getPref, setPref } from './prefs.ts'
+
+class MemoryStorage {
+  private store = new Map<string, string>()
+  getItem(key: string): string | null {
+    return this.store.has(key) ? this.store.get(key)! : null
+  }
+  setItem(key: string, value: string): void {
+    this.store.set(key, value)
+  }
+  removeItem(key: string): void {
+    this.store.delete(key)
+  }
+  clear(): void {
+    this.store.clear()
+  }
+  get length(): number {
+    return this.store.size
+  }
+  key(index: number): string | null {
+    return [...this.store.keys()][index] ?? null
+  }
+}
+
+beforeEach(() => {
+  ;(globalThis as unknown as { localStorage: MemoryStorage }).localStorage = new MemoryStorage()
+})
 
 test('isDotfile detects leading dot', () => {
   expect(isDotfile('.hidden-note.md')).toBe(true)
@@ -38,6 +65,18 @@ test('isHiddenPath flags a plain filename nested inside a dot-directory', () => 
 test('isHiddenPath returns false for fully visible paths', () => {
   expect(isHiddenPath('notes/daily.md')).toBe(false)
   expect(isHiddenPath('README.md')).toBe(false)
+})
+
+test('revealHiddenForPath turns showHidden on for hidden paths', () => {
+  expect(getPref('showHidden')).toBe(false)
+  expect(revealHiddenForPath('.hermes/memory/note.md')).toBe(true)
+  expect(getPref('showHidden')).toBe(true)
+})
+
+test('revealHiddenForPath leaves showHidden alone for visible paths', () => {
+  setPref('showHidden', false)
+  expect(revealHiddenForPath('notes/daily.md')).toBe(false)
+  expect(getPref('showHidden')).toBe(false)
 })
 
 interface Node { name: string; children?: Node[] }

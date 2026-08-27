@@ -1,5 +1,7 @@
 // 隐藏文件（点文件）过滤：用于文件树 / 文件夹视图 / 搜索结果的显隐切换。
 
+import { getPref, setPref } from './prefs.js'
+
 export function isDotfile(name: string): boolean {
   return name.startsWith('.')
 }
@@ -11,6 +13,18 @@ export function isDotfile(name: string): boolean {
  */
 export function isHiddenPath(path: string): boolean {
   return path.split('/').some(seg => seg !== '' && isDotfile(seg))
+}
+
+/**
+ * 路径含隐藏段时打开「显示隐藏」开关（持久化 pref）。
+ * 与用户手动开关并集：只要进到隐藏路径就打开，便于直链 /api/stat|/api/file 带上 showHidden=1。
+ * @returns 调用后 showHidden 是否为 true
+ */
+export function revealHiddenForPath(path: string | null | undefined): boolean {
+  if (path && isHiddenPath(path) && !getPref('showHidden')) {
+    setPref('showHidden', true)
+  }
+  return getPref('showHidden')
 }
 
 export function filterVisible<T extends { name: string }>(nodes: T[], showHidden: boolean): T[] {

@@ -223,3 +223,90 @@
   text-decoration: none !important;
   color: var(--text) !important;
 }
+
+/* ── 标题辖区折叠（预览） ───────────────────────────────── */
+.markdown-body .md-fold {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.markdown-body .md-fold-head {
+  display: block;
+}
+
+/*
+ * 三角在标题内行内对齐；热区用固定 rem（桌面 1.5 / 触控 2.5），
+ * 负 margin 整块落在左侧 gutter，不压标题字。
+ */
+.markdown-body .md-fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  box-sizing: border-box;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0 0.2rem 0 -1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  font-size: 12px;
+  line-height: 1;
+  position: relative;
+  top: -0.06em;
+}
+
+/* h1 字号更大且有 padding-bottom + 底边，middle 会偏下，单独上移对齐字面中线 */
+.markdown-body h1 > .md-fold-toggle {
+  top: -0.32em;
+}
+
+.markdown-body h2 > .md-fold-toggle {
+  top: -0.14em;
+}
+
+.markdown-body .md-fold-toggle::before {
+  content: '▸';
+  display: block;
+  box-sizing: content-box;
+  font-size: 11px;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+.markdown-body .md-fold--collapsed > .md-fold-head .md-fold-toggle::before {
+  transform: rotate(0deg);
+}
+
+.markdown-body .md-fold-toggle:hover,
+.markdown-body .md-fold-toggle:focus-visible {
+  color: var(--heading);
+  background: var(--surface-hover, color-mix(in srgb, var(--text) 8%, transparent));
+  outline: none;
+}
+
+.markdown-body .md-fold--collapsed > .md-fold-body {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .markdown-body .md-fold-toggle {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-left: -2.5rem;
+    margin-right: 0.15rem;
+    border-radius: 6px;
+  }
+
+  .markdown-body .md-fold-toggle::before {
+    font-size: 12px;
+  }
+}
+
