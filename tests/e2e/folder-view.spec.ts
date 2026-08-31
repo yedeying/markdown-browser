@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test'
+import { existsSync, readdirSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 
 /**
  * 文件夹视图 E2E 测试
@@ -23,17 +25,21 @@ import { test, expect } from '@playwright/test'
 test('T1: 点击文件夹 → 左树展开 + 右侧显示 FolderView', async ({ page }) => {
   await page.goto('/')
 
-  // 点击 notes 文件夹节点
+  // 点击 notes 文件夹节点（选中 / 打开右侧 FolderView）
   await page.click('[data-testid="tree-node-notes"]')
-
-  // 左树展开：notes 下的文件可见
-  await expect(page.locator('[data-testid="tree-node-notes-daily.md"]')).toBeVisible()
 
   // 右侧 FolderView 出现
   await expect(page.locator('[data-testid="folder-view"]')).toBeVisible()
 
   // 面包屑包含 notes
   await expect(page.locator('.folder-breadcrumb')).toContainText('notes')
+
+  // 等右侧列表里出现子项，确保 lazy children 已写入树，再展开侧栏
+  await expect(page.locator('.folder-list-row:has-text("daily.md")')).toBeVisible()
+
+  // 左树展开靠 ▶ toggle（点行本身只 select，不 expand）
+  await page.locator('[data-testid="tree-node-notes"] .folder-toggle').click()
+  await expect(page.locator('[data-testid="tree-node-notes-daily.md"]')).toBeVisible()
 })
 
 // ─── T2 列表视图：默认视图 + 排序 + 文件导航 ─────────────────────────────────
@@ -264,18 +270,34 @@ test('T12: 空文件夹显示空状态', async ({ page }) => {
 
 // ─── mkdir 后空文件夹应出现在列表 ─────────────────────────────────────────────
 test('mkdir in empty folder shows new folder without reload', async ({ page }) => {
-  await page.goto('/')
-  await page.click('[data-testid="tree-node-empty-folder"]')
-  await expect(page.locator('[data-testid="folder-empty"]')).toBeVisible()
+  const emptyDir = join(process.cwd(), 'tests/fixtures/docs/empty-folder')
+  const dirName = `brand-new-dir-${Date.now()}`
+  const createdAbs = join(emptyDir, dirName)
 
-  await page.getByTitle('新建文件夹').click()
-  const input = page.locator('.modal-input')
-  await expect(input).toBeVisible()
-  await input.fill('brand-new-dir')
-  await page.locator('.modal-box .btn-primary').click()
+  // 清掉上次失败残留，否则 empty-folder 不再空，首个 assertion 就会挂
+  for (const name of readdirSync(emptyDir)) {
+    if (name === '.gitkeep') continue
+    rmSync(join(emptyDir, name), { recursive: true, force: true })
+  }
 
-  await expect(page.locator('[data-testid="folder-empty"]')).toHaveCount(0)
-  await expect(
-    page.locator('[data-path="empty-folder/brand-new-dir"], .folder-card:has-text("brand-new-dir"), .folder-list-row:has-text("brand-new-dir")').first(),
-  ).toBeVisible()
+  try {
+    await page.goto('/')
+    await page.click('[data-testid="tree-node-empty-folder"]')
+    await expect(page.locator('[data-testid="folder-empty"]')).toBeVisible()
+
+    await page.getByTitle('新建文件夹').click()
+    const input = page.locator('.modal-input')
+    await expect(input).toBeVisible()
+    // ContextModal 打开时会 rAF focus/select；等聚焦后再 fill，避免被 effect 里的 setValue('') 冲掉
+    await expect(input).toBeFocused()
+    await input.fill(dirName)
+    await page.locator('.modal-box .btn-primary').click()
+
+    await expect(page.locator('[data-testid="folder-empty"]')).toHaveCount(0)
+    await expect(
+      page.locator(`[data-path="empty-folder/${dirName}"], .folder-card:has-text("${dirName}"), .folder-list-row:has-text("${dirName}")`).first(),
+    ).toBeVisible()
+  } finally {
+    if (existsSync(createdAbs)) rmSync(createdAbs, { recursive: true, force: true })
+  }
 })

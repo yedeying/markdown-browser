@@ -5,11 +5,9 @@ import { join } from 'node:path'
 test('2a: folder skeleton shows during lazy children load, then folder-view replaces it; switching away from a file preview leaves no stale markdown-preview', async ({ page }) => {
   await page.goto('/')
 
-  // notes/sub's own children are NOT included in the initial root fetch (depth=1
-  // only resolves one level down from root). Selecting "notes" triggers a
-  // depth=1 fetch *of notes* which, as a side effect, also patches in sub's
-  // children — so we must hold both requests to keep sub's children genuinely
-  // unresolved long enough to observe the skeleton branch specifically.
+  // 根 depth=1 已带上 notes 的一层 children（sub 尚无 children）。
+  // 必须同时拦住 notes 与 notes/sub：否则 loadChildren(notes) 的 depth=1 会提前填好
+  // sub.children，点进 sub 时就看不到骨架。
   const lazyFetchMatcher = (url: URL) => {
     if (url.pathname !== '/api/files') return false
     const path = url.searchParams.get('path')
@@ -23,25 +21,22 @@ test('2a: folder skeleton shows during lazy children load, then folder-view repl
     await route.continue()
   })
 
+  // 点 notes：用根上已有的 children 打开列表（notes 的 force fetch 被 gate）
   await page.click('[data-testid="tree-node-notes"]')
-  await expect(page.locator('[data-testid="tree-node-notes-sub"]')).toBeVisible()
+  await expect(page.locator('[data-testid="folder-view"]')).toBeVisible()
+  await expect(page.locator('.folder-list-row:has-text("sub")')).toBeVisible()
 
-  // Click into notes/sub while its children fetch is held: must show the
-  // skeleton, not a stale/empty FolderView (this is the actual 2a fix under test).
-  await page.click('[data-testid="tree-node-notes-sub"]')
-  // 骨架延迟 500ms 才出现；请求被 gate 住时应能等到
+  // 从列表进入 sub，同时 notes/sub fetch 被 gate：应出现骨架
+  await page.click('.folder-list-row:has-text("sub")')
   await expect(page.locator('[data-testid="folder-skeleton"]')).toBeVisible({ timeout: 3000 })
   await expect(page.locator('[data-testid="folder-view"]')).not.toBeVisible()
   await expect(page.locator('[data-testid="markdown-preview"]')).not.toBeVisible()
 
-  // Release the delayed response: skeleton should be replaced by the real FolderView.
   releaseGate!()
   await expect(page.locator('[data-testid="folder-view"]')).toBeVisible()
   await expect(page.locator('[data-testid="folder-skeleton"]')).not.toBeVisible()
   await expect(page.locator('.folder-breadcrumb')).toContainText('sub')
 
-  // Open a file, then switch back to the (already-loaded) parent folder: the
-  // previous markdown preview must not linger behind/instead of the folder view.
   await page.click('.folder-list-row:has-text("deep.md")')
   await expect(page.locator('[data-testid="markdown-preview"]')).toBeVisible()
 
@@ -52,8 +47,6 @@ test('2a: folder skeleton shows during lazy children load, then folder-view repl
 })
 
 test('2a-failure: a failed folder children load shows an error with retry, not an endless skeleton', async ({ page }) => {
-  // notes/sub 的 children 只能通过 path=notes（或 path=notes/sub）的请求拿到，
-  // 两个都打掉就能造出"懒加载失败"的状态。
   let blocked = true
   await page.route(
     (url) => url.pathname === '/api/files' && ['notes', 'notes/sub'].includes(url.searchParams.get('path') ?? ''),
@@ -62,7 +55,8 @@ test('2a-failure: a failed folder children load shows an error with retry, not a
 
   await page.goto('/')
   await page.click('[data-testid="tree-node-notes"]')
-  await page.click('[data-testid="tree-node-notes-sub"]')
+  await expect(page.locator('.folder-list-row:has-text("sub")')).toBeVisible()
+  await page.click('.folder-list-row:has-text("sub")')
 
   await expect(page.locator('[data-testid="folder-load-retry"]')).toBeVisible()
   await expect(page.locator('[data-testid="folder-skeleton"]')).not.toBeVisible()
@@ -75,7 +69,10 @@ test('2a-failure: a failed folder children load shows an error with retry, not a
 
 test('2h: deep link to image opens ImageViewer', async ({ page }) => {
   await page.goto('/images/photo.png')
-  await expect(page.locator('.image-viewer img, [data-testid="image-viewer"]').first()).toBeVisible({ timeout: 10000 })
+  // 图片深链走 media lightbox（不再是独立 ImageViewer 页）
+  await expect(
+    page.locator('[data-testid="media-lightbox"], [data-testid="image-viewer"]').first(),
+  ).toBeVisible({ timeout: 10000 })
   await expect(page.locator('[data-testid="markdown-preview"]')).toHaveCount(0)
 })
 

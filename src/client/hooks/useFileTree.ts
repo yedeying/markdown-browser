@@ -54,9 +54,15 @@ export function useFileTree(showHidden = false) {
   const loadChildren = useCallback(async (path: string, force = false) => {
     if (!force && loadedRef.current.has(path)) return
 
-    if (!force) {
-      const existing = inflightRef.current.get(path)
-      if (existing) return existing
+    const existing = inflightRef.current.get(path)
+    if (existing) {
+      await existing
+      if (!force) return
+      // force：并入的请求可能是 mutation 前的空列表；结束后若仍无在飞则再拉一次
+      const again = inflightRef.current.get(path)
+      if (again) return again
+    } else if (!force && loadedRef.current.has(path)) {
+      return
     }
 
     // 先抬世代，再启动 fetch：任何在飞的旧请求完成时都会被丢弃
@@ -114,16 +120,8 @@ export function useFileTree(showHidden = false) {
         clientPerfLog('refresh:skip-unloaded', { path: affectedPath || '(root)' })
         return
       }
-      const gen = bumpGen(affectedPath)
-      try {
-        const children = await fetchLevel(affectedPath)
-        if (fetchGenRef.current.get(affectedPath) !== gen) {
-          clientPerfLog('refresh:stale', { path: affectedPath || '(root)', gen })
-          return
-        }
-        setTree(prev => patchChildren(prev, affectedPath, children))
-        loadedRef.current.add(affectedPath)
-      } catch { /* ignore */ }
+      // 与 mkdir/touch 后的 force loadChildren 共用通道，避免并行 bumpGen 互标 stale
+      await loadChildren(affectedPath, true)
       return
     }
     const gen = bumpGen('')
@@ -142,7 +140,7 @@ export function useFileTree(showHidden = false) {
     } finally {
       if (fetchGenRef.current.get('') === gen) setLoading(false)
     }
-  }, [fetchLevel])
+  }, [fetchLevel, loadChildren])
 
   useEffect(() => {
     refresh()

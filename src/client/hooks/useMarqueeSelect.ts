@@ -59,7 +59,12 @@ export function useMarqueeSelect(
       const t = e.target as Element | null
       if (!t) return
       // 点在条目/复选框/交互控件上不启拖选
-      if (t.closest(itemSelector) || t.closest('button, a, input, .card-checkbox-wrap, .row-checkbox')) return
+      // 表头排序列（[data-sort]）也必须放行：pointerdown preventDefault 会吞掉后续 click，
+      // 导致点「大小/类型」无法切换 sort（e2e 2e / CI 红）。
+      if (
+        t.closest(itemSelector)
+        || t.closest('button, a, input, .card-checkbox-wrap, .row-checkbox, .folder-list-th, [data-sort]')
+      ) return
       if (t.closest('.ctx-menu, .ctx-overlay, .modal, .bottom-sheet')) return
 
       // 阻止浏览器默认文本/元素选中
