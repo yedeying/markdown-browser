@@ -3,10 +3,8 @@ import { defineConfig, devices } from '@playwright/test'
 /**
  * Playwright E2E 测试配置
  *
- * 使用前需要先启动 vmd 服务，指向 tests/fixtures/docs 目录：
- *   ~/.bun/bin/bun run build && ~/.bun/bin/bun dist/cli.js tests/fixtures/docs --port 8899
- *
- * 或使用 webServer 配置自动启动（见下方注释）
+ * webServer 会自动 `bun run build` 并启动 fixtures 服务（见下方）。
+ * 也可手动：bun run build && bun --env-file=/dev/null dist/cli.js tests/fixtures/docs --port 8899
  */
 export default defineConfig({
   testDir: './tests/e2e',
@@ -35,7 +33,8 @@ export default defineConfig({
   // --env-file=/dev/null：bun 默认会自动加载仓库根目录的 .env，其中的 VMD_PASSWORD 会让
   // 测试服务器要求登录，导致每个用例都停在登录页。e2e 必须跑在无密码的干净环境里。
   webServer: {
-    command: `${process.env.HOME}/.bun/bin/bun run build && ${process.env.HOME}/.bun/bin/bun --env-file=/dev/null dist/cli.js tests/fixtures/docs --port 8899`,
+    // 用 PATH 里的 bun（本地与 CI / setup-bun 都适用），避免写死 ~/.bun/bin。
+    command: 'bun run build && bun --env-file=/dev/null dist/cli.js tests/fixtures/docs --port 8899',
     url: 'http://localhost:8899',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

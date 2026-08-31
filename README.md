@@ -253,14 +253,19 @@ CodeMirror 6 编辑器，支持 Prettier 格式化
 
 ## 🧪 测试
 
-### E2E 测试
+### 单元测试
 ```bash
-~/.bun/bin/bun run test:e2e
+bun test          # 或 bun run test；仅 src/（见 bunfig.toml）
 ```
 
-测试套件位于 `tests/e2e/folder-view.spec.ts`（12 个测试用例）
+### E2E 测试
+```bash
+bun run test:e2e  # Playwright；webServer 会自行 build 并起 fixtures 服务
+```
 
-测试数据位于 `tests/fixtures/docs/`
+CI（GitHub Actions）里 **unit+build** 与 **e2e** 两个 job 并行、互不依赖。
+
+测试套件位于 `tests/e2e/`；测试数据位于 `tests/fixtures/docs/`。
 
 ## 🐳 Docker 部署
 

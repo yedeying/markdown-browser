@@ -8,7 +8,9 @@
     "build:client": "vite build",
     "build:server": "bun build src/cli.ts --outdir dist --target bun",
     "build": "vite build && bun build src/cli.ts --outdir dist --target bun",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "bun test",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@codemirror/commands": "^6.6.0",
