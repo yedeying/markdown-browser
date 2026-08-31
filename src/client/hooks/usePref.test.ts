@@ -1,6 +1,7 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { h, render } from 'preact'
 import { act } from 'preact/test-utils'
+import { Window } from 'happy-dom'
 import { setPref, type PrefKey } from '../utils/prefs.js'
 import { usePref } from './usePref.js'
 
@@ -26,53 +27,15 @@ class MemoryStorage {
   }
 }
 
-function makeElement() {
-  const el = {
-    parentNode: null as typeof el | null,
-    childNodes: [] as typeof el[],
-    style: {} as Record<string, string>,
-    setAttribute() {},
-    removeAttribute() {},
-    appendChild(child: typeof el) {
-      child.parentNode = el
-      el.childNodes.push(child)
-      return child
-    },
-    removeChild(child: typeof el) {
-      el.childNodes = el.childNodes.filter((node) => node !== child)
-      child.parentNode = null
-    },
-    insertBefore(child: typeof el) {
-      return el.appendChild(child)
-    },
-    addEventListener() {},
-    removeEventListener() {},
-    get firstChild() {
-      return el.childNodes[0] ?? null
-    },
-  }
-  return el
-}
-
-function installDomStub() {
-  const documentStub = {
-    createElement() {
-      return makeElement()
-    },
-    createTextNode(text: string) {
-      return { nodeValue: text, parentNode: null }
-    },
-    body: makeElement(),
-  }
-  ;(globalThis as { document: typeof documentStub }).document = documentStub
-  ;(globalThis as { Node: { DOCUMENT_NODE: number; ELEMENT_NODE: number; TEXT_NODE: number } }).Node = {
-    DOCUMENT_NODE: 9,
-    ELEMENT_NODE: 1,
-    TEXT_NODE: 3,
-  }
-}
-
-let container: ReturnType<typeof makeElement>
+/**
+ * 必须用完整 DOM（含 documentElement.style）。
+ * 残缺 stub 会污染进程内的 globalThis.document；若之后再加载
+ * @codemirror/view（例如 editorLang 测试），会在模块顶层炸：
+ *   TypeError: undefined is not an object (evaluating 'doc.documentElement.style')
+ * CI 上文件执行顺序更容易踩中，本地常因缓存/顺序不同而误过。
+ */
+let dom: Window
+let container: HTMLElement
 let latestValue: unknown
 
 function PrefProbe({ prefKey }: { prefKey: PrefKey }) {
@@ -82,10 +45,12 @@ function PrefProbe({ prefKey }: { prefKey: PrefKey }) {
 }
 
 beforeEach(() => {
-  installDomStub()
+  dom = new Window()
+  ;(globalThis as unknown as { window: Window }).window = dom
+  ;(globalThis as unknown as { document: Document }).document = dom.document as unknown as Document
   ;(globalThis as unknown as { localStorage: MemoryStorage }).localStorage = new MemoryStorage()
-  container = makeElement()
-  document.body.appendChild(container)
+  container = dom.document.createElement('div')
+  dom.document.body.appendChild(container)
   latestValue = undefined
 })
 
@@ -93,6 +58,10 @@ afterEach(() => {
   act(() => {
     render(null, container)
   })
+  dom.close()
+  delete (globalThis as Partial<typeof globalThis>).document
+  delete (globalThis as Partial<typeof globalThis>).window
+  delete (globalThis as Partial<typeof globalThis>).localStorage
 })
 
 test('usePref resynchronizes to the new key current value when prefKey changes', async () => {
