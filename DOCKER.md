@@ -222,9 +222,27 @@ docker run -d \
 
 ## 部署到云平台
 
+### GHCR（推荐，CI 自动）
+
+打 semver tag 并推送后，GitHub Actions **Release** 工作流会先并行跑 unit+build 与 e2e，全部通过后再构建并推送：
+
+- `ghcr.io/yedeying/markdown-browser:vX.Y.Z`
+- `ghcr.io/yedeying/markdown-browser:latest`
+
+```bash
+git tag v2.0.1
+git push origin v2.0.1
+
+# 拉取并运行
+docker pull ghcr.io/yedeying/markdown-browser:v2.0.1
+docker run -p 8888:8888 -v ~/docs:/markdown:ro ghcr.io/yedeying/markdown-browser:v2.0.1
+```
+
+工作流文件：`.github/workflows/release.yml`（仅 `v*` tag；日常 PR/`main` 仍走 `ci.yml`，不推镜像）。
+
 ### Docker Hub
 
-推送镜像到 Docker Hub：
+推送镜像到 Docker Hub（手动）：
 
 ```bash
 # 标记镜像

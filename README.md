@@ -78,7 +78,7 @@
 
 ### Docker 部署
 
-详见 [DOCKER.md](./DOCKER.md) 获取完整部署指南。
+详见 [DOCKER.md](./DOCKER.md) 获取完整部署指南。发布版镜像：`ghcr.io/yedeying/markdown-browser`（打 `v*` tag 后 CI 自动推送）。
 
 **快速开始**：
 ```bash
@@ -274,6 +274,8 @@ CI（GitHub Actions）里 **unit+build** 与 **e2e** 两个 job 并行、互不�
 ./docker-run.sh ~/docs          # 默认 8888 端口
 ./docker-run.sh ~/docs 9000     # 指定端口
 ```
+
+正式发布镜像由 `v*` tag 触发推到 GHCR（`ghcr.io/yedeying/markdown-browser`），见 [DOCKER.md](./DOCKER.md)。
 
 ### 完整指南
 详见 [DOCKER.md](./DOCKER.md)
