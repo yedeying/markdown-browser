@@ -3,15 +3,12 @@
  * 见 docs/superpowers/specs/2026-09-03-md-print-mode-design.md
  */
 
+/* 部分浏览器打印对话框选「无边距」会忽略 @page；正文 padding 作可靠边距 */
 @page {
-  margin: 12mm;
+  margin: 16mm;
 }
 
 @media print {
-  /*
-   * 在 :root 强制浅色 token，避免暗色主题下
-   * --heading / --text 仍是浅色导致白底上「浅灰标题」。
-   */
   :root,
   html,
   html[data-theme='dark'],
@@ -39,11 +36,14 @@
     color: #111 !important;
     height: auto !important;
     overflow: visible !important;
+    margin: 0 !important;
+    /* 可靠页边距：即使打印对话框边距为「无」也有留白 */
+    padding: 18mm 16mm !important;
+    box-sizing: border-box !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* ── 壳子 / 导航 / 浮层（勿被后面的「祖先 display:block」盖掉） */
   .sidebar,
   .sidebar-resize-handle,
   .sidebar-overlay,
@@ -76,7 +76,6 @@
     display: none !important;
   }
 
-  /* 布局祖先：取消滚动裁剪与主题底色，让正文正常分页 */
   .app-layout,
   .content-area,
   .content-body,
@@ -99,7 +98,6 @@
     padding: 0 !important;
   }
 
-  /* ── 正文：不依赖 CSS 变量，直接钉死黑色（暗色主题 print 预览仍会解析旧 --heading） */
   .markdown-body[data-testid='markdown-preview'],
   .markdown-body {
     display: block !important;
@@ -120,7 +118,6 @@
     filter: none !important;
   }
 
-  /* 盖过 .markdown-body h1 { color: var(--heading) } 等所有文字色 */
   .markdown-body,
   .markdown-body *,
   .markdown-body h1,
@@ -146,13 +143,16 @@
     filter: none !important;
   }
 
+  /* 去掉大标题下划线 */
   .markdown-body h1,
   .markdown-body h2,
   .markdown-body h3,
   .markdown-body h4,
   .markdown-body h5,
   .markdown-body h6 {
-    border-bottom-color: #ccc !important;
+    border: none !important;
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
   }
 
   .markdown-body a {
@@ -196,7 +196,6 @@
     break-inside: avoid;
   }
 
-  /* 折叠：不打 chevron；展开正文以免漏打 */
   .markdown-body .md-fold-toggle {
     display: none !important;
   }
@@ -211,7 +210,6 @@
   }
 }
 
-/* beforeprint / matchMedia('print') 时挂上 data-print，双保险压过暗色标题色 */
 html[data-print] .markdown-body,
 html[data-print] .markdown-body *,
 html[data-print] .markdown-body h1,
@@ -223,4 +221,15 @@ html[data-print] .markdown-body h6 {
   color: #000 !important;
   -webkit-text-fill-color: #000 !important;
   opacity: 1 !important;
+}
+
+html[data-print] .markdown-body h1,
+html[data-print] .markdown-body h2,
+html[data-print] .markdown-body h3,
+html[data-print] .markdown-body h4,
+html[data-print] .markdown-body h5,
+html[data-print] .markdown-body h6 {
+  border: none !important;
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
 }
