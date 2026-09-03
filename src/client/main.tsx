@@ -6,6 +6,15 @@ import './styles/index.css'
 import './styles/markdown.css'
 import './styles/print.css'
 
+/** 打印预览时给 html 挂 data-print，配合 print.css 强制正文黑色标题 */
+function syncPrintAttr() {
+  const on = window.matchMedia('print').matches
+  document.documentElement.toggleAttribute('data-print', on)
+}
+window.addEventListener('beforeprint', () => document.documentElement.setAttribute('data-print', ''))
+window.addEventListener('afterprint', () => document.documentElement.removeAttribute('data-print'))
+window.matchMedia('print').addEventListener('change', syncPrintAttr)
+
 // highlight.js 主题（根据 data-theme 切换）
 function loadHljsTheme(theme: 'dark' | 'light') {
   let link = document.getElementById('hljs-theme') as HTMLLinkElement | null
