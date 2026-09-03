@@ -1,0 +1,145 @@
+/**
+ * Markdown 浏览器打印：只留正文，纯白背景，无壳子。
+ * 见 docs/superpowers/specs/2026-09-03-md-print-mode-design.md
+ */
+
+@page {
+  margin: 12mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── 壳子 / 导航 / 浮层 ─────────────────────────────── */
+  .sidebar,
+  .sidebar-resize-handle,
+  .sidebar-overlay,
+  .content-header,
+  .header-actions,
+  .hamburger-btn,
+  .toc-panel,
+  .pane-header,
+  .editor-pane:has(> .editor-wrapper),
+  .folder-toolbar,
+  .folder-selection-bar,
+  .folder-view,
+  .folder-list,
+  .folder-grid,
+  .code-only-view,
+  .ctx-menu,
+  .ctx-overlay,
+  .bottom-sheet,
+  .bottom-sheet-overlay,
+  .modal-overlay,
+  .dialog-overlay,
+  .share-dialog-overlay,
+  .settings-overlay,
+  .media-lightbox-overlay,
+  .toast,
+  .toast-container,
+  .watch-indicator,
+  .empty-state {
+    display: none !important;
+  }
+
+  /* 布局祖先：取消滚动裁剪与主题底色，让正文正常分页 */
+  .app-layout,
+  .content-area,
+  .content-body,
+  .editor-view,
+  .preview-pane,
+  .editor-wrapper {
+    display: block !important;
+    position: static !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    border: none !important;
+    flex: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* 双栏编辑时预览侧若包在 flex 里，保证可见 */
+  .editor-view > div,
+  .content-area > div {
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
+    background: transparent !important;
+  }
+
+  /* ── 正文 ─────────────────────────────────────────── */
+  .markdown-body[data-testid="markdown-preview"],
+  .markdown-body {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .markdown-body * {
+    color: inherit;
+  }
+
+  .markdown-body a {
+    color: #111 !important;
+    text-decoration: underline;
+  }
+
+  .markdown-body pre,
+  .markdown-body code {
+    background: #f5f5f5 !important;
+    color: #111 !important;
+    box-shadow: none !important;
+  }
+
+  .markdown-body img,
+  .markdown-body svg {
+    max-width: 100% !important;
+    break-inside: avoid;
+  }
+
+  .markdown-body table {
+    break-inside: auto;
+  }
+
+  .markdown-body tr,
+  .markdown-body pre,
+  .markdown-body blockquote {
+    break-inside: avoid;
+  }
+
+  /* 折叠：不打 chevron；展开正文以免漏打 */
+  .markdown-body .md-fold-toggle {
+    display: none !important;
+  }
+
+  .markdown-body .md-fold--collapsed > .md-fold-body {
+    display: block !important;
+  }
+
+  .markdown-body .md-fold-head,
+  .markdown-body .md-fold-body {
+    margin-left: 0 !important;
+  }
+}

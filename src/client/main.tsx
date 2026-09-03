@@ -4,6 +4,7 @@ import { applyAppearancePrefs } from './utils/appearance.js'
 import { getPref, subscribePref, type PrefKey } from './utils/prefs.js'
 import './styles/index.css'
 import './styles/markdown.css'
+import './styles/print.css'
 
 // highlight.js 主题（根据 data-theme 切换）
 function loadHljsTheme(theme: 'dark' | 'light') {
