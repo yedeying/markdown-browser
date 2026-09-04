@@ -11,6 +11,8 @@ import ContextMenu, { type ContextMenuItem } from './ContextMenu.js'
 import ContextModal, { type ModalMode } from './ContextModal.js'
 import BottomSheet, { type BottomSheetItem } from './BottomSheet.js'
 import ShareDialog from './ShareDialog.js'
+import UploadStatusPanel from './UploadStatusPanel.js'
+import UploadConflictModal from './UploadConflictModal.js'
 import { fsApi } from '../utils/fsApi.js'
 import { filterVisible } from '../utils/hiddenFiles.js'
 import { sortNodes } from '../utils/sortNodes.js'
@@ -34,7 +36,13 @@ import {
   stepGridIndex,
   stepIndex,
 } from '../utils/keyboardNav.js'
-
+import { uploadManager, type ConflictDecision } from '../utils/uploadManager.js'
+import {
+  filesFromDataTransfer,
+  pickUploadDirectory,
+  pickUploadFiles,
+  type PickedFile,
+} from '../utils/uploadPaths.js'
 function countGridCols(testid: string = 'folder-grid'): number {
   const grid = document.querySelector(`[data-testid="${testid}"]`)
   if (!grid) return 1
@@ -177,6 +185,16 @@ const FolderView: FunctionalComponent<Props> = ({
 
   // ── loading 防重入 ─────────────────────────────────────────
   const [busy, setBusy] = useState(false)
+
+  // ── 上传：拖放高亮 / 菜单 / 冲突弹窗 ───────────────────────
+  const [dropActive, setDropActive] = useState(false)
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false)
+  const [uploadConflict, setUploadConflict] = useState<{
+    path: string
+    fileName: string
+    resolve: (d: ConflictDecision) => void
+  } | null>(null)
+  const dragDepthRef = useRef(0)
 
   // Lightbox（文件夹内打开媒体）
   const [lightbox, setLightbox] = useState<{ startPath: string } | null>(null)
@@ -493,6 +511,16 @@ const FolderView: FunctionalComponent<Props> = ({
     return [fallbackNode]
   }
 
+  const refreshParentsOf = useCallback((paths: string[]) => {
+    const parents = new Set<string>()
+    for (const p of paths) {
+      parents.add(p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '')
+    }
+    for (const parent of parents) {
+      void loadChildren?.(parent, true)
+    }
+  }, [loadChildren])
+
   const handleDelete = async (targets: FileNode[]) => {
     if (busy) return
     setBusy(true)
@@ -503,6 +531,7 @@ const FolderView: FunctionalComponent<Props> = ({
       showToast(`已删除 ${res.deleted} 项`, 'success')
       setSelectedPaths(new Set())
       setSelectionMode(false)
+      refreshParentsOf(paths)
     } else {
       showToast(`删除失败: ${res.error}`, 'error')
     }
@@ -516,6 +545,7 @@ const FolderView: FunctionalComponent<Props> = ({
     setModal(null)
     if (res.ok) {
       showToast('重命名成功', 'success')
+      refreshParentsOf([target.path])
     } else {
       showToast(`重命名失败: ${res.error}`, 'error')
     }
@@ -575,11 +605,74 @@ const FolderView: FunctionalComponent<Props> = ({
     if (res.ok) {
       const n2 = 'copied' in res ? res.copied : 'moved' in res ? res.moved : 0
       showToast(`${clipboard.mode === 'copy' ? '复制' : '移动'}了 ${n2} 项`, 'success')
-      if (clipboard.mode === 'cut') onClearClipboard?.()
+      if (clipboard.mode === 'cut') {
+        onClearClipboard?.()
+        refreshParentsOf(paths)
+      }
+      void loadChildren?.(dest, true)
     } else {
       showToast(`操作失败: ${res.error}`, 'error')
     }
   }
+
+  const currentBrowsePath = useCallback((): string => {
+    return effectiveView === 'column' && columnBrowsePath != null
+      ? columnBrowsePath
+      : node.path
+  }, [effectiveView, columnBrowsePath, node.path])
+
+  const startUpload = useCallback((picked: PickedFile[], targetDir: string) => {
+    if (shareMode || picked.length === 0) return
+    const n = uploadManager.enqueue(picked, targetDir)
+    if (n > 0) showToast(`已加入 ${n} 个上传任务`, 'success')
+  }, [shareMode])
+
+  const openFilePicker = useCallback((targetDir: string, directory: boolean) => {
+    // 必须在用户手势栈内同步启动选择器；rAF / 先 setState 会导致目录选择失效
+    const pickPromise = directory ? pickUploadDirectory() : pickUploadFiles()
+    setUploadMenuOpen(false)
+    setCtxMenu(null)
+    void pickPromise.then((picked) => startUpload(picked, targetDir))
+  }, [startUpload])
+
+  useEffect(() => {
+    uploadManager.setConflictHandler(({ path, fileName }) =>
+      new Promise<ConflictDecision>((resolve) => {
+        setUploadConflict({ path, fileName, resolve })
+      }),
+    )
+    return () => uploadManager.setConflictHandler(null)
+  }, [])
+
+  useEffect(() => {
+    // 刷新上传目标目录 + 文件直接父目录（嵌套上传时两者不同）
+    const timers = new Map<string, ReturnType<typeof setTimeout>>()
+    const schedule = (dir: string) => {
+      const prev = timers.get(dir)
+      if (prev) clearTimeout(prev)
+      timers.set(dir, setTimeout(() => {
+        timers.delete(dir)
+        void loadChildren?.(dir, true)
+      }, 50))
+    }
+    const unsub = uploadManager.onFileDone((path, targetDir) => {
+      const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+      schedule(targetDir)
+      if (parent !== targetDir) schedule(parent)
+    })
+    return () => {
+      unsub()
+      for (const t of timers.values()) clearTimeout(t)
+      timers.clear()
+    }
+  }, [loadChildren])
+
+  useEffect(() => {
+    if (!uploadMenuOpen) return
+    const close = () => setUploadMenuOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [uploadMenuOpen])
 
   // ── 右键菜单项构造 ─────────────────────────────────────────
   /** 空白处：仅新建 / 粘贴，不以当前文件夹为「目标」 */
@@ -595,6 +688,16 @@ const FolderView: FunctionalComponent<Props> = ({
         label: '新建文件',
         icon: 'file-plus',
         onClick: () => setModal({ mode: 'touch' }),
+      },
+      {
+        label: '上传文件',
+        icon: 'download',
+        onClick: () => openFilePicker(currentBrowsePath(), false),
+      },
+      {
+        label: '上传文件夹',
+        icon: 'folder-plus',
+        onClick: () => openFilePicker(currentBrowsePath(), true),
       },
       {
         label: '粘贴',
@@ -637,6 +740,14 @@ const FolderView: FunctionalComponent<Props> = ({
         label: '新建文件',
         icon: 'file-plus',
         onClick: () => setModal({ mode: 'touch' }),
+      }, {
+        label: '上传文件',
+        icon: 'download',
+        onClick: () => openFilePicker(target.path, false),
+      }, {
+        label: '上传文件夹',
+        icon: 'folder-plus',
+        onClick: () => openFilePicker(target.path, true),
       }] as ContextMenuItem[] : []),
       ...(!isMulti ? [{
         label: '重命名',
@@ -680,7 +791,6 @@ const FolderView: FunctionalComponent<Props> = ({
       },
     ]
   }
-
   const openBgCtxMenu = useCallback((e: MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -839,11 +949,43 @@ const FolderView: FunctionalComponent<Props> = ({
 
   return (
     <div
-      class="folder-view"
+      class={`folder-view${dropActive ? ' folder-view-drop-active' : ''}`}
       data-testid="folder-view"
       onPointerDown={() => setNavFocus('folder')}
       // 捕获阶段统一吃掉浏览器菜单，避免卡片间隙等漏网
       onContextMenuCapture={(e) => { e.preventDefault() }}
+      onDragEnter={(e) => {
+        if (shareMode) return
+        e.preventDefault()
+        dragDepthRef.current++
+        setDropActive(true)
+      }}
+      onDragLeave={() => {
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+        if (dragDepthRef.current === 0) setDropActive(false)
+      }}
+      onDragOver={(e) => {
+        if (shareMode) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+      }}
+      onDrop={async (e) => {
+        if (shareMode) return
+        e.preventDefault()
+        dragDepthRef.current = 0
+        setDropActive(false)
+        let targetDir = currentBrowsePath()
+        const pathEl = (e.target as HTMLElement | null)?.closest?.('[data-path]') as HTMLElement | null
+        const hitPath = pathEl?.dataset?.path
+        if (hitPath) {
+          const hit =
+            children.find(n => n.path === hitPath)
+            ?? findNodeByPath(tree, hitPath)
+          if (hit?.type === 'folder') targetDir = hit.path
+        }
+        const picked = await filesFromDataTransfer(e.dataTransfer)
+        startUpload(picked, targetDir)
+      }}
     >
       {/* ── 工具栏 ─────────────────────────────────────────── */}
       {selectionMode ? (
@@ -927,10 +1069,42 @@ const FolderView: FunctionalComponent<Props> = ({
             </div>
           )}
           <div style={{ flex: 1 }} />
-          {/* 新建按钮组 */}
+          {/* 新建 / 上传按钮组 */}
+          {!shareMode && (
+            <div class="folder-toolbar-upload-wrap">
+              <button
+                class="btn"
+                title="上传"
+                data-testid="upload-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setUploadMenuOpen(v => !v)
+                }}
+              >
+                上传
+              </button>
+              {uploadMenuOpen && (
+                <div class="upload-menu" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    data-testid="upload-menu-files"
+                    onClick={() => openFilePicker(currentBrowsePath(), false)}
+                  >
+                    上传文件
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="upload-menu-folder"
+                    onClick={() => openFilePicker(currentBrowsePath(), true)}
+                  >
+                    上传文件夹
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <button class="btn" title="新建文件夹" onClick={() => setModal({ mode: 'mkdir' })}>+ 文件夹</button>
-          <button class="btn" title="新建文件" onClick={() => setModal({ mode: 'touch' })}>+ 文件</button>
-          {clipboard && (
+          <button class="btn" title="新建文件" onClick={() => setModal({ mode: 'touch' })}>+ 文件</button>          {clipboard && (
             <button class="btn" title={`粘贴 ${clipboard.nodes.length} 项`} onClick={handlePaste} disabled={busy}>
               粘贴
             </button>
@@ -1059,6 +1233,19 @@ const FolderView: FunctionalComponent<Props> = ({
           type={shareTarget.type as 'file' | 'folder'}
           name={shareTarget.name}
           onClose={() => setShareTarget(null)}
+        />
+      )}
+
+      {!shareMode && <UploadStatusPanel />}
+      {uploadConflict && (
+        <UploadConflictModal
+          path={uploadConflict.path}
+          fileName={uploadConflict.fileName}
+          onResolve={(d) => {
+            const resolve = uploadConflict.resolve
+            setUploadConflict(null)
+            resolve(d)
+          }}
         />
       )}
     </div>

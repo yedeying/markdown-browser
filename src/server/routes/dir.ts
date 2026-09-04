@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
-import { readdirSync, statSync, readFileSync, writeFileSync, realpathSync } from 'fs'
+import { readdirSync, statSync, readFileSync, writeFileSync, realpathSync, existsSync } from 'fs'
 import { promises as fsp } from 'node:fs'
 import { join, relative, basename, extname, dirname, resolve, sep } from 'path'
 import type { FileNode, SearchResult, AuthConfig } from '../../types.js'
@@ -11,8 +11,18 @@ import { treeCache } from '../tree-cache.js'
 import { hasReservedSegment, isReservedFilename } from '../reserved-files.js'
 import { decodeTextBuffer } from '../decodeText.js'
 import { nowMs, perfLog, perfLogTimed } from '../perfLog.js'
+import {
+  CHUNK_SIZE,
+  MAX_FILE_SIZE,
+  completeUploadSession,
+  deleteUploadSession,
+  initUploadSession,
+  isUploadStagingPath,
+  writeSingleUpload,
+  writeUploadChunk,
+} from '../upload-sessions.js'
 
-const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.DS_Store'])
+const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.DS_Store', '.vmd-upload'])
 
 // 服务端托管文件（.vmd-config.json 等）决定启动根目录和分享令牌，
 // 一旦能经通用文件接口改写，客户端就能改写服务端行为。
@@ -205,25 +215,37 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
 
   /**
    * 写盘成功后立刻失效缓存并推 SSE。
-   * paths：被增删改的节点（会失效自身+祖先，并通知父目录）
+   * paths：被增删改的节点（会失效自身+祖先，并通知该节点的所有祖先目录）
    * dirs：子项集合变化的目录（直接通知该目录）
    * 不依赖 OS watcher，避免删改后列表仍命中旧缓存。
+   *
+   * 必须通知全部祖先：上传 `docs/a/b.txt` 时会 mkdir 中间目录，
+   * 若只通知 `docs/a`，正在浏览 `docs` 的客户端不会刷新到新文件夹 `a`。
    */
   function afterTreeMutation(opts: { paths?: string[]; dirs?: string[] }) {
     const notifyDirs = new Set<string>()
+    const addAncestors = (dir: string) => {
+      let cur = dir
+      while (true) {
+        notifyDirs.add(cur)
+        if (!cur) break
+        const i = cur.lastIndexOf('/')
+        cur = i === -1 ? '' : cur.slice(0, i)
+      }
+    }
     for (const raw of opts.paths ?? []) {
       if (typeof raw !== 'string') continue
       const n = normalizeRel(raw)
       treeCache.invalidatePath(cacheScope, n)
       treeCache.invalidatePath(hiddenCacheScope, n)
-      notifyDirs.add(parentRel(n))
+      addAncestors(parentRel(n))
     }
     for (const raw of opts.dirs ?? []) {
       if (typeof raw !== 'string') continue
       const n = normalizeRel(raw)
       treeCache.invalidatePath(cacheScope, n)
       treeCache.invalidatePath(hiddenCacheScope, n)
-      notifyDirs.add(n)
+      addAncestors(n)
     }
     for (const d of notifyDirs) {
       watcher.notifyTreeChange(d)
@@ -783,6 +805,118 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       if (err.code === 'EEXIST') {
         return c.json({ ok: false, error: '文件已存在' }, 400)
       }
+      return c.json({ ok: false, error: String(e) }, 400)
+    }
+  })
+
+  function normalizeUploadPath(raw: string): string {
+    return raw.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')
+  }
+
+  // POST /api/fs/upload — 小文件整包上传
+  app.post('/api/fs/upload', async (c) => {
+    try {
+      const rawPath = c.req.header('X-Vmd-Upload-Path') || ''
+      const p = normalizeUploadPath(decodeURIComponent(rawPath))
+      if (!p || p.includes('..')) return c.json({ ok: false, error: '非法路径', code: 'BAD_PATH' }, 400)
+      if (anyReserved(p) || isUploadStagingPath(p)) {
+        return c.json({ ok: false, error: RESERVED_ERROR, code: 'RESERVED' }, 403)
+      }
+      const overwrite = c.req.header('X-Vmd-Upload-Overwrite') === '1'
+      assertSafe(p, basePath)
+      const buf = new Uint8Array(await c.req.arrayBuffer())
+      if (buf.byteLength > MAX_FILE_SIZE) {
+        return c.json({ ok: false, error: `文件过大（最大 ${MAX_FILE_SIZE} 字节）` }, 400)
+      }
+      try {
+        const path = writeSingleUpload(basePath, p, buf, overwrite)
+        afterTreeMutation({ paths: [path] })
+        return c.json({ ok: true, path })
+      } catch (e: unknown) {
+        const err = e as { code?: string; message?: string }
+        if (err.code === 'EXISTS') {
+          return c.json({ ok: false, error: '文件已存在', code: 'EXISTS' }, 409)
+        }
+        throw e
+      }
+    } catch (e: unknown) {
+      return c.json({ ok: false, error: String(e) }, 400)
+    }
+  })
+
+  // POST /api/fs/upload/init
+  app.post('/api/fs/upload/init', async (c) => {
+    try {
+      const body = await c.req.json() as { path?: string; size?: number; overwrite?: boolean }
+      const p = normalizeUploadPath(String(body.path || ''))
+      const size = Number(body.size)
+      if (!p || p.includes('..') || !Number.isFinite(size) || size < 0) {
+        return c.json({ ok: false, error: '非法参数' }, 400)
+      }
+      if (anyReserved(p) || isUploadStagingPath(p)) {
+        return c.json({ ok: false, error: RESERVED_ERROR, code: 'RESERVED' }, 403)
+      }
+      assertSafe(p, basePath)
+      if (!body.overwrite && existsSync(join(basePath, p))) {
+        return c.json({ ok: false, error: '文件已存在', code: 'EXISTS' }, 409)
+      }
+      const meta = initUploadSession(basePath, p, size, !!body.overwrite)
+      return c.json({
+        ok: true,
+        uploadId: meta.uploadId,
+        chunkSize: meta.chunkSize || CHUNK_SIZE,
+        received: meta.received,
+      })
+    } catch (e: unknown) {
+      return c.json({ ok: false, error: String(e) }, 400)
+    }
+  })
+
+  // PUT /api/fs/upload/chunk
+  app.put('/api/fs/upload/chunk', async (c) => {
+    try {
+      const uploadId = c.req.query('uploadId') || c.req.header('X-Vmd-Upload-Id') || ''
+      const index = Number(c.req.query('index') ?? c.req.header('X-Vmd-Upload-Index'))
+      if (!uploadId || !Number.isInteger(index)) {
+        return c.json({ ok: false, error: '缺少 uploadId/index' }, 400)
+      }
+      const buf = new Uint8Array(await c.req.arrayBuffer())
+      const meta = writeUploadChunk(basePath, uploadId, index, buf)
+      return c.json({ ok: true, index, received: meta.received.length })
+    } catch (e: unknown) {
+      return c.json({ ok: false, error: String(e) }, 400)
+    }
+  })
+
+  // POST /api/fs/upload/complete
+  app.post('/api/fs/upload/complete', async (c) => {
+    try {
+      const body = await c.req.json() as { uploadId?: string }
+      if (!body.uploadId) return c.json({ ok: false, error: 'uploadId required' }, 400)
+      try {
+        const path = completeUploadSession(basePath, body.uploadId)
+        afterTreeMutation({ paths: [path] })
+        return c.json({ ok: true, path })
+      } catch (e: unknown) {
+        const err = e as { code?: string; message?: string }
+        if (err.code === 'EXISTS') {
+          return c.json({ ok: false, error: '文件已存在', code: 'EXISTS' }, 409)
+        }
+        throw e
+      }
+    } catch (e: unknown) {
+      return c.json({ ok: false, error: String(e) }, 400)
+    }
+  })
+
+  // DELETE /api/fs/upload/session
+  app.delete('/api/fs/upload/session', async (c) => {
+    try {
+      const body = await c.req.json() as { uploadId?: string }
+      if (!body.uploadId) return c.json({ ok: false, error: 'uploadId required' }, 400)
+      deleteUploadSession(basePath, body.uploadId)
+      return c.json({ ok: true })
+    } catch (e: unknown) {
       return c.json({ ok: false, error: String(e) }, 400)
     }
   })

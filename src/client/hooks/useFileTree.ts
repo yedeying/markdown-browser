@@ -107,8 +107,29 @@ export function useFileTree(showHidden = false) {
   /** 完整刷新（或按 affectedPath 局部失效） */
   const refresh = useCallback(async (affectedPath?: string) => {
     if (affectedPath !== undefined) {
-      // 从未展开过的目录（如 Chrome Cache）不必拉取——否则 watch 噪音会打爆 /api/files
-      const shouldReload = loadedRef.current.has(affectedPath)
+      // 从未展开过的目录不必拉取——否则 watch 噪音会打爆 /api/files。
+      // 若 affected 自身未加载，改刷最近已加载祖先（上传嵌套目录时常见）。
+      let reloadPath = affectedPath
+      let shouldReload = loadedRef.current.has(affectedPath)
+      if (!shouldReload) {
+        let cur = affectedPath
+        while (true) {
+          if (!cur) {
+            if (loadedRef.current.has('')) {
+              reloadPath = ''
+              shouldReload = true
+            }
+            break
+          }
+          const i = cur.lastIndexOf('/')
+          cur = i === -1 ? '' : cur.slice(0, i)
+          if (loadedRef.current.has(cur)) {
+            reloadPath = cur
+            shouldReload = true
+            break
+          }
+        }
+      }
       let cur = affectedPath
       while (true) {
         loadedRef.current.delete(cur)
@@ -121,7 +142,7 @@ export function useFileTree(showHidden = false) {
         return
       }
       // 与 mkdir/touch 后的 force loadChildren 共用通道，避免并行 bumpGen 互标 stale
-      await loadChildren(affectedPath, true)
+      await loadChildren(reloadPath, true)
       return
     }
     const gen = bumpGen('')

@@ -535,11 +535,92 @@
 .folder-row.active .folder-name { color: var(--active-text); }
 .folder-row.active .folder-toggle { color: var(--accent); }
 
-/* Breadcrumb */
-.folder-breadcrumb { display: flex; align-items: center; gap: 4px; padding: 7px 16px; font-size: 13px; border-bottom: 1px solid var(--border); background: var(--bg-secondary); flex-shrink: 0; flex-wrap: wrap; }
-.folder-breadcrumb-seg { color: var(--link); cursor: pointer; }
-.folder-breadcrumb-seg:hover { text-decoration: underline; }
-.folder-breadcrumb-sep { color: var(--text-muted); }
+/* Breadcrumb — arrow / chevron trail (folder view)
+   clip-path 用字面量 px（部分浏览器对 polygon 内 CSS 变量支持不完整） */
+.folder-breadcrumb {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.25;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 0;
+}
+.folder-breadcrumb-seg {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 14rem;
+  min-width: 0;
+  height: 30px;
+  box-sizing: border-box;
+  margin: 0 0 0 -6px;
+  padding: 0 22px 0 20px;
+  border: 1px solid var(--border);
+  border-left: none;
+  background: var(--th-bg);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  flex-shrink: 1;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%);
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.folder-breadcrumb-seg.is-first {
+  margin-left: 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%);
+}
+.folder-breadcrumb-seg .folder-breadcrumb-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.folder-breadcrumb-seg:hover {
+  background: var(--hover);
+  color: var(--text);
+  z-index: 1;
+  text-decoration: none;
+}
+.folder-breadcrumb-seg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  z-index: 2;
+}
+.folder-breadcrumb-seg.is-current {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent, #fff);
+  font-weight: 600;
+  cursor: default;
+  flex-shrink: 0;
+  max-width: 18rem;
+  z-index: 1;
+  padding-right: 24px;
+}
+.folder-breadcrumb-seg.is-first.is-current {
+  margin-left: 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--accent);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%);
+}
+.folder-breadcrumb-seg.is-current:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent, #fff);
+}
 
 /* List View */
 .folder-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; user-select: none; -webkit-user-select: none; }
@@ -2200,4 +2281,152 @@
   .preview-pane {
     user-select: text;
   }
+}
+
+/* ================================
+   上传状态面板 / 冲突 / 拖放
+   ================================ */
+.upload-status-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(420px, 50vh);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 13px;
+}
+.upload-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.upload-status-panel.collapsed .upload-status-bar {
+  border-bottom: none;
+}
+.upload-status-summary {
+  flex: 1;
+  font-weight: 600;
+  color: var(--heading);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.upload-status-icon-btn {
+  padding: 2px 8px;
+  font-size: 12px;
+  min-height: 0;
+}
+.upload-status-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  flex: 1;
+}
+.upload-status-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.upload-status-item:last-child { border-bottom: none; }
+.upload-status-name {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-status-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.upload-status-progress {
+  height: 3px;
+  background: var(--th-bg);
+  border-radius: 2px;
+  margin-top: 6px;
+  overflow: hidden;
+}
+.upload-status-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.15s ease;
+}
+.upload-status-item-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.upload-status-item-actions .btn {
+  padding: 1px 8px;
+  font-size: 11px;
+  min-height: 0;
+}
+.upload-status-item.status-error .upload-status-meta span:last-child {
+  color: var(--danger);
+}
+.upload-conflict-apply {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.folder-view.folder-view-drop-active {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+  background: var(--accent-faint);
+}
+.upload-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 140px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 50;
+  padding: 4px;
+}
+.upload-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.upload-menu button:hover {
+  background: var(--th-bg);
+}
+.folder-toolbar-upload-wrap {
+  position: relative;
 }

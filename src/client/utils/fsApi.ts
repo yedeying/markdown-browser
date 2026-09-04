@@ -170,4 +170,68 @@ export const fsApi = {
   /** 删除分享 */
   deleteShare: (token: string) =>
     del('/api/share/' + token, {}),
+
+  /** 小文件整包上传 */
+  upload: async (
+    path: string,
+    body: ArrayBuffer | Uint8Array | Blob,
+    opts?: { overwrite?: boolean; signal?: AbortSignal },
+  ): Promise<FsResult<{ path: string }> & { code?: string }> => {
+    try {
+      const res = await apiFetch('/api/fs/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'X-Vmd-Upload-Path': encodeURIComponent(path),
+          ...(opts?.overwrite ? { 'X-Vmd-Upload-Overwrite': '1' } : {}),
+        },
+        body,
+        signal: opts?.signal,
+      })
+      return await res.json() as FsResult<{ path: string }> & { code?: string }
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
+  },
+
+  /** 分片上传：初始化 / 续传 */
+  uploadInit: async (
+    path: string,
+    size: number,
+    overwrite = false,
+  ): Promise<FsResult<{ uploadId: string; chunkSize: number; received: number[] }> & { code?: string }> => {
+    try {
+      const res = await apiFetch('/api/fs/upload/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, size, overwrite }),
+      })
+      return await res.json() as FsResult<{ uploadId: string; chunkSize: number; received: number[] }> & { code?: string }
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
+  },
+
+  uploadChunk: async (
+    uploadId: string,
+    index: number,
+    body: ArrayBuffer | Uint8Array | Blob,
+    signal?: AbortSignal,
+  ): Promise<FsResult<{ index: number; received: number }>> => {
+    try {
+      const res = await apiFetch(
+        `/api/fs/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&index=${index}`,
+        { method: 'PUT', body, signal },
+      )
+      return await res.json() as FsResult<{ index: number; received: number }>
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
+  },
+
+  uploadComplete: (uploadId: string) =>
+    post<{ path: string }>('/api/fs/upload/complete', { uploadId }),
+
+  uploadCancelSession: (uploadId: string) =>
+    del('/api/fs/upload/session', { uploadId }),
 }
