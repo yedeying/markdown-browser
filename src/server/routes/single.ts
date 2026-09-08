@@ -7,6 +7,18 @@ import type { AuthConfig } from '../../types.js'
 import { createAuthMiddleware, createAuthRoutes } from '../auth.js'
 import { hasReservedSegment } from '../reserved-files.js'
 import { decodeTextBuffer } from '../decodeText.js'
+import {
+  transformImage,
+  pickOutputFormat,
+  normalizeFmtParam,
+  normalizeWidthParam,
+  fmtForExt,
+  NON_TRANSCODABLE_IMAGE_EXTS,
+  DEFAULT_MAX_WIDTH,
+} from '../image-transform.js'
+
+const TRANSCODABLE_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
+const isTranscodableImage = (ext: string) => TRANSCODABLE_IMAGE_EXTS.has(ext)
 
 export function createSingleRouter(filePath: string, distPath: string, authConfig: AuthConfig | null = null) {
   const app = new Hono()
@@ -70,7 +82,7 @@ export function createSingleRouter(filePath: string, distPath: string, authConfi
   })
 
   // GET /api/asset/* - 提供文件所在目录的相对资源
-  app.get('/api/asset/*', (c) => {
+  app.get('/api/asset/*', async (c) => {
     const relPath = c.req.path.replace('/api/asset/', '')
     const fileDir = dirname(filePath)
     const assetPath = join(fileDir, decodeURIComponent(relPath))
@@ -102,6 +114,33 @@ export function createSingleRouter(filePath: string, distPath: string, authConfi
         '.webp': 'image/webp',
         '.pdf': 'application/pdf',
       }
+
+      // 可转码的静态图片：与 dir 模式一致，按 Accept / 显式参数输出变体。
+      // 缓存键由 URL（?fmt=&w=）唯一决定，保证无 Vary 的 CDN 多变体缓存安全。
+      if (isTranscodableImage(ext) && !NON_TRANSCODABLE_IMAGE_EXTS.has(ext)) {
+        const fmt = normalizeFmtParam(c.req.query('fmt')) ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
+        const maxWidth = normalizeWidthParam(c.req.query('w')) || DEFAULT_MAX_WIDTH
+        const stat = statSync(assetPath)
+        try {
+          const result = await transformImage({
+            data: content,
+            ext,
+            fmt,
+            maxWidth,
+            mtimeMs: stat.mtimeMs,
+          })
+          if (!result.passthrough) {
+            c.header('Content-Type', result.contentType)
+            c.header('Cache-Control', 'public, max-age=86400, immutable')
+            c.header('Vary', 'Accept')
+            c.header('X-Vmd-Image-Transform', `${result.info.width}x${result.info.height} ${fmt}`)
+            return c.body(result.data)
+          }
+        } catch {
+          // 转码失败 → 落回原图
+        }
+      }
+
       c.header('Content-Type', mimeTypes[ext] || 'application/octet-stream')
       c.header('Cache-Control', 'public, max-age=3600')
       return c.body(content)

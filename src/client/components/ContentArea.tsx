@@ -14,7 +14,8 @@ import { filterVisible } from '../utils/hiddenFiles.js'
 import { sortNodes } from '../utils/sortNodes.js'
 import type { FileNode } from '../../types.js'
 import ShareDialog from './ShareDialog.js'
-import { getSharePrefix, downloadUrl } from '../utils/fsApi.js'
+import { getSharePrefix } from '../utils/fsApi.js'
+import { downloadSingleFile } from '../utils/download.js'
 import Icon from './ui/Icon.js'
 import Skeleton from './ui/Skeleton.js'
 import EmptyState from './ui/EmptyState.js'
@@ -480,11 +481,7 @@ const ContentArea: FunctionalComponent<Props> = ({
   // 下载当前文件
   const handleDownload = useCallback(() => {
     if (!filePath) return
-    const url = downloadUrl(filePath)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filePath.split('/').pop() || 'file'
-    a.click()
+    downloadSingleFile(filePath)
   }, [filePath])
 
   // 移动端左右滑手势：右滑后退/展开侧边栏，左滑前进（由父组件决定行为）
@@ -894,6 +891,9 @@ const ContentArea: FunctionalComponent<Props> = ({
               {/* 非分享模式桌面端：直接显示所有操作按钮 */}
               {!isShareMode && (
                 <div class="desktop-btn-group">
+                  {filePath && (
+                    <button class="btn" onClick={handleDownload} title="下载文件" data-testid="file-download-btn">下载</button>
+                  )}
                   {filePath && (viewMode === 'edit' || viewMode === 'code-only') && (
                     <button class="btn" onClick={handleSelectAll} title="全选文件内容">全选</button>
                   )}
@@ -957,6 +957,15 @@ const ContentArea: FunctionalComponent<Props> = ({
                   </button>
                   {moreMenuOpen && (
                     <div class="header-dropdown">
+                      {filePath && (
+                        <button
+                          class="header-dropdown-item"
+                          data-testid="file-download-more"
+                          onClick={() => { handleDownload(); setMoreMenuOpen(false) }}
+                        >
+                          下载
+                        </button>
+                      )}
                       {(viewMode === 'edit' || viewMode === 'code-only') && (
                         <button class="header-dropdown-item" onClick={() => { handleSelectAll(); setMoreMenuOpen(false) }}>
                           全选

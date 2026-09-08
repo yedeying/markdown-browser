@@ -6,6 +6,12 @@ import type { ShareToken, AuthConfig } from '../types.js'
 import { createAuthMiddleware } from './auth.js'
 import { SHARES_FILENAME, hasReservedSegment } from './reserved-files.js'
 import { decodeTextBuffer } from './decodeText.js'
+import {
+  buildZipBuffer,
+  collectZipFiles,
+  contentDispositionAttachment,
+  normalizeDownloadPath,
+} from './download-zip.js'
 
 const SHARES_FILE = SHARES_FILENAME
 
@@ -438,6 +444,39 @@ export function createSharePageRoutes(
       })
     } catch {
       return c.json({ error: 'File not found' }, 404)
+    }
+  })
+
+  // POST /share/:token/api/download/zip — 多路径打包（仅文件夹分享）
+  app.post('/share/:token/api/download/zip', async (c) => {
+    const share = getShare(c.req.param('token'))
+    if (!share) return c.json({ error: 'Share expired or not found' }, 410)
+    if (share.type !== 'folder') return c.json({ ok: false, error: 'Not a folder share' }, 403)
+    try {
+      const body = await c.req.json() as { paths?: string[] }
+      const paths = body.paths
+      if (!Array.isArray(paths) || paths.length === 0) {
+        return c.json({ ok: false, error: 'paths required' }, 400)
+      }
+      const shareBase = join(basePath, share.path)
+      for (const p of paths) {
+        const n = normalizeDownloadPath(String(p || ''))
+        if (!n || n.includes('..') || hasReservedSegment(n)) {
+          return c.json({ ok: false, error: '非法路径' }, 400)
+        }
+        assertInBase(n, shareBase)
+      }
+      const { files, zipName } = collectZipFiles(shareBase, paths.map(String))
+      const zipped = buildZipBuffer(files)
+      return new Response(zipped, {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': contentDispositionAttachment(zipName),
+          'Content-Length': String(zipped.byteLength),
+        },
+      })
+    } catch (e: unknown) {
+      return c.json({ ok: false, error: String(e) }, 400)
     }
   })
 

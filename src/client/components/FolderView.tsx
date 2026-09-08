@@ -43,6 +43,7 @@ import {
   pickUploadFiles,
   type PickedFile,
 } from '../utils/uploadPaths.js'
+import { downloadNodes } from '../utils/download.js'
 function countGridCols(testid: string = 'folder-grid'): number {
   const grid = document.querySelector(`[data-testid="${testid}"]`)
   if (!grid) return 1
@@ -709,18 +710,35 @@ const FolderView: FunctionalComponent<Props> = ({
     ]
   }
 
+  const handleDownloadTargets = useCallback(async (targets: FileNode[]) => {
+    if (targets.length === 0) return
+    try {
+      if (targets.length > 1 || targets.some(t => t.type === 'folder')) {
+        showToast('正在打包下载…', 'success')
+      }
+      await downloadNodes(targets)
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e), 'error')
+    }
+  }, [])
+
   const buildCtxMenuItems = (target: FileNode): ContextMenuItem[] => {
     const targets = getTargetNodes(target)
     const isMulti = targets.length > 1
     const label = isMulti ? `${targets.length} 项` : `"${target.name}"`
 
-    // 分享模式：只允许打开
+    // 分享模式：打开 + 下载
     if (shareMode) {
       return [
         {
           label: target.type === 'folder' ? '打开文件夹' : '打开文件',
           icon: target.type === 'folder' ? 'folder-open' : 'file',
           onClick: () => openNode(target),
+        },
+        {
+          label: '下载',
+          icon: 'download',
+          onClick: () => { void handleDownloadTargets(targets) },
         },
       ]
     }
@@ -730,6 +748,11 @@ const FolderView: FunctionalComponent<Props> = ({
         label: target.type === 'folder' ? '打开文件夹' : '打开文件',
         icon: target.type === 'folder' ? 'folder-open' : 'file',
         onClick: () => openNode(target),
+      },
+      {
+        label: '下载',
+        icon: 'download',
+        onClick: () => { void handleDownloadTargets(targets) },
       },
       ...(target.type === 'folder' ? [{
         label: '新建文件夹',
@@ -913,9 +936,17 @@ const FolderView: FunctionalComponent<Props> = ({
     const isMulti = targets.length > 1
     return [
       {
+        label: '下载',
+        icon: 'download',
+        onClick: () => {
+          setBottomSheet(null)
+          void handleDownloadTargets(targets)
+        },
+      },
+      {
         label: '重命名',
         icon: 'pencil',
-        disabled: isMulti,
+        disabled: isMulti || shareMode,
         onClick: () => {
           setBottomSheet(null)
           if (!isMulti) setModal({ mode: 'rename', node: target })

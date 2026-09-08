@@ -10,6 +10,15 @@ import { ShareStore, createShareApiRoutes, createSharePageRoutes } from '../shar
 import { treeCache } from '../tree-cache.js'
 import { hasReservedSegment, isReservedFilename } from '../reserved-files.js'
 import { decodeTextBuffer } from '../decodeText.js'
+import {
+  transformImage,
+  pickOutputFormat,
+  normalizeFmtParam,
+  normalizeWidthParam,
+  fmtForExt,
+  NON_TRANSCODABLE_IMAGE_EXTS,
+  DEFAULT_MAX_WIDTH,
+} from '../image-transform.js'
 import { nowMs, perfLog, perfLogTimed } from '../perfLog.js'
 import {
   CHUNK_SIZE,
@@ -21,6 +30,12 @@ import {
   writeSingleUpload,
   writeUploadChunk,
 } from '../upload-sessions.js'
+import {
+  buildZipBuffer,
+  collectZipFiles,
+  contentDispositionAttachment,
+  normalizeDownloadPath,
+} from '../download-zip.js'
 
 const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.DS_Store', '.vmd-upload'])
 
@@ -36,6 +51,10 @@ function anyReserved(...paths: Array<string | undefined | null>): boolean {
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp'])
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.ogg', '.mov', '.avi'])
 const BINARY_EXTS = new Set([...IMAGE_EXTS, ...VIDEO_EXTS])
+
+/** 可被 sharp 转码的静态图片（PNG/JPG/WebP） */
+const TRANSCODABLE_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
+const isTranscodableImage = (ext: string) => TRANSCODABLE_IMAGE_EXTS.has(ext)
 
 // 搜索约束
 const GREP_TIMEOUT_MS = 8_000
@@ -560,7 +579,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   })
 
   // GET /api/asset/* - 提供 markdown 所在目录的相对资源（图片、文件等）
-  app.get('/api/asset/*', (c) => {
+  app.get('/api/asset/*', async (c) => {
     const relPath = c.req.path.replace('/api/asset/', '')
     const filePath = join(basePath, decodeURIComponent(relPath))
 
@@ -590,11 +609,124 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         '.pdf': 'application/pdf',
         '.zip': 'application/zip',
       }
+
+      // 可转码的静态图片：按 Accept / 显式参数输出 AVIF/WebP/JPEG 缩略变体。
+      // 关键：缓存键完全由 URL（?fmt=&w=）决定，Accept 只决定默认格式，
+      // 保证免费版 Cloudflare（无 Vary 支持）下的多变体缓存安全。
+      if (isTranscodableImage(ext) && !NON_TRANSCODABLE_IMAGE_EXTS.has(ext)) {
+        const fmt = normalizeFmtParam(c.req.query('fmt')) ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
+        const maxWidth = normalizeWidthParam(c.req.query('w')) || DEFAULT_MAX_WIDTH
+        const stat = statSync(filePath)
+        try {
+          const result = await transformImage({
+            data: content,
+            ext,
+            fmt,
+            maxWidth,
+            mtimeMs: stat.mtimeMs,
+          })
+          if (!result.passthrough) {
+            c.header('Content-Type', result.contentType)
+            // URL 决定变体 → 可以放心长缓存；边缘/浏览器都缓存
+            c.header('Cache-Control', 'public, max-age=86400, immutable')
+            c.header('Vary', 'Accept')
+            c.header('X-Vmd-Image-Transform', `${result.info.width}x${result.info.height} ${fmt}`)
+            return c.body(result.data)
+          }
+          // 直通（解码失败等）→ 落回下面的普通图片响应
+        } catch {
+          // 转码失败 → 落回原图
+        }
+      }
+
       c.header('Content-Type', mimeTypes[ext] || 'application/octet-stream')
       c.header('Cache-Control', 'public, max-age=3600')
       return c.body(content)
     } catch {
       return c.json({ error: 'File not found' }, 404)
+    }
+  })
+
+  // GET /api/download/* — 单文件下载（attachment）
+  app.get('/api/download/*', (c) => {
+    const relPath = normalizeDownloadPath(decodeURIComponent(c.req.path.replace('/api/download/', '')))
+    if (!relPath || relPath.includes('..')) {
+      return c.json({ error: '非法路径' }, 400)
+    }
+    if (hasReservedSegment(relPath) || isUploadStagingPath(relPath)) {
+      return c.json({ error: 'File not found' }, 404)
+    }
+    if (!wantsHidden(c.req.query('showHidden')) && hasHiddenSegment(relPath)) {
+      return c.json({ error: 'File not found' }, 404)
+    }
+    try {
+      const abs = assertSafe(relPath, basePath)
+      const st = statSync(abs)
+      if (!st.isFile()) {
+        return c.json({ error: 'Not a file' }, 404)
+      }
+      const content = readFileSync(abs)
+      const name = basename(abs)
+      const ext = extname(abs).toLowerCase()
+      const mimeTypes: Record<string, string> = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.webp': 'image/webp',
+        '.pdf': 'application/pdf',
+        '.zip': 'application/zip',
+        '.md': 'text/markdown; charset=utf-8',
+        '.txt': 'text/plain; charset=utf-8',
+        '.json': 'application/json',
+      }
+      return new Response(content, {
+        headers: {
+          'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+          'Content-Disposition': contentDispositionAttachment(name),
+          'Content-Length': String(content.byteLength),
+        },
+      })
+    } catch {
+      return c.json({ error: 'File not found' }, 404)
+    }
+  })
+
+  // POST /api/download/zip — 多路径打包下载（文件夹递归）
+  app.post('/api/download/zip', async (c) => {
+    try {
+      const body = await c.req.json() as { paths?: string[] }
+      const paths = body.paths
+      if (!Array.isArray(paths) || paths.length === 0) {
+        return c.json({ ok: false, error: 'paths required' }, 400)
+      }
+      for (const p of paths) {
+        const n = normalizeDownloadPath(String(p || ''))
+        if (!n || n.includes('..')) return c.json({ ok: false, error: '非法路径' }, 400)
+        if (hasReservedSegment(n) || isUploadStagingPath(n)) {
+          return c.json({ ok: false, error: RESERVED_ERROR }, 403)
+        }
+        assertSafe(n, basePath)
+      }
+      const { files, zipName } = collectZipFiles(basePath, paths.map(String))
+      const zipped = buildZipBuffer(files)
+      return new Response(zipped, {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': contentDispositionAttachment(zipName),
+          'Content-Length': String(zipped.byteLength),
+        },
+      })
+    } catch (e: unknown) {
+      const err = e as { code?: string; message?: string }
+      const status =
+        err.code === 'BAD_REQUEST' || err.code === 'EMPTY' ? 400
+        : err.code === 'NOT_FOUND' || err.code === 'BAD_PATH' ? 404
+        : err.code === 'RESERVED' ? 403
+        : err.code === 'TOO_MANY' || err.code === 'TOO_LARGE' ? 400
+        : 400
+      return c.json({ ok: false, error: err.message || String(e) }, status)
     }
   })
 

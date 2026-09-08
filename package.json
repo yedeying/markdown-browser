@@ -1,6 +1,6 @@
 {
   "name": "vmd",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Markdown preview tool with directory browser and live editing",
   "type": "module",
   "scripts": {
@@ -22,6 +22,7 @@
     "@codemirror/view": "^6.34.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
+    "fflate": "^0.8.3",
     "highlight.js": "^11.10.0",
     "hono": "^4.4.0",
     "katex": "^0.16.11",
@@ -30,7 +31,8 @@
     "marked-highlight": "^2.1.0",
     "mermaid": "^11.3.0",
     "preact": "^10.24.0",
-    "prettier": "^3.3.3"
+    "prettier": "^3.3.3",
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
