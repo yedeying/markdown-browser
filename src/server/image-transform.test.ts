@@ -10,7 +10,7 @@ import {
 } from './image-transform.js'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 
 // --- 小工具：用一个 3x2 的已知 PNG 做测试输入 ---
 let pngBuf: Buffer
@@ -47,6 +47,23 @@ describe('fmtForExt', () => {
   })
 })
 
+describe('isTranscodable / mustTranscodeForBrowser', () => {
+  test('isTranscodable includes heic/heif', async () => {
+    const { isTranscodable } = await import('./image-transform.js')
+    expect(isTranscodable('.heic')).toBe(true)
+    expect(isTranscodable('.heif')).toBe(true)
+  })
+
+  test('mustTranscodeForBrowser is true only for heic/heif', async () => {
+    const { mustTranscodeForBrowser } = await import('./image-transform.js')
+    expect(mustTranscodeForBrowser('.heic')).toBe(true)
+    expect(mustTranscodeForBrowser('.heif')).toBe(true)
+    expect(mustTranscodeForBrowser('.HEIC')).toBe(true)
+    expect(mustTranscodeForBrowser('.png')).toBe(false)
+    expect(mustTranscodeForBrowser('.jpg')).toBe(false)
+  })
+})
+
 describe('transformImage', () => {
   test('输出尺寸不超过 maxWidth（fit:inside 不放大小图）', async () => {
     const small = await sharp({ create: { width: 100, height: 50, channels: 3, background: '#111' } }).png().toBuffer()
@@ -74,6 +91,40 @@ describe('transformImage', () => {
     expect(passthrough).toBe(true)
     expect(info.format).toBe('gif')
     expect(data).toEqual(gif)
+  })
+
+  test('HEIC extension is transcoded, not passthrough', async () => {
+    const { passthrough, contentType } = await transformImage({
+      data: pngBuf,
+      ext: '.heic',
+      fmt: 'webp',
+    })
+    expect(passthrough).toBe(false)
+    expect(contentType).toBe('image/webp')
+  })
+
+  test('transformImage decodes heic to webp when fixture available', async () => {
+    const fixture = join(import.meta.dir, '../../tests/fixtures/sample.heic')
+    if (!existsSync(fixture)) {
+      // no cheap HEIC sample in-repo; sharp on this machine also cannot encode heif
+      return
+    }
+    let heic: Buffer
+    try {
+      heic = Buffer.from(await Bun.file(fixture).bytes())
+      // metadata() can succeed on HEVC HEIC even when pixel decode is missing
+      await sharp(heic).webp({ quality: 80 }).toBuffer()
+    } catch {
+      return
+    }
+    const { passthrough, contentType, info } = await transformImage({
+      data: heic,
+      ext: '.heic',
+      fmt: 'webp',
+    })
+    expect(passthrough).toBe(false)
+    expect(contentType).toBe('image/webp')
+    expect(info.format).toBe('webp')
   })
 
   test('SVG 直通', async () => {

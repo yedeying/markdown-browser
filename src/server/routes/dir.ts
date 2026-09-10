@@ -16,6 +16,8 @@ import {
   normalizeFmtParam,
   normalizeWidthParam,
   fmtForExt,
+  isTranscodable,
+  mustTranscodeForBrowser,
   NON_TRANSCODABLE_IMAGE_EXTS,
   DEFAULT_MAX_WIDTH,
 } from '../image-transform.js'
@@ -56,9 +58,7 @@ const IMAGE_EXTS = new Set([
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.ogg', '.mov', '.avi'])
 const BINARY_EXTS = new Set([...IMAGE_EXTS, ...VIDEO_EXTS])
 
-/** 可被 sharp 转码的静态图片（PNG/JPG/WebP） */
-const TRANSCODABLE_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
-const isTranscodableImage = (ext: string) => TRANSCODABLE_IMAGE_EXTS.has(ext)
+const isTranscodableImage = (ext: string) => isTranscodable(ext)
 
 // 搜索约束
 const GREP_TIMEOUT_MS = 8_000
@@ -610,6 +610,8 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         '.gif': 'image/gif',
         '.svg': 'image/svg+xml',
         '.webp': 'image/webp',
+        '.heic': 'image/heic',
+        '.heif': 'image/heif',
         '.pdf': 'application/pdf',
         '.zip': 'application/zip',
         '.mp4': 'video/mp4',
@@ -619,12 +621,12 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         '.avi': 'video/x-msvideo',
       }
 
-      // 仅当 URL 显式带 ?w= / ?fmt= 时才转码。无参数直通原图，避免相册打开时
-      // 数百请求全部挤进 sharp 队列，浏览器 6 连接被 Stalled 数十秒。
+      // 仅当 URL 显式带 ?w= / ?fmt=，或浏览器无法直显（HEIC/HEIF）时才转码。
+      // 其余无参数直通原图，避免相册打开时数百请求挤进 sharp 队列。
       if (isTranscodableImage(ext) && !NON_TRANSCODABLE_IMAGE_EXTS.has(ext)) {
         const explicitFmt = normalizeFmtParam(c.req.query('fmt'))
         const explicitW = normalizeWidthParam(c.req.query('w'))
-        if (explicitFmt || explicitW > 0) {
+        if (mustTranscodeForBrowser(ext) || explicitFmt || explicitW > 0) {
           const fmt = explicitFmt ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
           const maxWidth = explicitW || DEFAULT_MAX_WIDTH
           const stat = statSync(filePath)
@@ -689,6 +691,8 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         '.gif': 'image/gif',
         '.svg': 'image/svg+xml',
         '.webp': 'image/webp',
+        '.heic': 'image/heic',
+        '.heif': 'image/heif',
         '.pdf': 'application/pdf',
         '.zip': 'application/zip',
         '.md': 'text/markdown; charset=utf-8',

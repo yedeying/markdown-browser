@@ -14,12 +14,13 @@ import {
   normalizeFmtParam,
   normalizeWidthParam,
   fmtForExt,
+  isTranscodable,
+  mustTranscodeForBrowser,
   NON_TRANSCODABLE_IMAGE_EXTS,
   DEFAULT_MAX_WIDTH,
 } from '../image-transform.js'
 
-const TRANSCODABLE_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
-const isTranscodableImage = (ext: string) => TRANSCODABLE_IMAGE_EXTS.has(ext)
+const isTranscodableImage = (ext: string) => isTranscodable(ext)
 
 export function createSingleRouter(filePath: string, distPath: string, authConfig: AuthConfig | null = null) {
   const app = new Hono()
@@ -113,6 +114,8 @@ export function createSingleRouter(filePath: string, distPath: string, authConfi
         '.gif': 'image/gif',
         '.svg': 'image/svg+xml',
         '.webp': 'image/webp',
+        '.heic': 'image/heic',
+        '.heif': 'image/heif',
         '.pdf': 'application/pdf',
         '.mp4': 'video/mp4',
         '.webm': 'video/webm',
@@ -121,11 +124,11 @@ export function createSingleRouter(filePath: string, distPath: string, authConfi
         '.avi': 'video/x-msvideo',
       }
 
-      // 仅当 URL 显式带 ?w= / ?fmt= 时才转码（与 dir 模式一致）
+      // 仅当 URL 显式带 ?w= / ?fmt=，或浏览器无法直显（HEIC/HEIF）时才转码
       if (isTranscodableImage(ext) && !NON_TRANSCODABLE_IMAGE_EXTS.has(ext)) {
         const explicitFmt = normalizeFmtParam(c.req.query('fmt'))
         const explicitW = normalizeWidthParam(c.req.query('w'))
-        if (explicitFmt || explicitW > 0) {
+        if (mustTranscodeForBrowser(ext) || explicitFmt || explicitW > 0) {
           const fmt = explicitFmt ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
           const maxWidth = explicitW || DEFAULT_MAX_WIDTH
           const stat = statSync(assetPath)

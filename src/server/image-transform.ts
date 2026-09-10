@@ -31,7 +31,7 @@ const IMAGE_TYPES = new Set(['image/avif', 'image/webp', 'image/jpeg', 'image/pn
 /** 允许显式指定的输出格式（?fmt=） */
 export const ALLOWED_FMT = new Set(['avif', 'webp', 'jpeg', 'png'])
 
-/** 服务端在「仅指定 fmt、未指定 w」时的缩放上限；无 w/fmt 时不转码、直通原图 */
+/** 服务端在「仅指定 fmt、未指定 w」或必须转码格式（HEIC）时的缩放上限 */
 export const DEFAULT_MAX_WIDTH = 1600
 
 /** LRU 缓存大小：命中内存内的转码结果，避免重复解码风暴 */
@@ -104,7 +104,16 @@ export function normalizeWidthParam(raw: string | undefined): number {
 /** 按源文件扩展名决定是否能/是否应转码 */
 export function isTranscodable(ext: string): boolean {
   const e = ext.toLowerCase()
-  return e === '.png' || e === '.jpg' || e === '.jpeg' || e === '.webp'
+  return (
+    e === '.png' || e === '.jpg' || e === '.jpeg' || e === '.webp' ||
+    e === '.heic' || e === '.heif'
+  )
+}
+
+/** 浏览器无法可靠显示，展示路径必须转码（即使无 ?w= / ?fmt=） */
+export function mustTranscodeForBrowser(ext: string): boolean {
+  const e = ext.toLowerCase()
+  return e === '.heic' || e === '.heif'
 }
 
 /** 按源扩展名 + 目标格式确定编码（.jpg 只降级 jpeg，不做 avif/webp） */
@@ -303,6 +312,8 @@ function passthroughResult(data: Buffer, ext: string): TransformResult {
     '.jpeg': 'image/jpeg',
     '.webp': 'image/webp',
     '.avif': 'image/avif',
+    '.heic': 'image/heic',
+    '.heif': 'image/heif',
     '.pdf': 'application/pdf',
     '.zip': 'application/zip',
   }

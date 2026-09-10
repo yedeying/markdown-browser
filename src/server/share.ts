@@ -13,6 +13,17 @@ import {
   normalizeDownloadPath,
 } from './download-zip.js'
 import { stripVmdRuntimeScripts } from './runtime-html.js'
+import {
+  transformImage,
+  pickOutputFormat,
+  normalizeFmtParam,
+  normalizeWidthParam,
+  fmtForExt,
+  isTranscodable,
+  mustTranscodeForBrowser,
+  NON_TRANSCODABLE_IMAGE_EXTS,
+  DEFAULT_MAX_WIDTH,
+} from './image-transform.js'
 
 const SHARES_FILE = SHARES_FILENAME
 
@@ -97,6 +108,7 @@ export class ShareStore {
 const MIME: Record<string, string> = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+  '.heic': 'image/heic', '.heif': 'image/heif',
   '.ico': 'image/x-icon', '.pdf': 'application/pdf',
   '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'video/ogg',
   '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
@@ -397,7 +409,7 @@ export function createSharePageRoutes(
   })
 
   // GET /share/:token/api/asset/* — 资源文件
-  app.get('/share/:token/api/asset/*', (c) => {
+  app.get('/share/:token/api/asset/*', async (c) => {
     const share = getShare(c.req.param('token'))
     if (!share) return c.json({ error: 'Share expired or not found' }, 410)
 
@@ -411,7 +423,41 @@ export function createSharePageRoutes(
         : join(basePath, dirname(share.path))
       const targetAbs = assertInBase(decodeURIComponent(relPath), shareBase)
       const content = readFileSync(targetAbs)
-      c.header('Content-Type', MIME[extname(targetAbs).toLowerCase()] || 'application/octet-stream')
+      const ext = extname(targetAbs).toLowerCase()
+
+      if (isTranscodable(ext) && !NON_TRANSCODABLE_IMAGE_EXTS.has(ext)) {
+        const explicitFmt = normalizeFmtParam(c.req.query('fmt'))
+        const explicitW = normalizeWidthParam(c.req.query('w'))
+        if (mustTranscodeForBrowser(ext) || explicitFmt || explicitW > 0) {
+          const fmt = explicitFmt ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
+          const maxWidth = explicitW || DEFAULT_MAX_WIDTH
+          const stat = statSync(targetAbs)
+          try {
+            const result = await transformImage({
+              data: content,
+              ext,
+              fmt,
+              maxWidth,
+              mtimeMs: stat.mtimeMs,
+              signal: c.req.raw.signal,
+            })
+            if (!result.passthrough) {
+              c.header('Content-Type', result.contentType)
+              c.header('Cache-Control', 'public, max-age=86400, immutable')
+              c.header('Vary', 'Accept')
+              c.header('X-Vmd-Image-Transform', `${result.info.width}x${result.info.height} ${fmt}`)
+              return c.body(result.data)
+            }
+          } catch (e) {
+            if (e instanceof DOMException && e.name === 'AbortError') {
+              return new Response(null, { status: 499, statusText: 'Client Closed Request' })
+            }
+            // 转码失败 → 落回原图
+          }
+        }
+      }
+
+      c.header('Content-Type', MIME[ext] || 'application/octet-stream')
       c.header('Cache-Control', 'public, max-age=3600')
       return c.body(content)
     } catch {
