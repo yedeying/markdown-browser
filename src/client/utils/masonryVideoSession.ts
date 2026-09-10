@@ -52,6 +52,7 @@ function frameRatio(frame: VideoCoverFrame): number {
 export async function loadVideoCover(
   srcUrl: string,
   signal: AbortSignal,
+  timeoutMs = 10_000,
 ): Promise<VideoCoverFrame> {
   if (typeof document === 'undefined') {
     throw new Error('video cover capture requires a DOM document')
@@ -66,7 +67,12 @@ export async function loadVideoCover(
 
   const waitForFrame = () =>
     new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => fail(new Error('video cover capture timed out')),
+        timeoutMs,
+      )
       const cleanup = () => {
+        clearTimeout(timeout)
         video.removeEventListener('loadeddata', onLoaded)
         video.removeEventListener('seeked', onSeeked)
         video.removeEventListener('error', onError)
@@ -138,6 +144,7 @@ export class MasonryVideoSession {
   private readonly onCover?: VideoSessionCallbacks['onCover']
   private readonly onCoverError?: VideoSessionCallbacks['onCoverError']
   private readonly covers = new Map<string, string>()
+  private readonly failedPaths = new Set<string>()
   private readonly inFlight = new Map<string, CoverJob>()
   private readonly queued = new Map<string, CoverJob>()
   private readonly previewPaths = new Set<string>()
@@ -152,7 +159,12 @@ export class MasonryVideoSession {
 
   requestCover(path: string, srcUrl: string, signal?: AbortSignal): void {
     if (this.disposed) return
-    if (this.covers.has(path) || this.inFlight.has(path) || this.queued.has(path)) return
+    if (
+      this.covers.has(path) ||
+      this.failedPaths.has(path) ||
+      this.inFlight.has(path) ||
+      this.queued.has(path)
+    ) return
     if (signal?.aborted) return
 
     const controller = new AbortController()
@@ -244,6 +256,7 @@ export class MasonryVideoSession {
       this.onCover?.(job.path, objectUrl, frameRatio(frame))
     } catch (e) {
       if (this.disposed || job.controller.signal.aborted || isAbortError(e)) return
+      this.failedPaths.add(job.path)
       this.onCoverError?.(job.path)
     } finally {
       job.unlinkExternal?.()

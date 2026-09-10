@@ -1,5 +1,5 @@
 import { test, expect, afterEach } from 'bun:test'
-import { MasonryVideoSession } from './masonryVideoSession.ts'
+import { loadVideoCover, MasonryVideoSession } from './masonryVideoSession.ts'
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
@@ -142,6 +142,52 @@ test('loader failure calls onCoverError and abort does not', async () => {
   await delay(10)
   expect(errors).toEqual(['bad.mp4'])
   session.dispose()
+})
+
+test('a permanently failed cover is not requested again', async () => {
+  const errors: string[] = []
+  let ran = 0
+  const session = new MasonryVideoSession({
+    loader: async () => {
+      ran++
+      throw new Error('decode failed')
+    },
+    onCoverError: (path) => errors.push(path),
+  })
+
+  session.requestCover('bad.mp4', '/bad')
+  await delay(10)
+  session.requestCover('bad.mp4', '/bad')
+  await delay(10)
+
+  expect(ran).toBe(1)
+  expect(errors).toEqual(['bad.mp4'])
+  session.dispose()
+})
+
+test('loadVideoCover rejects when video loading stalls', async () => {
+  const originalDocument = globalThis.document
+  const video = new EventTarget() as HTMLVideoElement
+  Object.assign(video, {
+    muted: false,
+    playsInline: false,
+    preload: '',
+    src: '',
+    pause() {},
+    load() {},
+    removeAttribute() {},
+  })
+  ;(globalThis as unknown as { document: Pick<Document, 'createElement'> }).document = {
+    createElement: () => video,
+  }
+
+  try {
+    await expect(loadVideoCover('/stalled', new AbortController().signal, 10))
+      .rejects.toThrow('timed out')
+  } finally {
+    if (originalDocument) globalThis.document = originalDocument
+    else delete (globalThis as Partial<typeof globalThis>).document
+  }
 })
 
 test('cancel then requestCover runs the loader again in the same turn', async () => {

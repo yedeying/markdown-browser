@@ -99,9 +99,8 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
 
   const makeLongPress = useLongPress<FileNode>({ onLongPress })
   const lpHandlers = makeLongPress(node)
-  // Selection mode keeps the existing action-sheet long press. Outside it,
-  // the pointer handlers below own the gesture so lifting can still click/open.
-  const selectionLongPressHandlers = selectionMode ? lpHandlers : {}
+  // Video preview owns touch long-press outside selection mode.
+  const selectionLongPressHandlers = selectionMode || !isVideo ? lpHandlers : {}
 
   const clearPreviewTimer = () => {
     if (previewTimerRef.current != null) {
@@ -500,7 +499,7 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
         if (path && !session.getCover(path)) session.cancel(path)
       }
     }
-  }, [pathKey, colCount, pack])
+  }, [pathKey])
 
   const handleAspectRatio = (path: string, ratio: number) => {
     setFailed((prev) => {

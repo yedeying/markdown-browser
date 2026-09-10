@@ -12,12 +12,19 @@ class ResizeObserverStub {
 }
 
 class IntersectionObserverStub {
+  static instances: IntersectionObserverStub[] = []
+  readonly callback: IntersectionObserverCallback
+  disconnected = false
+
   constructor(
-    _callback: IntersectionObserverCallback,
+    callback: IntersectionObserverCallback,
     _options?: IntersectionObserverInit,
-  ) {}
+  ) {
+    this.callback = callback
+    IntersectionObserverStub.instances.push(this)
+  }
   observe() {}
-  disconnect() {}
+  disconnect() { this.disconnected = true }
   unobserve() {}
   takeRecords(): IntersectionObserverEntry[] { return [] }
   readonly root = null
@@ -45,6 +52,7 @@ let dom: Window
 let container: HTMLElement
 
 beforeEach(() => {
+  IntersectionObserverStub.instances = []
   dom = new Window()
   ;(globalThis as unknown as { window: Window }).window = dom
   ;(globalThis as unknown as { document: Document }).document = dom.document as unknown as Document
@@ -79,6 +87,63 @@ test('video tile shows a finite loading placeholder before its cover settles', a
   })
 
   expect(container.querySelector('.masonry-tile.is-video .masonry-placeholder')).not.toBeNull()
+})
+
+test('image tile outside selection mode still invokes long press', async () => {
+  const imageNode: FileNode = {
+    name: 'photo.jpg',
+    path: 'photos/photo.jpg',
+    type: 'file',
+  }
+  const longPressed: FileNode[] = []
+  await act(async () => {
+    render(h(FolderMasonryView, {
+      nodes: [imageNode],
+      currentPath: null,
+      onSelect() {},
+      selectionProps: {
+        ...selectionProps,
+        onLongPress(node) { longPressed.push(node) },
+      },
+    }), container)
+  })
+
+  const tile = container.querySelector('.masonry-tile') as HTMLElement
+  tile.dispatchEvent(new dom.TouchEvent('touchstart', {
+    bubbles: true,
+    cancelable: true,
+    touches: [{ clientX: 10, clientY: 10 }] as unknown as Touch[],
+  }))
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 520))
+  })
+
+  expect(longPressed).toEqual([imageNode])
+})
+
+test('cover observer survives ratio-driven masonry repacks', async () => {
+  await act(async () => {
+    render(h(FolderMasonryView, {
+      nodes: [videoNode],
+      currentPath: null,
+      onSelect() {},
+      selectionProps,
+    }), container)
+  })
+  expect(IntersectionObserverStub.instances).toHaveLength(1)
+  const observer = IntersectionObserverStub.instances[0]
+
+  const video = container.querySelector('.masonry-tile.is-video') as HTMLElement
+  await act(async () => {
+    observer.callback([{
+      target: video,
+      isIntersecting: true,
+    } as IntersectionObserverEntry], observer as unknown as IntersectionObserver)
+    await new Promise((resolve) => setTimeout(resolve, 150))
+  })
+
+  expect(IntersectionObserverStub.instances).toHaveLength(1)
+  expect(observer.disconnected).toBe(false)
 })
 
 test('mouse hover mounts a muted looping preview and leaving removes it', async () => {
