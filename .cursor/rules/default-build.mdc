@@ -1,0 +1,13 @@
+---
+description: After code changes, always run bun run build by default
+alwaysApply: true
+---
+
+# Default build after changes
+
+When finishing a code change in this repo (client, server, styles, or shared utils):
+
+1. Run `bun run build` before considering the task done, unless the user explicitly says not to.
+2. Do not wait for the user to ask "build".
+3. If only docs/tests/comments changed and nothing affects `dist/`, skip build and say so briefly.
+4. After build, a one-line confirmation is enough (no need to paste the full build log).

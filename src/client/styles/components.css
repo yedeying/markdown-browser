@@ -642,13 +642,19 @@
 
 .folder-masonry-wrap { flex: 1; overflow-y: auto; user-select: none; -webkit-user-select: none; }
 .folder-masonry {
-  column-width: 200px;
-  column-gap: 4px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--masonry-gap, 4px);
   padding: 8px;
 }
+.masonry-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--masonry-gap, 4px);
+}
 .masonry-tile {
-  break-inside: avoid;
-  margin: 0 0 4px;
   width: 100%;
   position: relative;
   border-radius: 2px;

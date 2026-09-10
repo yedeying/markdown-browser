@@ -12,6 +12,7 @@ import {
   contentDispositionAttachment,
   normalizeDownloadPath,
 } from './download-zip.js'
+import { stripVmdRuntimeScripts } from './runtime-html.js'
 
 const SHARES_FILE = SHARES_FILENAME
 
@@ -252,6 +253,7 @@ export function createSharePageRoutes(
     }
     try {
       let html = readFileSync(join(distPath, 'index.html'), 'utf-8')
+      html = stripVmdRuntimeScripts(html)
       // 注入分享上下文到 <head>
       const inject = `<script>window.__VMD_SHARE_TOKEN__="${token}";window.__VMD_SHARE_TYPE__="${share.type}";window.__VMD_SHARE_PATH__="${share.path.replace(/"/g, '\\"')}";</script>`
       html = html.replace('</head>', inject + '</head>')
@@ -282,6 +284,7 @@ export function createSharePageRoutes(
     if (!share) return c.html(renderExpiredPage(), 410)
     try {
       let html = readFileSync(join(distPath, 'index.html'), 'utf-8')
+      html = stripVmdRuntimeScripts(html)
       const inject = `<script>window.__VMD_SHARE_TOKEN__="${token}";window.__VMD_SHARE_TYPE__="${share.type}";window.__VMD_SHARE_PATH__="${share.path.replace(/"/g, '\\"')}";</script>`
       html = html.replace('</head>', inject + '</head>')
       return c.html(html)

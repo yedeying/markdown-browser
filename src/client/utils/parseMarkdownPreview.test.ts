@@ -31,3 +31,18 @@ test('fence langs cc/cpp/c get real hljs highlighting, not plaintext', () => {
   // 关键字应被着色（plain 时通常没有 span）
   expect(html).toMatch(/hljs-\w+/)
 })
+
+test('code fence highlights once: hljs spans are real markup, not escaped text', () => {
+  const html = parseMarkdownPreview('```ts\nconst x = "hi"\n```')
+  expect(html).toContain('<span class="hljs-keyword">const</span>')
+  expect(html).not.toContain('&lt;span')
+  expect(html).not.toContain('&amp;quot;')
+  // 复制按钮应带原始源码，而不是 hljs HTML
+  expect(html).toMatch(/data-code="const x = &quot;hi&quot;"/)
+})
+
+test('json fence highlights keys without dumping escaped wrappers', () => {
+  const html = parseMarkdownPreview('```json\n{"a":1}\n```')
+  expect(html).toContain('hljs-attr')
+  expect(html).not.toContain('&lt;span class=&quot;hljs-')
+})

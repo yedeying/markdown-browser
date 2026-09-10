@@ -7,6 +7,7 @@ import type { AuthConfig } from '../../types.js'
 import { createAuthMiddleware, createAuthRoutes } from '../auth.js'
 import { hasReservedSegment } from '../reserved-files.js'
 import { decodeTextBuffer } from '../decodeText.js'
+import { renderDirIndexHtml } from '../runtime-html.js'
 import {
   transformImage,
   pickOutputFormat,
@@ -167,28 +168,36 @@ export function createSingleRouter(filePath: string, distPath: string, authConfi
     })
   })
 
-  // 静态文件服务（SPA fallback）
+  // 静态文件服务（SPA fallback；index 按请求注入，避免共享 dist 标题互串）
+  const singleDisplayName = basename(filePath)
   app.get('/*', (c) => {
     const path = c.req.path === '/' ? '/index.html' : c.req.path
     const staticFile = join(distPath, path)
+    const ext = extname(staticFile)
+    const mimeTypes: Record<string, string> = {
+      '.html': 'text/html',
+      '.js': 'application/javascript',
+      '.css': 'text/css',
+      '.svg': 'image/svg+xml',
+      '.png': 'image/png',
+      '.ico': 'image/x-icon',
+    }
     try {
-      const content = readFileSync(staticFile)
-      const ext = extname(staticFile)
-      const mimeTypes: Record<string, string> = {
-        '.html': 'text/html',
-        '.js': 'application/javascript',
-        '.css': 'text/css',
-        '.svg': 'image/svg+xml',
-        '.png': 'image/png',
-        '.ico': 'image/x-icon',
+      if (path === '/index.html' || ext === '.html') {
+        const html = renderDirIndexHtml(distPath, { mode: 'single', dirName: singleDisplayName })
+        c.header('Content-Type', 'text/html; charset=utf-8')
+        c.header('Cache-Control', 'no-store')
+        return c.body(html)
       }
+      const content = readFileSync(staticFile)
       c.header('Content-Type', mimeTypes[ext] || 'application/octet-stream')
       return c.body(content)
     } catch {
       try {
-        const indexContent = readFileSync(join(distPath, 'index.html'))
-        c.header('Content-Type', 'text/html')
-        return c.body(indexContent)
+        const html = renderDirIndexHtml(distPath, { mode: 'single', dirName: singleDisplayName })
+        c.header('Content-Type', 'text/html; charset=utf-8')
+        c.header('Cache-Control', 'no-store')
+        return c.body(html)
       } catch {
         return c.text('Not found', 404)
       }

@@ -395,7 +395,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
             <div key={node.path} class="tree-item">
               <div
                 class={`folder-row ${isActive ? 'active' : ''}`}
-                style={{ paddingLeft: `${level * 12 + 8}px` }}
+                style={{ marginLeft: `${level * 12}px` }}
                 data-testid={`tree-node-${node.path.replace(/\//g, '-')}`}
                 data-path={node.path}
                 onClick={() => {
@@ -445,7 +445,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
               {isExpanded && (
                 <div class="folder-children">
                   {displayNode.children == null ? (
-                    <div class="tree-skeleton-row" style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}>
+                    <div class="tree-skeleton-row" style={{ marginLeft: `${(level + 1) * 12}px` }}>
                       <div class="tree-skeleton-icon" />
                       <div class="tree-skeleton-line" style={{ width: '40%' }} />
                     </div>

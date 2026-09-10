@@ -1,3 +1,6 @@
+import { Hono } from 'hono'
+import { readFileSync, existsSync } from 'fs'
+import { join, extname } from 'path'
 import type { ServerConfig, AuthConfig, MountConfig } from '../types.js'
 import { createDirRouter } from './routes/dir.js'
 import { createSingleRouter } from './routes/single.js'
@@ -6,9 +9,7 @@ import { generateSigningKey } from './auth.js'
 import { MountManager } from './mount-manager.js'
 import { CONFIG_FILENAME } from './reserved-files.js'
 import { treeCache } from './tree-cache.js'
-import { Hono } from 'hono'
-import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { join, basename, extname } from 'path'
+import { stripVmdRuntimeScripts } from './runtime-html.js'
 
 async function findAvailablePort(startPort: number, host = '0.0.0.0'): Promise<number> {
   const maxPort = Math.max(startPort + 100, 9000)
@@ -38,28 +39,7 @@ function openBrowser(url: string) {
 }
 
 /**
- * 在 index.html 中注入运行时配置变量
- * dir/single 模式：注入 __VMD_MODE__ 和 __VMD_DIR_NAME__（持久化写回磁盘，方便缓存）
- * multi 模式：不写磁盘，由服务端动态响应
- */
-function patchIndexHtml(distPath: string, config: ServerConfig) {
-  if (config.mode === 'multi') return
-  const indexPath = join(distPath, 'index.html')
-  try {
-    let html = readFileSync(indexPath, 'utf-8')
-    const dirName = config.basePath ? basename(config.basePath) : 'vmd'
-    const script = `<script>window.__VMD_MODE__="${config.mode}";window.__VMD_DIR_NAME__=${JSON.stringify(dirName)};</script>`
-    if (!html.includes('__VMD_MODE__')) {
-      html = html.replace('</head>', `${script}\n</head>`)
-      writeFileSync(indexPath, html, 'utf-8')
-    }
-  } catch {
-    // ignore
-  }
-}
-
-/**
- * 读取 index.html 模板并注入 multi 模式的运行时变量
+ * 读取 index.html 模板并注入 multi 模式的运行时变量（不写磁盘）
  */
 function renderMultiIndex(distPath: string, payload: {
   mountAlias?: string
@@ -67,9 +47,7 @@ function renderMultiIndex(distPath: string, payload: {
 }): string | null {
   const indexPath = join(distPath, 'index.html')
   try {
-    let html = readFileSync(indexPath, 'utf-8')
-    // 移除旧注入（若此前跑过 dir/single 模式残留）
-    html = html.replace(/<script>window\.__VMD_MODE__=.*?<\/script>\s*/g, '')
+    let html = stripVmdRuntimeScripts(readFileSync(indexPath, 'utf-8'))
     const vars: string[] = [
       `window.__VMD_MODE__="multi"`,
       `window.__VMD_MOUNTS__=${JSON.stringify(payload.mounts)}`,
@@ -88,9 +66,6 @@ function renderMultiIndex(distPath: string, payload: {
 
 export async function startServer(config: ServerConfig) {
   const port = await findAvailablePort(config.port)
-
-  // 注入模式变量（multi 模式跳过）
-  patchIndexHtml(config.distPath, config)
 
   // 访问密码（全局）
   let authConfig: AuthConfig | null = null

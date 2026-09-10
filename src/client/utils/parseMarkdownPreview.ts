@@ -3,9 +3,12 @@
  *
  * 切勿对全局 `marked` 单例反复 `marked.use()`：扩展会永久叠乘，
  * 编辑态每键一 parse 时十几次后主线程即可卡死。
+ *
+ * 代码高亮只在 renderer.code 做一次。不要再叠加 marked-highlight：
+ * 它会先把 token.text 换成 hljs HTML，自定义 renderer 再 highlight 一次
+ * 就会把 `<span class="hljs-…">` 转义成可见文本。
  */
 import { Marked, type Renderer } from 'marked'
-import { markedHighlight } from 'marked-highlight'
 import hljs from 'highlight.js/lib/core'
 import javascript from 'highlight.js/lib/languages/javascript'
 import typescript from 'highlight.js/lib/languages/typescript'
@@ -140,15 +143,13 @@ export function resolveHljsLang(raw?: string | null): string {
   return hljs.getLanguage(lang) ? lang : 'plaintext'
 }
 
-/** 只装一次到本模块的扩展对象上，再交给每次新建的 Marked */
-const highlightExt = markedHighlight({
-  langPrefix: 'hljs language-',
-  highlight(code: string, lang: string) {
-    if (lang === 'mermaid') return code
-    const language = resolveHljsLang(lang)
-    return hljs.highlight(code, { language }).value
-  },
-})
+function escapeAttr(code: string): string {
+  return code
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
 
 const headingCount: Record<string, number> = {}
 
@@ -175,14 +176,9 @@ function buildRenderer(currentFilePath?: string): { renderer: Partial<Renderer>;
       if (lang === 'mermaid') {
         return `<div class="mermaid">${code}</div>`
       }
-      const escaped = code
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
       const language = resolveHljsLang(lang)
       const highlighted = hljs.highlight(code, { language }).value
-      return `<pre><button class="copy-btn" data-code="${escaped}">复制</button><code class="hljs language-${language}">${highlighted}</code></pre>`
+      return `<pre><button class="copy-btn" data-code="${escapeAttr(code)}">复制</button><code class="hljs language-${language}">${highlighted}</code></pre>`
     },
     heading(text: string, level: number) {
       const slug = text
@@ -232,6 +228,6 @@ function buildRenderer(currentFilePath?: string): { renderer: Partial<Renderer>;
 export function parseMarkdownPreview(markdown: string, filePath?: string): string {
   Object.keys(headingCount).forEach(k => delete headingCount[k])
   const { renderer } = buildRenderer(filePath)
-  const instance = new Marked(highlightExt, { renderer, gfm: true, breaks: true })
+  const instance = new Marked({ renderer, gfm: true, breaks: true })
   return instance.parse(markdown) as string
 }

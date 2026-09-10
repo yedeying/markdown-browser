@@ -28,17 +28,8 @@ import {
   treeNodeTestId,
 } from '../utils/keyboardNav.js'
 import { useDelayedFlag } from '../hooks/useDelayedFlag.js'
+import { findNodeByPath, syncColumnStackFromTree } from '../utils/columnStack.js'
 
-function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
-  for (const n of nodes) {
-    if (n.path === path) return n
-    if (n.children) {
-      const hit = findNodeByPath(n.children, path)
-      if (hit) return hit
-    }
-  }
-  return null
-}
 
 /** 列预览区按行滚动；滚得动返回 true，已到顶/底返回 false */
 function scrollColPreviewByLine(dir: 'up' | 'down'): boolean {
@@ -203,7 +194,8 @@ const ColumnFolderPane: FunctionalComponent<ColumnFolderPaneProps> = ({
       ) : (
         children.map((node) => {
           const isSelected = selectedPath === node.path
-          const hasChildren = node.type === 'folder' && (node.children?.length ?? 0) > 0
+          // 懒加载前 children 为空；目录一律显示 ▶，避免点开后才出现
+          const showFolderChevron = node.type === 'folder'
           const lpHandlers = makeLongPress(node)
           return (
             <div
@@ -211,7 +203,7 @@ const ColumnFolderPane: FunctionalComponent<ColumnFolderPaneProps> = ({
               class={[
                 'folder-column-row',
                 isSelected ? (isActiveCol ? 'active' : 'active is-ancestor') : '',
-                hasChildren ? 'has-children' : '',
+                showFolderChevron ? 'has-children' : '',
                 node.type === 'file' && isSelected && isActiveCol ? 'kb-focus' : '',
               ].filter(Boolean).join(' ')}
               data-path={node.path}
@@ -361,37 +353,13 @@ const FolderColumnView: FunctionalComponent<Props> = ({
 
   // tree 变化后同步各列：已删除的路径从 stack 截断，避免继续展示幽灵目录
   useEffect(() => {
-    setColumnStack((prev) => {
-      const next: FileNode[] = []
-      for (const n of prev) {
-        const fresh = findNodeByPath(tree, n.path)
-        if (!fresh || fresh.type !== 'folder') break
-        next.push(fresh)
-      }
-      if (next.length === 0) {
-        if (!rootNode.path) {
-          return [{ ...rootNode, children: tree }]
-        }
-        return [findNodeByPath(tree, rootNode.path) ?? rootNode]
-      }
-      // 根列也要用 tree 里的最新节点（含 children）
-      if (!rootNode.path) {
-        next[0] = { ...next[0], children: tree }
-      }
-      // 路径序列未变且节点引用未变时保留 prev，避免无谓重渲染清掉浏览进度
-      if (
-        next.length === prev.length
-        && next.every((n, i) => n === prev[i])
-      ) {
-        return prev
-      }
-      return next
-    })
+    setColumnStack((prev) => syncColumnStackFromTree(prev, tree, rootNode))
     setSelectedInCol((prev) => {
       const next: Record<number, string> = {}
       let changed = false
       for (const [k, v] of Object.entries(prev)) {
-        if (findNodeByPath(tree, v)) next[Number(k)] = v
+        // 虚拟根 path '' 不在 tree 节点里，但选中值不会是 ''
+        if (v === '' || findNodeByPath(tree, v)) next[Number(k)] = v
         else changed = true
       }
       if (!changed && Object.keys(next).length === Object.keys(prev).length) return prev
@@ -425,8 +393,11 @@ const FolderColumnView: FunctionalComponent<Props> = ({
 
   const makeLongPress = useLongPress<FileNode>({ onLongPress })
 
+  const pendingEnterRef = useRef<{ folderPath: string; colIndex: number } | null>(null)
+
   const handleRowClick = (node: FileNode, colIndex: number) => {
     setNavFocus('folder')
+    pendingEnterRef.current = null
     if (node.type === 'folder') {
       const fresh = resolveFolder(node)
       setColumnStack(prev => [...prev.slice(0, colIndex + 1), fresh])
@@ -468,10 +439,8 @@ const FolderColumnView: FunctionalComponent<Props> = ({
     }
   }
 
-  /** →：进入目录，并把光标落到下一列首项（优先子目录） */
-  const enterFolderSelectingFirst = (folder: FileNode, colIndex: number) => {
-    setNavFocus('folder')
-    const fresh = resolveFolder(folder)
+  /** →：进入目录；若尚未懒加载则先挂列等待，解析后再选首项 */
+  const applyEnterSelection = (folder: FileNode, colIndex: number, fresh: FileNode) => {
     const nextChildren = sortNodes(
       filterVisible(fresh.children || [], showHidden),
       sortField,
@@ -507,6 +476,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       setPreviewFocus(false)
       loadPreview(first)
     } else {
+      // 空目录：保留子列，不回退
       setColumnStack((prev) => [...prev.slice(0, colIndex + 1), fresh])
       setSelectedInCol((prev) => {
         const next: Record<number, string> = {}
@@ -532,6 +502,55 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       })
     }
   }
+
+  const enterFolderSelectingFirst = (folder: FileNode, colIndex: number) => {
+    setNavFocus('folder')
+    const fresh = resolveFolder(folder)
+
+    // 尚未拉取 children：先挂上子列并等待解析，避免当成空目录
+    if (fresh.children == null) {
+      pendingEnterRef.current = { folderPath: folder.path, colIndex }
+      setColumnStack((prev) => [...prev.slice(0, colIndex + 1), fresh])
+      setSelectedInCol((prev) => {
+        const next: Record<number, string> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          if (Number(k) < colIndex) next[Number(k)] = v
+        }
+        next[colIndex] = folder.path
+        return next
+      })
+      setPreview(null)
+      setPreviewFocus(false)
+      setTimeout(() => {
+        if (wrapRef.current) {
+          wrapRef.current.scrollLeft = wrapRef.current.scrollWidth
+        }
+      }, 50)
+      return
+    }
+
+    pendingEnterRef.current = null
+    applyEnterSelection(folder, colIndex, fresh)
+  }
+
+  // 懒加载完成后：补完「→ 进入未扫描目录」的首项选中
+  useEffect(() => {
+    const pending = pendingEnterRef.current
+    if (!pending) return
+    if (!columnStack.some((n) => n.path === pending.folderPath)) {
+      pendingEnterRef.current = null
+      return
+    }
+    const fresh = findNodeByPath(tree, pending.folderPath)
+      ?? columnStack.find((n) => n.path === pending.folderPath)
+    if (!fresh || fresh.children == null) return
+    pendingEnterRef.current = null
+    applyEnterSelection(
+      { name: fresh.name, type: 'folder', path: fresh.path },
+      pending.colIndex,
+      fresh,
+    )
+  }, [tree, columnStack])
 
   const onFileSelectRef = useRef(onFileSelect)
   onFileSelectRef.current = onFileSelect
@@ -623,6 +642,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       if (dir === 'left') {
         e.preventDefault()
         e.stopImmediatePropagation()
+        pendingEnterRef.current = null
         // 文件预览焦点：← 先退回列光标
         if (previewFocusRef.current) {
           setPreviewFocus(false)

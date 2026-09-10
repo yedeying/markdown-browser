@@ -36,6 +36,7 @@ import {
   contentDispositionAttachment,
   normalizeDownloadPath,
 } from '../download-zip.js'
+import { renderDirIndexHtml } from '../runtime-html.js'
 
 const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.DS_Store', '.vmd-upload'])
 
@@ -1057,30 +1058,38 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   createShareApiRoutes(app, shareStore, authConfig)
   createSharePageRoutes(app, basePath, distPath, shareStore)
 
-  // 静态文件服务
+  // 静态文件服务（index.html 按请求注入目录名，避免多实例共享 dist 时标题互串）
   // ===========================================================
+  const dirDisplayName = basename(basePath)
   app.get('/*', (c) => {
     const path = c.req.path === '/' ? '/index.html' : c.req.path
     const filePath = join(distPath, path)
+    const ext = extname(filePath)
+    const mimeTypes: Record<string, string> = {
+      '.html': 'text/html',
+      '.js': 'application/javascript',
+      '.css': 'text/css',
+      '.svg': 'image/svg+xml',
+      '.png': 'image/png',
+      '.ico': 'image/x-icon',
+    }
     try {
-      const content = readFileSync(filePath)
-      const ext = extname(filePath)
-      const mimeTypes: Record<string, string> = {
-        '.html': 'text/html',
-        '.js': 'application/javascript',
-        '.css': 'text/css',
-        '.svg': 'image/svg+xml',
-        '.png': 'image/png',
-        '.ico': 'image/x-icon',
+      if (path === '/index.html' || ext === '.html') {
+        const html = renderDirIndexHtml(distPath, { mode: 'dir', dirName: dirDisplayName })
+        c.header('Content-Type', 'text/html; charset=utf-8')
+        c.header('Cache-Control', 'no-store')
+        return c.body(html)
       }
+      const content = readFileSync(filePath)
       c.header('Content-Type', mimeTypes[ext] || 'application/octet-stream')
       return c.body(content)
     } catch {
       // SPA fallback
       try {
-        const indexContent = readFileSync(join(distPath, 'index.html'))
-        c.header('Content-Type', 'text/html')
-        return c.body(indexContent)
+        const html = renderDirIndexHtml(distPath, { mode: 'dir', dirName: dirDisplayName })
+        c.header('Content-Type', 'text/html; charset=utf-8')
+        c.header('Cache-Control', 'no-store')
+        return c.body(html)
       } catch {
         return c.text('Not found', 404)
       }
