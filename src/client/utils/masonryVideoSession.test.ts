@@ -144,6 +144,56 @@ test('loader failure calls onCoverError and abort does not', async () => {
   session.dispose()
 })
 
+test('cancel then requestCover runs the loader again in the same turn', async () => {
+  const started: string[] = []
+  const session = new MasonryVideoSession({
+    maxConcurrent: 1,
+    loader: async (url, signal) => {
+      started.push(url)
+      await new Promise<void>((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'))
+        })
+      })
+      return { width: 16, height: 9, blob: new Blob([new Uint8Array([6])]) }
+    },
+  })
+  session.requestCover('clip.mp4', '/v1')
+  expect(started).toEqual(['/v1'])
+  session.cancel('clip.mp4')
+  session.requestCover('clip.mp4', '/v2')
+  expect(started).toEqual(['/v1', '/v2'])
+  session.dispose()
+})
+
+test('settled external AbortSignal does not cancel a later request', async () => {
+  stub = stubObjectUrls()
+  let secondStarted = 0
+  const session = new MasonryVideoSession({
+    maxConcurrent: 1,
+    loader: async (url, signal) => {
+      if (url === '/v1') {
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'))
+          })
+        })
+      }
+      secondStarted++
+      return { width: 16, height: 9, blob: new Blob([new Uint8Array([7])]) }
+    },
+  })
+  const ac = new AbortController()
+  session.requestCover('clip.mp4', '/v1', ac.signal)
+  session.cancel('clip.mp4')
+  session.requestCover('clip.mp4', '/v2')
+  ac.abort()
+  await delay(20)
+  expect(secondStarted).toBe(1)
+  expect(session.getCover('clip.mp4')).toBeDefined()
+  session.dispose()
+})
+
 test('external AbortSignal cancels queued work', async () => {
   let ran = 0
   const session = new MasonryVideoSession({

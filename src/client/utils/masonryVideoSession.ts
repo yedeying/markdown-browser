@@ -27,6 +27,7 @@ type CoverJob = {
   path: string
   srcUrl: string
   controller: AbortController
+  unlinkExternal?: () => void
 }
 
 function isAbortError(e: unknown): boolean {
@@ -137,7 +138,7 @@ export class MasonryVideoSession {
   private readonly onCover?: VideoSessionCallbacks['onCover']
   private readonly onCoverError?: VideoSessionCallbacks['onCoverError']
   private readonly covers = new Map<string, string>()
-  private readonly inFlight = new Map<string, AbortController>()
+  private readonly inFlight = new Map<string, CoverJob>()
   private readonly queued = new Map<string, CoverJob>()
   private disposed = false
 
@@ -154,10 +155,16 @@ export class MasonryVideoSession {
     if (signal?.aborted) return
 
     const controller = new AbortController()
+    const job: CoverJob = { path, srcUrl, controller }
     if (signal) {
-      signal.addEventListener('abort', () => this.cancel(path), { once: true })
+      const onAbort = () => this.cancel(path)
+      signal.addEventListener('abort', onAbort)
+      job.unlinkExternal = () => {
+        signal.removeEventListener('abort', onAbort)
+        job.unlinkExternal = undefined
+      }
     }
-    this.queued.set(path, { path, srcUrl, controller })
+    this.queued.set(path, job)
     this.pump()
   }
 
@@ -165,17 +172,30 @@ export class MasonryVideoSession {
     const queued = this.queued.get(path)
     if (queued) {
       this.queued.delete(path)
+      queued.unlinkExternal?.()
       queued.controller.abort()
       return
     }
-    this.inFlight.get(path)?.abort()
+    const flying = this.inFlight.get(path)
+    if (!flying) return
+    this.inFlight.delete(path)
+    flying.unlinkExternal?.()
+    flying.controller.abort()
+    this.pump()
   }
 
   dispose(): void {
     this.disposed = true
-    for (const job of this.queued.values()) job.controller.abort()
+    for (const job of this.queued.values()) {
+      job.unlinkExternal?.()
+      job.controller.abort()
+    }
     this.queued.clear()
-    for (const ac of this.inFlight.values()) ac.abort()
+    for (const job of this.inFlight.values()) {
+      job.unlinkExternal?.()
+      job.controller.abort()
+    }
+    this.inFlight.clear()
     for (const url of this.covers.values()) URL.revokeObjectURL(url)
     this.covers.clear()
   }
@@ -194,7 +214,7 @@ export class MasonryVideoSession {
   }
 
   private async run(job: CoverJob): Promise<void> {
-    this.inFlight.set(job.path, job.controller)
+    this.inFlight.set(job.path, job)
     try {
       if (job.controller.signal.aborted) return
       const frame = await this.loader(job.srcUrl, job.controller.signal)
@@ -210,7 +230,10 @@ export class MasonryVideoSession {
       if (this.disposed || job.controller.signal.aborted || isAbortError(e)) return
       this.onCoverError?.(job.path)
     } finally {
-      this.inFlight.delete(job.path)
+      job.unlinkExternal?.()
+      if (this.inFlight.get(job.path) === job) {
+        this.inFlight.delete(job.path)
+      }
       this.pump()
     }
   }
