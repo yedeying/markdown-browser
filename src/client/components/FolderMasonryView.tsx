@@ -4,7 +4,7 @@ import type { FileNode } from '../../types.js'
 import { getFileType } from '../utils/fileType.js'
 import { useLongPress } from '../hooks/useLongPress.js'
 import type { SelectionProps } from './FolderView.js'
-import { assetUrl } from '../utils/fsApi.js'
+import { fetchAssetBlob } from '../utils/fsApi.js'
 import { getNodeIconName } from '../utils/nodeIcon.js'
 import Icon from './ui/Icon.js'
 import { useMarqueeSelect } from '../hooks/useMarqueeSelect.js'
@@ -12,8 +12,9 @@ import {
   estimateMasonryTileHeight,
   masonryColumnCount,
   MASONRY_PLACEHOLDER_RATIO,
+  MASONRY_THUMB_WIDTH,
+  orderMasonryForPack,
   packMasonryColumns,
-  prioritizeLoadedMasonryNodes,
 } from '../utils/masonryLayout.js'
 
 interface Props {
@@ -30,8 +31,9 @@ interface TileProps {
   node: FileNode
   selected: boolean
   kbFocus: boolean
-  /** 已测得的宽/高；未知时用占位 */
   aspectRatio: number | null
+  /** 视口外延后加载；首屏若干张 eager */
+  eager: boolean
   onAspectRatio: (path: string, ratio: number) => void
   onLoadError: (path: string) => void
   onSelect: (node: FileNode) => void
@@ -41,11 +43,16 @@ interface TileProps {
 const COL_WIDTH = 200
 const COL_GAP = 4
 
+function isAbortError(e: unknown): boolean {
+  return e instanceof DOMException && e.name === 'AbortError'
+}
+
 const MasonryTile: FunctionalComponent<TileProps> = ({
   node,
   selected,
   kbFocus,
   aspectRatio,
+  eager,
   onAspectRatio,
   onLoadError,
   onSelect,
@@ -60,8 +67,14 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
     onLongPress,
   } = selectionProps
 
+  const [blobSrc, setBlobSrc] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(() => aspectRatio != null && aspectRatio > 0)
   const [imgError, setImgError] = useState(false)
+  const mediaRef = useRef<HTMLDivElement>(null)
+  const onLoadErrorRef = useRef(onLoadError)
+  onLoadErrorRef.current = onLoadError
+  const onAspectRatioRef = useRef(onAspectRatio)
+  onAspectRatioRef.current = onAspectRatio
 
   const ft = node.type === 'file' ? getFileType(node.name) : null
   const isImage = ft === 'image'
@@ -71,6 +84,65 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
 
   const makeLongPress = useLongPress<FileNode>({ onLongPress })
   const lpHandlers = makeLongPress(node)
+
+  // fetch + AbortController：卸载 / 离开瀑布流时取消缩略图请求
+  useEffect(() => {
+    if (!isImage || imgError) return
+
+    const ac = new AbortController()
+    let objectUrl: string | null = null
+    let started = false
+    let io: IntersectionObserver | null = null
+
+    const start = () => {
+      if (started || ac.signal.aborted) return
+      started = true
+      void (async () => {
+        try {
+          const blob = await fetchAssetBlob(node.path, {
+            w: MASONRY_THUMB_WIDTH,
+            fmt: 'webp',
+            signal: ac.signal,
+          })
+          if (ac.signal.aborted) return
+          objectUrl = URL.createObjectURL(blob)
+          setBlobSrc(objectUrl)
+        } catch (e) {
+          if (ac.signal.aborted || isAbortError(e)) return
+          setImgError(true)
+          onLoadErrorRef.current(node.path)
+        }
+      })()
+    }
+
+    if (eager) {
+      start()
+    } else {
+      const el = mediaRef.current
+      if (!el) {
+        // ref 尚未挂上时退化为 eager，避免永不加载
+        start()
+      } else {
+        io = new IntersectionObserver(
+          (entries) => {
+            if (entries.some((en) => en.isIntersecting)) {
+              io?.disconnect()
+              io = null
+              start()
+            }
+          },
+          { rootMargin: '200px 0px' },
+        )
+        io.observe(el)
+      }
+    }
+
+    return () => {
+      ac.abort()
+      io?.disconnect()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [isImage, imgError, eager, node.path])
 
   const handleClick = (e: MouseEvent) => {
     if (e.ctrlKey || e.metaKey || e.shiftKey) {
@@ -87,8 +159,10 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
 
   return (
     <div
-      class={`masonry-tile${selected ? ' active' : ''}${isChecked ? ' selected' : ''}${kbFocus ? ' kb-focus' : ''}${isFolder ? ' is-folder' : ''}${isVideo ? ' is-video' : ''}`}
+      class={`masonry-tile${selected ? ' active' : ''}${isChecked ? ' selected' : ''}${kbFocus ? ' kb-focus' : ''}${isFolder ? ' is-folder' : ''}${isVideo ? ' is-video' : ''}${imgError ? ' is-error' : ''}`}
       data-path={node.path}
+      role="button"
+      tabIndex={-1}
       onClick={handleClick}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(node, e as MouseEvent) }}
       {...lpHandlers}
@@ -101,36 +175,45 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
         <input type="checkbox" checked={isChecked} onChange={() => {}} />
       </div>
 
-      {isImage && !imgError ? (
+      {isImage && imgError ? (
         <div
+          class="masonry-tile-media masonry-tile-error"
+          style={{ aspectRatio: String(MASONRY_PLACEHOLDER_RATIO) }}
+        >
+          <Icon name="file-image" size={36} class="masonry-tile-glyph" aria-hidden="true" />
+          <span class="masonry-tile-error-label">无法加载</span>
+        </div>
+      ) : isImage ? (
+        <div
+          ref={mediaRef}
           class="masonry-tile-media"
           style={{ aspectRatio: String(mediaRatio) }}
         >
           {!loaded && <div class="masonry-placeholder" aria-hidden="true" />}
-          <img
-            src={assetUrl(node.path)}
-            alt={node.name}
-            class={loaded ? 'is-loaded' : ''}
-            loading="lazy"
-            decoding="async"
-            onLoad={(e) => {
-              const img = e.currentTarget
-              if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                onAspectRatio(node.path, img.naturalWidth / img.naturalHeight)
-              } else {
-                onLoadError(node.path)
-              }
-              setLoaded(true)
-            }}
-            onError={() => {
-              setImgError(true)
-              onLoadError(node.path)
-            }}
-          />
+          {blobSrc && (
+            <img
+              src={blobSrc}
+              alt={node.name}
+              class={loaded ? 'is-loaded' : ''}
+              decoding="async"
+              onLoad={(e) => {
+                const img = e.currentTarget
+                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                  onAspectRatioRef.current(node.path, img.naturalWidth / img.naturalHeight)
+                } else {
+                  onLoadErrorRef.current(node.path)
+                }
+                setLoaded(true)
+              }}
+              onError={() => {
+                setImgError(true)
+                onLoadErrorRef.current(node.path)
+              }}
+            />
+          )}
         </div>
       ) : isVideo ? (
         <div class="masonry-tile-media masonry-tile-video" style={{ aspectRatio: '16 / 9' }}>
-          <div class="masonry-placeholder" aria-hidden="true" />
           <Icon name="file-video" size={36} class="masonry-tile-glyph" aria-hidden="true" />
           <span class="masonry-tile-play" aria-hidden="true">▶</span>
         </div>
@@ -150,7 +233,11 @@ type PackSnapshot = {
   failed: Record<string, true>
 }
 
-/** 瀑布流：已就绪图优先；按真实宽高比最短列分配。 */
+function nodesKey(nodes: FileNode[]): string {
+  return nodes.map((n) => n.path).join('\0')
+}
+
+/** 瀑布流：加载中就绪优先；全部就绪后恢复目录排序并按真实比例齐平。 */
 const FolderMasonryView: FunctionalComponent<Props> = ({
   nodes,
   currentPath,
@@ -166,6 +253,7 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
   const [failed, setFailed] = useState<Record<string, true>>({})
   const packTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [pack, setPack] = useState<PackSnapshot>({ ratios: {}, failed: {} })
+  const pathKey = nodesKey(nodes)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -179,9 +267,9 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
     return () => ro.disconnect()
   }, [])
 
-  // 目录内容变化：丢掉已不存在的缓存
+  // 目录 path 集合变化时修剪缓存（避免 nodes 引用抖动误清）
   useEffect(() => {
-    const keep = new Set(nodes.map((n) => n.path))
+    const keep = new Set(pathKey ? pathKey.split('\0') : [])
     const prune = <T,>(prev: Record<string, T>): Record<string, T> => {
       let changed = false
       const next: Record<string, T> = {}
@@ -194,20 +282,20 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
     setRatios(prune)
     setFailed(prune)
     setPack((prev) => {
-      const ratios = prune(prev.ratios)
-      const failedNext = prune(prev.failed)
-      if (ratios === prev.ratios && failedNext === prev.failed) return prev
-      return { ratios, failed: failedNext }
+      const nextRatios = prune(prev.ratios)
+      const nextFailed = prune(prev.failed)
+      if (nextRatios === prev.ratios && nextFailed === prev.failed) return prev
+      return { ratios: nextRatios, failed: nextFailed }
     })
-  }, [nodes])
+  }, [pathKey])
 
-  // 防抖后重排：就绪项提前 + 真实高度齐平
+  // 防抖重排：比例/失败态批量落地后再改列分配，减少「先拉高再挪列」
   useEffect(() => {
     if (packTimerRef.current) clearTimeout(packTimerRef.current)
     packTimerRef.current = setTimeout(() => {
       setPack({ ratios, failed })
       packTimerRef.current = null
-    }, 80)
+    }, 120)
     return () => {
       if (packTimerRef.current) clearTimeout(packTimerRef.current)
     }
@@ -234,9 +322,18 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
     ...Object.keys(pack.ratios),
     ...Object.keys(pack.failed),
   ])
-  const ordered = prioritizeLoadedMasonryNodes(nodes, settled)
+  const ordered = orderMasonryForPack(nodes, settled)
   const columns = packMasonryColumns(ordered, colCount, (n) =>
     estimateMasonryTileHeight(n, pack.ratios),
+  )
+
+  // 首屏约 3 行 eager，减轻「沉底未加载永远不请求」
+  const eagerCount = Math.max(colCount * 3, 6)
+  const eagerPaths = new Set(
+    nodes
+      .filter((n) => n.type === 'file' && getFileType(n.name) === 'image')
+      .slice(0, eagerCount)
+      .map((n) => n.path),
   )
 
   const marquee = useMarqueeSelect(wrapRef, {
@@ -265,6 +362,7 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
                 selected={currentPath === node.path}
                 kbFocus={focusPath === node.path}
                 aspectRatio={ratios[node.path] ?? null}
+                eager={eagerPaths.has(node.path)}
                 onAspectRatio={handleAspectRatio}
                 onLoadError={handleLoadError}
                 onSelect={onSelect}

@@ -82,7 +82,7 @@ const FolderCard: FunctionalComponent<Props> = ({
       >
         {showThumb ? (
           <img
-            src={assetUrl(node.path)}
+            src={assetUrl(node.path, { w: Math.max(thumbSize * 2, 160), fmt: 'webp' })}
             alt={node.name}
             onError={() => setImgError(true)}
           />

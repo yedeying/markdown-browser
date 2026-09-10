@@ -609,34 +609,44 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         '.webp': 'image/webp',
         '.pdf': 'application/pdf',
         '.zip': 'application/zip',
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.ogg': 'video/ogg',
+        '.mov': 'video/quicktime',
+        '.avi': 'video/x-msvideo',
       }
 
-      // 可转码的静态图片：按 Accept / 显式参数输出 AVIF/WebP/JPEG 缩略变体。
-      // 关键：缓存键完全由 URL（?fmt=&w=）决定，Accept 只决定默认格式，
-      // 保证免费版 Cloudflare（无 Vary 支持）下的多变体缓存安全。
+      // 仅当 URL 显式带 ?w= / ?fmt= 时才转码。无参数直通原图，避免相册打开时
+      // 数百请求全部挤进 sharp 队列，浏览器 6 连接被 Stalled 数十秒。
       if (isTranscodableImage(ext) && !NON_TRANSCODABLE_IMAGE_EXTS.has(ext)) {
-        const fmt = normalizeFmtParam(c.req.query('fmt')) ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
-        const maxWidth = normalizeWidthParam(c.req.query('w')) || DEFAULT_MAX_WIDTH
-        const stat = statSync(filePath)
-        try {
-          const result = await transformImage({
-            data: content,
-            ext,
-            fmt,
-            maxWidth,
-            mtimeMs: stat.mtimeMs,
-          })
-          if (!result.passthrough) {
-            c.header('Content-Type', result.contentType)
-            // URL 决定变体 → 可以放心长缓存；边缘/浏览器都缓存
-            c.header('Cache-Control', 'public, max-age=86400, immutable')
-            c.header('Vary', 'Accept')
-            c.header('X-Vmd-Image-Transform', `${result.info.width}x${result.info.height} ${fmt}`)
-            return c.body(result.data)
+        const explicitFmt = normalizeFmtParam(c.req.query('fmt'))
+        const explicitW = normalizeWidthParam(c.req.query('w'))
+        if (explicitFmt || explicitW > 0) {
+          const fmt = explicitFmt ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
+          const maxWidth = explicitW || DEFAULT_MAX_WIDTH
+          const stat = statSync(filePath)
+          try {
+            const result = await transformImage({
+              data: content,
+              ext,
+              fmt,
+              maxWidth,
+              mtimeMs: stat.mtimeMs,
+              signal: c.req.raw.signal,
+            })
+            if (!result.passthrough) {
+              c.header('Content-Type', result.contentType)
+              c.header('Cache-Control', 'public, max-age=86400, immutable')
+              c.header('Vary', 'Accept')
+              c.header('X-Vmd-Image-Transform', `${result.info.width}x${result.info.height} ${fmt}`)
+              return c.body(result.data)
+            }
+          } catch (e) {
+            if (e instanceof DOMException && e.name === 'AbortError') {
+              return new Response(null, { status: 499, statusText: 'Client Closed Request' })
+            }
+            // 转码失败 → 落回原图
           }
-          // 直通（解码失败等）→ 落回下面的普通图片响应
-        } catch {
-          // 转码失败 → 落回原图
         }
       }
 

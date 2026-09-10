@@ -31,14 +31,14 @@ const IMAGE_TYPES = new Set(['image/avif', 'image/webp', 'image/jpeg', 'image/pn
 /** 允许显式指定的输出格式（?fmt=） */
 export const ALLOWED_FMT = new Set(['avif', 'webp', 'jpeg', 'png'])
 
-/** 服务端默认缩放上限（?w= 未指定时使用；0 表示不缩放） */
+/** 服务端在「仅指定 fmt、未指定 w」时的缩放上限；无 w/fmt 时不转码、直通原图 */
 export const DEFAULT_MAX_WIDTH = 1600
 
 /** LRU 缓存大小：命中内存内的转码结果，避免重复解码风暴 */
 const MAX_CACHE_ENTRIES = 96
 
 /** 并发转码上限：超过即排队，防止一次打开几百张图把 CPU/内存打爆 */
-const MAX_CONCURRENCY = 3
+export const TRANSFORM_MAX_CONCURRENCY = 3
 
 // ---------------------------------------------------------------------------
 // 解析
@@ -130,6 +130,8 @@ interface TransformOptions {
   maxWidth?: number
   /** 源文件 mtime，用于缓存键失效 */
   mtimeMs?: number
+  /** 客户端断开 / 取消时跳过排队与转码 */
+  signal?: AbortSignal
 }
 
 export interface TransformResult {
@@ -167,15 +169,46 @@ class LRU {
 
 const cache = new LRU(MAX_CACHE_ENTRIES)
 
-/** 并发池：同时最多 MAX_CONCURRENCY 个转码任务 */
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+}
+
+/** 并发池：同时最多 TRANSFORM_MAX_CONCURRENCY 个任务；排队中可被 AbortSignal 取消 */
 let inFlight = 0
 const queue: Array<() => void> = []
-async function withConcurrency<T>(task: () => Promise<T>): Promise<T> {
-  if (inFlight >= MAX_CONCURRENCY) {
-    await new Promise<void>(resolve => queue.push(resolve))
+
+export async function withConcurrency<T>(
+  task: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  throwIfAborted(signal)
+
+  if (inFlight >= TRANSFORM_MAX_CONCURRENCY) {
+    await new Promise<void>((resolve, reject) => {
+      const entry = () => {
+        cleanup()
+        resolve()
+      }
+      const onAbort = () => {
+        const idx = queue.indexOf(entry)
+        if (idx >= 0) queue.splice(idx, 1)
+        cleanup()
+        reject(new DOMException('Aborted', 'AbortError'))
+      }
+      const cleanup = () => signal?.removeEventListener('abort', onAbort)
+      queue.push(entry)
+      signal?.addEventListener('abort', onAbort, { once: true })
+      // 竞态：加入队列前已 abort
+      if (signal?.aborted) onAbort()
+    })
   }
+
+  throwIfAborted(signal)
   inFlight++
   try {
+    throwIfAborted(signal)
     return await task()
   } finally {
     inFlight--
@@ -213,6 +246,7 @@ export async function transformImage(opts: TransformOptions): Promise<TransformR
   }
 
   return withConcurrency(async () => {
+    throwIfAborted(opts.signal)
     try {
       const img = sharp(opts.data)
       const meta = await img.metadata()
@@ -236,9 +270,11 @@ export async function transformImage(opts: TransformOptions): Promise<TransformR
 
       let out: Buffer
       if (fmt === 'avif') {
-        out = await img.avif({ quality: 60, effort: 4 }).toBuffer()
+        // 缩略图用低 effort，避免瀑布流并发时 AVIF 把连接池拖死
+        const effort = maxWidth > 0 && maxWidth <= 800 ? 2 : 4
+        out = await img.avif({ quality: 60, effort }).toBuffer()
       } else if (fmt === 'webp') {
-        out = await img.webp({ quality: 80 }).toBuffer()
+        out = await img.webp({ quality: maxWidth > 0 && maxWidth <= 800 ? 72 : 80 }).toBuffer()
       } else {
         out = await img.jpeg({ quality: 80, mozjpeg: true }).toBuffer()
       }
@@ -251,10 +287,11 @@ export async function transformImage(opts: TransformOptions): Promise<TransformR
         info: { width: outMeta.width ?? width, height: outMeta.height ?? height, format: fmt },
       }
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') throw e
       // 解码失败（损坏/不支持）→ 直通原字节，由客户端决定
       return passthroughResult(opts.data, ext)
     }
-  })
+  }, opts.signal)
 }
 
 function passthroughResult(data: Buffer, ext: string): TransformResult {

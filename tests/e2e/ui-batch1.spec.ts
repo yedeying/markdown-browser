@@ -69,10 +69,9 @@ test('2a-failure: a failed folder children load shows an error with retry, not a
 
 test('2h: deep link to image opens ImageViewer', async ({ page }) => {
   await page.goto('/images/photo.png')
-  // 图片深链走 media lightbox（不再是独立 ImageViewer 页）
-  await expect(
-    page.locator('[data-testid="media-lightbox"], [data-testid="image-viewer"]').first(),
-  ).toBeVisible({ timeout: 10000 })
+  // 树/深链：内容区 ImageViewer，不全屏盖住侧栏
+  await expect(page.locator('[data-testid="image-viewer"]')).toBeVisible({ timeout: 10000 })
+  await expect(page.locator('[data-testid="media-lightbox"]')).toHaveCount(0)
   await expect(page.locator('[data-testid="markdown-preview"]')).toHaveCount(0)
 })
 

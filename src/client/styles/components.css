@@ -708,11 +708,21 @@
 }
 
 .masonry-tile-folder,
-.masonry-tile-video {
+.masonry-tile-video,
+.masonry-tile-error {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100px;
+  flex-direction: column;
+  gap: 6px;
+}
+.masonry-tile-error {
+  color: var(--text-muted);
+}
+.masonry-tile-error-label {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 .masonry-tile-glyph { color: var(--text-muted); stroke-width: 1.4; z-index: 1; }
 .masonry-tile-play {

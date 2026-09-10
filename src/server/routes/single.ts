@@ -114,31 +114,43 @@ export function createSingleRouter(filePath: string, distPath: string, authConfi
         '.svg': 'image/svg+xml',
         '.webp': 'image/webp',
         '.pdf': 'application/pdf',
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.ogg': 'video/ogg',
+        '.mov': 'video/quicktime',
+        '.avi': 'video/x-msvideo',
       }
 
-      // 可转码的静态图片：与 dir 模式一致，按 Accept / 显式参数输出变体。
-      // 缓存键由 URL（?fmt=&w=）唯一决定，保证无 Vary 的 CDN 多变体缓存安全。
+      // 仅当 URL 显式带 ?w= / ?fmt= 时才转码（与 dir 模式一致）
       if (isTranscodableImage(ext) && !NON_TRANSCODABLE_IMAGE_EXTS.has(ext)) {
-        const fmt = normalizeFmtParam(c.req.query('fmt')) ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
-        const maxWidth = normalizeWidthParam(c.req.query('w')) || DEFAULT_MAX_WIDTH
-        const stat = statSync(assetPath)
-        try {
-          const result = await transformImage({
-            data: content,
-            ext,
-            fmt,
-            maxWidth,
-            mtimeMs: stat.mtimeMs,
-          })
-          if (!result.passthrough) {
-            c.header('Content-Type', result.contentType)
-            c.header('Cache-Control', 'public, max-age=86400, immutable')
-            c.header('Vary', 'Accept')
-            c.header('X-Vmd-Image-Transform', `${result.info.width}x${result.info.height} ${fmt}`)
-            return c.body(result.data)
+        const explicitFmt = normalizeFmtParam(c.req.query('fmt'))
+        const explicitW = normalizeWidthParam(c.req.query('w'))
+        if (explicitFmt || explicitW > 0) {
+          const fmt = explicitFmt ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
+          const maxWidth = explicitW || DEFAULT_MAX_WIDTH
+          const stat = statSync(assetPath)
+          try {
+            const result = await transformImage({
+              data: content,
+              ext,
+              fmt,
+              maxWidth,
+              mtimeMs: stat.mtimeMs,
+              signal: c.req.raw.signal,
+            })
+            if (!result.passthrough) {
+              c.header('Content-Type', result.contentType)
+              c.header('Cache-Control', 'public, max-age=86400, immutable')
+              c.header('Vary', 'Accept')
+              c.header('X-Vmd-Image-Transform', `${result.info.width}x${result.info.height} ${fmt}`)
+              return c.body(result.data)
+            }
+          } catch (e) {
+            if (e instanceof DOMException && e.name === 'AbortError') {
+              return new Response(null, { status: 499, statusText: 'Client Closed Request' })
+            }
+            // 转码失败 → 落回原图
           }
-        } catch {
-          // 转码失败 → 落回原图
         }
       }
 

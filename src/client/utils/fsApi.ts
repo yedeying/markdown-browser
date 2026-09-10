@@ -14,7 +14,7 @@ type VmdWindow = Window & {
 }
 
 function w(): VmdWindow {
-  return window as unknown as VmdWindow
+  return globalThis as unknown as VmdWindow
 }
 
 /** 分享模式下的 API 前缀，例如 /share/abc123 */
@@ -79,11 +79,33 @@ export async function apiFetch(url: string, init?: RequestInit): Promise<Respons
 }
 
 /** 生成静态资源 URL（img src / video src 等，不经过 fetch 封装） */
-export function assetUrl(path: string): string {
+export function assetUrl(
+  path: string,
+  opts?: { w?: number; fmt?: string },
+): string {
   const share = getSharePrefix()
-  if (share) return `${share}/api/asset/${encodeURI(path)}`
-  const mount = getMountPrefix()
-  return withHidden(`${mount}/api/asset/${encodeURI(path)}`)
+  let url = share
+    ? `${share}/api/asset/${encodeURI(path)}`
+    : withHidden(`${getMountPrefix()}/api/asset/${encodeURI(path)}`)
+
+  const params = new URLSearchParams()
+  if (opts?.w && opts.w > 0) params.set('w', String(Math.round(opts.w)))
+  if (opts?.fmt) params.set('fmt', opts.fmt)
+  const q = params.toString()
+  if (!q) return url
+  return url.includes('?') ? `${url}&${q}` : `${url}?${q}`
+}
+
+/** 拉取资源为 Blob（可 Abort）；瀑布流缩略图用，退出视图时取消 in-flight */
+export async function fetchAssetBlob(
+  path: string,
+  opts?: { w?: number; fmt?: string; signal?: AbortSignal },
+): Promise<Blob> {
+  const res = await apiFetch(assetUrl(path, { w: opts?.w, fmt: opts?.fmt }), {
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.blob()
 }
 
 /** 生成下载 URL */

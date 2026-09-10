@@ -31,10 +31,12 @@ import {
   isOverlayBlocking,
   isTypingTarget,
   normalizeNavKey,
+  readMasonryColumnsFromDom,
   scrollNavTarget,
   setNavFocus,
   stepGridIndex,
   stepIndex,
+  stepMasonryPath,
 } from '../utils/keyboardNav.js'
 import { uploadManager, type ConflictDecision } from '../utils/uploadManager.js'
 import {
@@ -409,7 +411,23 @@ const FolderView: FunctionalComponent<Props> = ({
       if (dir !== 'up' && dir !== 'down' && dir !== 'left' && dir !== 'right') return
       e.preventDefault()
 
-      const testid = mode === 'masonry' ? 'folder-masonry' : 'folder-grid'
+      if (mode === 'masonry') {
+        const root = document.querySelector('[data-testid="folder-masonry"]')
+        if (!root) return
+        const columns = readMasonryColumnsFromDom(root)
+        const nextPath = stepMasonryPath(columns, gridFocusPathRef.current, dir)
+        if (!nextPath || nextPath === gridFocusPathRef.current) return
+        const next = list.find((n) => n.path === nextPath)
+        if (!next) return
+        setNavFocus('folder')
+        gridFocusPathRef.current = next.path
+        const el = applyKbFocus('masonry', next.path)
+        setGridFocusPath(next.path)
+        scrollNavTarget(el)
+        return
+      }
+
+      const testid = 'folder-grid'
       let cols = gridColsCacheRef.current?.testid === testid
         ? gridColsCacheRef.current.cols
         : 0

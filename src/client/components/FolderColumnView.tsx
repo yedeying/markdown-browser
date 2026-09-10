@@ -149,7 +149,7 @@ const ColPreviewImage: FunctionalComponent<{ path: string; name: string }> = ({ 
       )}
       <img
         key={path}
-        src={assetUrl(path)}
+        src={assetUrl(path, { w: 1200, fmt: 'webp' })}
         alt={name}
         class={ready ? 'is-loaded' : ''}
         ref={(el) => {

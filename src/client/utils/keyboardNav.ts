@@ -224,6 +224,58 @@ export function scrollNavTarget(el: Element | null | undefined): void {
   el?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 }
 
+/**
+ * 瀑布流键盘：按「列 × 行」邻接移动（上下同列，左右到相邻列同下标或末项）。
+ * columns[ci][ri] = path；无焦点时落到第一列首项。
+ */
+export function stepMasonryPath(
+  columns: string[][],
+  currentPath: string | null,
+  dir: NavDir,
+): string | null {
+  const cols = columns.filter((c) => c.length > 0)
+  if (cols.length === 0) return null
+
+  let ci = -1
+  let ri = -1
+  if (currentPath) {
+    for (let c = 0; c < cols.length; c++) {
+      const r = cols[c].indexOf(currentPath)
+      if (r >= 0) {
+        ci = c
+        ri = r
+        break
+      }
+    }
+  }
+  if (ci < 0) return cols[0][0] ?? null
+
+  if (dir === 'up') return cols[ci][Math.max(0, ri - 1)] ?? cols[ci][ri]
+  if (dir === 'down') {
+    return cols[ci][Math.min(cols[ci].length - 1, ri + 1)] ?? cols[ci][ri]
+  }
+  if (dir === 'left') {
+    if (ci <= 0) return cols[ci][ri]
+    const prev = cols[ci - 1]
+    return prev[Math.min(ri, prev.length - 1)] ?? cols[ci][ri]
+  }
+  if (dir === 'right') {
+    if (ci >= cols.length - 1) return cols[ci][ri]
+    const next = cols[ci + 1]
+    return next[Math.min(ri, next.length - 1)] ?? cols[ci][ri]
+  }
+  return cols[ci][ri]
+}
+
+/** 从瀑布流 DOM 读取各列 path（用于键盘邻接） */
+export function readMasonryColumnsFromDom(root: ParentNode): string[][] {
+  return [...root.querySelectorAll('.masonry-col')].map((col) =>
+    [...col.querySelectorAll('.masonry-tile[data-path]')]
+      .map((el) => el.getAttribute('data-path'))
+      .filter((p): p is string => !!p),
+  )
+}
+
 export function treeNodeTestId(path: string): string {
   return `tree-node-${path.replace(/\//g, '-')}`
 }

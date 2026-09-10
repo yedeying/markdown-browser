@@ -1,6 +1,13 @@
 import { describe, test, expect, beforeAll } from 'bun:test'
 import sharp from 'sharp'
-import { transformImage, parseAccept, pickOutputFormat, fmtForExt } from './image-transform.js'
+import {
+  transformImage,
+  parseAccept,
+  pickOutputFormat,
+  fmtForExt,
+  withConcurrency,
+  TRANSFORM_MAX_CONCURRENCY,
+} from './image-transform.js'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { mkdtempSync, writeFileSync } from 'node:fs'
@@ -84,5 +91,42 @@ describe('transformImage', () => {
     // 不同 maxWidth 结果不同（缓存键隔离）
     const r3 = await transformImage({ data: pngBuf, ext: '.png', fmt: 'webp', maxWidth: 300 })
     expect(r3.data.equals(r1.data)).toBe(false)
+  })
+})
+
+describe('withConcurrency abort', () => {
+  test('排队中 abort 时不执行任务，并释放槽位给后续', async () => {
+    const blockers: Array<() => void> = []
+    const hold = () =>
+      withConcurrency(
+        () =>
+          new Promise<string>((resolve) => {
+            blockers.push(() => resolve('held'))
+          }),
+      )
+
+    // 占满并发槽
+    const held = Array.from({ length: TRANSFORM_MAX_CONCURRENCY }, () => hold())
+
+    let ran = false
+    const ac = new AbortController()
+    const queued = withConcurrency(async () => {
+      ran = true
+      return 'should-not-run'
+    }, ac.signal)
+
+    // 让 queued 进入等待
+    await Promise.resolve()
+    ac.abort()
+
+    await expect(queued).rejects.toMatchObject({ name: 'AbortError' })
+    expect(ran).toBe(false)
+
+    // 释放占位任务，确认队列未卡死
+    for (const release of blockers) release()
+    await Promise.all(held)
+
+    const after = await withConcurrency(async () => 'ok')
+    expect(after).toBe('ok')
   })
 })

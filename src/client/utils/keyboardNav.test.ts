@@ -9,6 +9,7 @@ import {
   parentPath,
   stepGridIndex,
   stepIndex,
+  stepMasonryPath,
   treeNodeTestId,
 } from './keyboardNav.ts'
 
@@ -83,6 +84,22 @@ test('stepGridIndex moves in 2D', () => {
   expect(stepGridIndex(6, 7, 3, 'down')).toBe(6)
   expect(stepGridIndex(4, 7, 3, 'up')).toBe(1)
   expect(stepGridIndex(3, 7, 3, 'left')).toBe(2)
+})
+
+test('stepMasonryPath moves within and across columns', () => {
+  const cols = [
+    ['a', 'b'],
+    ['c'],
+    ['d', 'e', 'f'],
+  ]
+  expect(stepMasonryPath(cols, null, 'down')).toBe('a')
+  expect(stepMasonryPath(cols, 'a', 'down')).toBe('b')
+  expect(stepMasonryPath(cols, 'b', 'down')).toBe('b')
+  expect(stepMasonryPath(cols, 'a', 'right')).toBe('c')
+  expect(stepMasonryPath(cols, 'b', 'right')).toBe('c') // 邻列较短 → 末项
+  expect(stepMasonryPath(cols, 'c', 'right')).toBe('d')
+  expect(stepMasonryPath(cols, 'e', 'left')).toBe('c')
+  expect(stepMasonryPath(cols, 'f', 'up')).toBe('e')
 })
 
 test('treeNodeTestId', () => {

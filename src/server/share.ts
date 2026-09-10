@@ -98,7 +98,8 @@ const MIME: Record<string, string> = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
   '.ico': 'image/x-icon', '.pdf': 'application/pdf',
-  '.mp4': 'video/mp4', '.webm': 'video/webm',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'video/ogg',
+  '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
   '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
 }
 
