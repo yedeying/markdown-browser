@@ -47,3 +47,11 @@ test('buildMediaPlaylist is media-only in order', () => {
   ]
   expect(buildMediaPlaylist(nodes).map((n) => n.path)).toEqual(['b.png', 'd.mp4'])
 })
+
+test('heic counts as media for masonry', () => {
+  const nodes = [
+    { name: 'a.heic', type: 'file' as const, path: 'a.heic' },
+  ]
+  expect(folderHasMedia(nodes)).toBe(true)
+  expect(filterMasonryNodes(nodes).map((n) => n.path)).toEqual(['a.heic'])
+})
