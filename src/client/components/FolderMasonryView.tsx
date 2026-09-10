@@ -4,10 +4,11 @@ import type { FileNode } from '../../types.js'
 import { getFileType } from '../utils/fileType.js'
 import { useLongPress } from '../hooks/useLongPress.js'
 import type { SelectionProps } from './FolderView.js'
-import { fetchAssetBlob } from '../utils/fsApi.js'
+import { assetUrl, fetchAssetBlob } from '../utils/fsApi.js'
 import { getNodeIconName } from '../utils/nodeIcon.js'
 import Icon from './ui/Icon.js'
 import { useMarqueeSelect } from '../hooks/useMarqueeSelect.js'
+import { MasonryVideoSession } from '../utils/masonryVideoSession.js'
 import {
   estimateMasonryTileHeight,
   masonryColumnCount,
@@ -32,11 +33,15 @@ interface TileProps {
   selected: boolean
   kbFocus: boolean
   aspectRatio: number | null
+  videoCover: string | null
+  videoError: boolean
   /** 视口外延后加载；首屏若干张 eager */
   eager: boolean
   onAspectRatio: (path: string, ratio: number) => void
   onLoadError: (path: string) => void
   onSelect: (node: FileNode) => void
+  onPreviewStart: (path: string) => boolean
+  onPreviewEnd: (path: string) => void
   selectionProps: SelectionProps
 }
 
@@ -52,10 +57,14 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
   selected,
   kbFocus,
   aspectRatio,
+  videoCover,
+  videoError,
   eager,
   onAspectRatio,
   onLoadError,
   onSelect,
+  onPreviewStart,
+  onPreviewEnd,
   selectionProps,
 }) => {
   const {
@@ -70,7 +79,12 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
   const [blobSrc, setBlobSrc] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(() => aspectRatio != null && aspectRatio > 0)
   const [imgError, setImgError] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
   const mediaRef = useRef<HTMLDivElement>(null)
+  const previewRef = useRef<HTMLVideoElement>(null)
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pointerStartRef = useRef({ x: 0, y: 0 })
+  const cancelClickRef = useRef(false)
   const onLoadErrorRef = useRef(onLoadError)
   onLoadErrorRef.current = onLoadError
   const onAspectRatioRef = useRef(onAspectRatio)
@@ -84,6 +98,44 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
 
   const makeLongPress = useLongPress<FileNode>({ onLongPress })
   const lpHandlers = makeLongPress(node)
+  // Selection mode keeps the existing action-sheet long press. Outside it,
+  // the pointer handlers below own the gesture so lifting can still click/open.
+  const selectionLongPressHandlers = selectionMode ? lpHandlers : {}
+
+  const clearPreviewTimer = () => {
+    if (previewTimerRef.current != null) {
+      clearTimeout(previewTimerRef.current)
+      previewTimerRef.current = null
+    }
+  }
+
+  const stopPreview = () => {
+    clearPreviewTimer()
+    previewRef.current?.pause()
+    onPreviewEnd(node.path)
+    setPreviewing(false)
+  }
+
+  const startPreview = () => {
+    if (onPreviewStart(node.path)) setPreviewing(true)
+  }
+
+  useEffect(() => {
+    if (!previewing) return
+    const video = previewRef.current
+    if (!video) return
+    const playResult = video.play()
+    void playResult?.catch(() => {
+      onPreviewEnd(node.path)
+      setPreviewing(false)
+    })
+    return () => video.pause()
+  }, [previewing])
+
+  useEffect(() => () => {
+    clearPreviewTimer()
+    onPreviewEnd(node.path)
+  }, [])
 
   // fetch + AbortController：卸载 / 离开瀑布流时取消缩略图请求
   useEffect(() => {
@@ -145,6 +197,12 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
   }, [isImage, imgError, eager, node.path])
 
   const handleClick = (e: MouseEvent) => {
+    if (cancelClickRef.current) {
+      cancelClickRef.current = false
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     if (e.ctrlKey || e.metaKey || e.shiftKey) {
       onToggleSelect(node.path, e)
       return
@@ -165,7 +223,41 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
       tabIndex={-1}
       onClick={handleClick}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(node, e as MouseEvent) }}
-      {...lpHandlers}
+      onPointerEnter={(e) => {
+        if (isVideo && e.pointerType === 'mouse') startPreview()
+      }}
+      onPointerLeave={(e) => {
+        if (isVideo && e.pointerType === 'mouse') stopPreview()
+      }}
+      onPointerDown={(e) => {
+        if (!isVideo || selectionMode || e.pointerType !== 'touch') return
+        cancelClickRef.current = false
+        pointerStartRef.current = { x: e.clientX, y: e.clientY }
+        clearPreviewTimer()
+        previewTimerRef.current = setTimeout(() => {
+          previewTimerRef.current = null
+          startPreview()
+        }, 500)
+      }}
+      onPointerMove={(e) => {
+        if (!isVideo || selectionMode || e.pointerType !== 'touch') return
+        const dx = Math.abs(e.clientX - pointerStartRef.current.x)
+        const dy = Math.abs(e.clientY - pointerStartRef.current.y)
+        if (dx > 10 || dy > 10) {
+          cancelClickRef.current = true
+          stopPreview()
+        }
+      }}
+      onPointerUp={(e) => {
+        if (isVideo && !selectionMode && e.pointerType === 'touch') stopPreview()
+      }}
+      onPointerCancel={(e) => {
+        if (isVideo && !selectionMode && e.pointerType === 'touch') {
+          cancelClickRef.current = false
+          stopPreview()
+        }
+      }}
+      {...selectionLongPressHandlers}
       title={node.name}
     >
       <div
@@ -213,8 +305,35 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
           )}
         </div>
       ) : isVideo ? (
-        <div class="masonry-tile-media masonry-tile-video" style={{ aspectRatio: '16 / 9' }}>
-          <Icon name="file-video" size={36} class="masonry-tile-glyph" aria-hidden="true" />
+        <div
+          ref={mediaRef}
+          class={`masonry-tile-media masonry-tile-video${videoError ? ' masonry-tile-error' : ''}`}
+          style={{ aspectRatio: String(mediaRatio) }}
+        >
+          {!videoCover && !videoError && <div class="masonry-placeholder" aria-hidden="true" />}
+          {videoCover && (
+            <img src={videoCover} alt={node.name} class="is-loaded" decoding="async" />
+          )}
+          {videoError && (
+            <Icon name="file-video" size={36} class="masonry-tile-glyph" aria-hidden="true" />
+          )}
+          {previewing && (
+            <video
+              ref={previewRef}
+              class="masonry-tile-video-preview"
+              src={assetUrl(node.path)}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              onLoadedMetadata={(e) => {
+                const video = e.currentTarget
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                  onAspectRatioRef.current(node.path, video.videoWidth / video.videoHeight)
+                }
+              }}
+            />
+          )}
           <span class="masonry-tile-play" aria-hidden="true">▶</span>
         </div>
       ) : (
@@ -251,9 +370,47 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
   const [colCount, setColCount] = useState(1)
   const [ratios, setRatios] = useState<Record<string, number>>({})
   const [failed, setFailed] = useState<Record<string, true>>({})
+  const [videoCovers, setVideoCovers] = useState<Record<string, string>>({})
+  const [videoFailed, setVideoFailed] = useState<Record<string, true>>({})
+  const videoSessionRef = useRef<MasonryVideoSession | null>(null)
+  const activePreviewPathsRef = useRef(new Set<string>())
   const packTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [pack, setPack] = useState<PackSnapshot>({ ratios: {}, failed: {} })
   const pathKey = nodesKey(nodes)
+
+  useEffect(() => {
+    setVideoCovers({})
+    setVideoFailed({})
+    activePreviewPathsRef.current.clear()
+    const session = new MasonryVideoSession({
+      maxConcurrent: 2,
+      onCover(path, objectUrl, ratio) {
+        setVideoCovers((prev) => ({ ...prev, [path]: objectUrl }))
+        setVideoFailed((prev) => {
+          if (!(path in prev)) return prev
+          const next = { ...prev }
+          delete next[path]
+          return next
+        })
+        setFailed((prev) => {
+          if (!(path in prev)) return prev
+          const next = { ...prev }
+          delete next[path]
+          return next
+        })
+        setRatios((prev) => (prev[path] === ratio ? prev : { ...prev, [path]: ratio }))
+      },
+      onCoverError(path) {
+        setVideoFailed((prev) => (prev[path] ? prev : { ...prev, [path]: true }))
+        setFailed((prev) => (prev[path] ? prev : { ...prev, [path]: true }))
+      },
+    })
+    videoSessionRef.current = session
+    return () => {
+      videoSessionRef.current = null
+      session.dispose()
+    }
+  }, [pathKey])
 
   useEffect(() => {
     const el = wrapRef.current
@@ -301,6 +458,36 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
     }
   }, [ratios, failed])
 
+  useEffect(() => {
+    const root = wrapRef.current
+    const session = videoSessionRef.current
+    if (!root || !session) return
+    const tiles = root.querySelectorAll<HTMLElement>('.masonry-tile.is-video[data-path]')
+    if (typeof IntersectionObserver === 'undefined') {
+      for (const tile of tiles) {
+        const path = tile.dataset.path
+        if (path) session.requestCover(path, assetUrl(path))
+      }
+      return
+    }
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const path = (entry.target as HTMLElement).dataset.path
+        if (!path) continue
+        if (entry.isIntersecting) session.requestCover(path, assetUrl(path))
+        else if (!session.getCover(path)) session.cancel(path)
+      }
+    }, { root, rootMargin: '200px 0px' })
+    for (const tile of tiles) io.observe(tile)
+    return () => {
+      io.disconnect()
+      for (const tile of tiles) {
+        const path = tile.dataset.path
+        if (path && !session.getCover(path)) session.cancel(path)
+      }
+    }
+  }, [pathKey, colCount, pack])
+
   const handleAspectRatio = (path: string, ratio: number) => {
     setFailed((prev) => {
       if (!(path in prev)) return prev
@@ -316,6 +503,18 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
 
   const handleLoadError = (path: string) => {
     setFailed((prev) => (prev[path] ? prev : { ...prev, [path]: true }))
+  }
+
+  const handlePreviewStart = (path: string): boolean => {
+    const active = activePreviewPathsRef.current
+    if (active.has(path)) return true
+    if (active.size >= 2) return false
+    active.add(path)
+    return true
+  }
+
+  const handlePreviewEnd = (path: string) => {
+    activePreviewPathsRef.current.delete(path)
   }
 
   const settled = new Set([
@@ -362,10 +561,14 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
                 selected={currentPath === node.path}
                 kbFocus={focusPath === node.path}
                 aspectRatio={ratios[node.path] ?? null}
+                videoCover={videoCovers[node.path] ?? null}
+                videoError={!!videoFailed[node.path]}
                 eager={eagerPaths.has(node.path)}
                 onAspectRatio={handleAspectRatio}
                 onLoadError={handleLoadError}
                 onSelect={onSelect}
+                onPreviewStart={handlePreviewStart}
+                onPreviewEnd={handlePreviewEnd}
                 selectionProps={selectionProps}
               />
             ))}

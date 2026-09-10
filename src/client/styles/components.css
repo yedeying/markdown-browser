@@ -689,6 +689,16 @@
   display: block;
 }
 .masonry-tile-media img.is-loaded { opacity: 1; }
+.masonry-tile-video-preview {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
 
 .masonry-placeholder {
   position: absolute;
@@ -727,7 +737,7 @@
 .masonry-tile-glyph { color: var(--text-muted); stroke-width: 1.4; z-index: 1; }
 .masonry-tile-play {
   position: absolute;
-  z-index: 1;
+  z-index: 2;
   bottom: 8px;
   right: 8px;
   width: 28px;
