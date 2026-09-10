@@ -22,6 +22,7 @@ import { showToast } from './ui/Toast.js'
 import { getScroll, setScroll } from '../utils/scrollMemory.js'
 import { usePref } from '../hooks/usePref.js'
 import { useDelayedFlag } from '../hooks/useDelayedFlag.js'
+import { mediaPlaylistForPath } from '../utils/galleryMedia.js'
 
 /** 在 tree 中按 path 查找 FileNode */
 function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
@@ -115,6 +116,19 @@ const ContentArea: FunctionalComponent<Props> = ({
   const isEditable = fileType === 'markdown' || fileType === 'code' || fileType === 'text'
   const isJsonl = isJsonlPath(filePath)
   const contentReady = contentReadyProp ?? (!loading && content !== null)
+  const mediaPlaylist = useMemo(() => {
+    if (!filePath || (fileType !== 'image' && fileType !== 'video')) return []
+    return mediaPlaylistForPath(filePath, tree, showHidden)
+  }, [filePath, fileType, tree, showHidden])
+
+  const handleMediaNavigate = useCallback((path: string) => {
+    const node = findNodeByPath(tree || [], path)
+    if (node && onSelectNode) {
+      onSelectNode(node)
+      return
+    }
+    onNavigate?.(path)
+  }, [tree, onSelectNode, onNavigate])
 
   // .jsonl 的 ST 识别结果：仅在内容就位时解析一次，供预览分支与「对话 | JSONL」
   // 切换按钮共用（后者只在识别通过时才显示，见设计 §3.1）。
@@ -616,7 +630,13 @@ const ContentArea: FunctionalComponent<Props> = ({
 
     // 树/深链选中的图片/视频：在内容区展示，不用全屏 Lightbox（保留侧栏可继续点下一项）
     if (fileType === 'image') {
-      return <ImageViewer filePath={filePath} />
+      return (
+        <ImageViewer
+          filePath={filePath}
+          playlist={mediaPlaylist}
+          onNavigate={handleMediaNavigate}
+        />
+      )
     }
     if (fileType === 'video') {
       return <VideoViewer filePath={filePath} />
