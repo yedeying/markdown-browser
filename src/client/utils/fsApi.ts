@@ -96,6 +96,25 @@ export function assetUrl(
   return url.includes('?') ? `${url}&${q}` : `${url}?${q}`
 }
 
+function isHeicPath(path: string): boolean {
+  const base = path.split('/').pop() || path
+  const i = base.lastIndexOf('.')
+  if (i < 0) return false
+  const ext = base.slice(i).toLowerCase()
+  return ext === '.heic' || ext === '.heif'
+}
+
+/** 浏览器可显示的 asset URL；HEIC/HEIF 强制 fmt=webp */
+export function displayAssetUrl(
+  path: string,
+  opts?: { w?: number; fmt?: string },
+): string {
+  if (isHeicPath(path)) {
+    return assetUrl(path, { w: opts?.w, fmt: opts?.fmt ?? 'webp' })
+  }
+  return assetUrl(path, opts)
+}
+
 /** 拉取资源为 Blob（可 Abort）；瀑布流缩略图用，退出视图时取消 in-flight */
 export async function fetchAssetBlob(
   path: string,

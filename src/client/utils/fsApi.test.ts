@@ -1,5 +1,5 @@
 import { test, expect, beforeEach } from 'bun:test'
-import { assetUrl, withHidden } from './fsApi.ts'
+import { assetUrl, displayAssetUrl, withHidden } from './fsApi.ts'
 
 // 服务端默认不返回点文件，读取类 API 必须显式带上 showHidden=1。
 class MemoryStorage {
@@ -38,6 +38,12 @@ test('withHidden falls back to the stored vmd_show_hidden preference', () => {
   expect(withHidden('/api/search?q=x')).toBe('/api/search?q=x&showHidden=1')
   localStorage.setItem('vmd_show_hidden', '0')
   expect(withHidden('/api/search?q=x')).toBe('/api/search?q=x')
+})
+
+test('displayAssetUrl forces webp for heic/heif', () => {
+  expect(displayAssetUrl('a.heic')).toBe('/api/asset/a.heic?fmt=webp')
+  expect(displayAssetUrl('a.HEIF', { w: 800 })).toBe('/api/asset/a.HEIF?w=800&fmt=webp')
+  expect(displayAssetUrl('a.png')).toBe('/api/asset/a.png')
 })
 
 test('assetUrl appends w/fmt query params after withHidden', () => {

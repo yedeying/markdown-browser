@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import type { FileNode } from '../../types.js'
 import { getFileType } from '../utils/fileType.js'
-import { assetUrl, downloadUrl } from '../utils/fsApi.js'
+import { assetUrl, displayAssetUrl, downloadUrl } from '../utils/fsApi.js'
 import Icon from './ui/Icon.js'
 
 export interface MediaLightboxProps {
@@ -186,7 +186,7 @@ const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
           <img
             key={current.path}
             class="media-lightbox-media"
-            src={assetUrl(current.path)}
+            src={displayAssetUrl(current.path)}
             alt={current.name}
           />
         )}
