@@ -2,8 +2,19 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import type { FileNode } from '../../types.js'
 import { getFileType } from '../utils/fileType.js'
-import { assetUrl, displayAssetUrl, downloadUrl } from '../utils/fsApi.js'
+import { assetUrl, displayAssetUrl } from '../utils/fsApi.js'
+import { downloadSingleFile } from '../utils/download.js'
+import {
+  fitScale,
+  resetTransform,
+  rotateLeft,
+  rotateRight,
+  zoomIn,
+  zoomOut,
+} from '../utils/imageTransform.js'
+import MediaToolbar from './MediaToolbar.js'
 import Icon from './ui/Icon.js'
+import { showToast } from './ui/Toast.js'
 
 export interface MediaLightboxProps {
   playlist: FileNode[]
@@ -36,8 +47,16 @@ const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
   const len = playlist.length
   const current = len > 0 ? playlist[Math.min(index, len - 1)] : null
   const ft = current ? getFileType(current.name) : null
+  const [scale, setScale] = useState(1)
+  const [rotateDeg, setRotateDeg] = useState(0)
   const lenRef = useRef(len)
   lenRef.current = len
+
+  useEffect(() => {
+    const transform = resetTransform()
+    setScale(transform.scale)
+    setRotateDeg(transform.rotateDeg)
+  }, [current?.path])
 
   const go = (delta: number) => {
     const n = lenRef.current
@@ -71,6 +90,14 @@ const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
 
   if (!current) return null
 
+  const copyPath = () => {
+    navigator.clipboard.writeText(current.path).then(() => {
+      showToast('路径已复制', 'success')
+    }).catch(() => {
+      showToast('复制失败', 'error')
+    })
+  }
+
   return (
     <div
       class="media-lightbox-overlay"
@@ -96,60 +123,24 @@ const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
       }}
     >
       <div class="media-lightbox-toolbar" onClick={(e) => e.stopPropagation()}>
-        <div class="media-lightbox-toolbar-title" title={current.name}>
-          <span class="media-lightbox-toolbar-name">{current.name}</span>
-          {len > 1 && (
-            <span class="media-lightbox-toolbar-count" data-testid="media-lightbox-count">
-              {index + 1} / {len}
-            </span>
-          )}
-        </div>
-        <div class="media-lightbox-toolbar-actions">
-          {len > 1 && (
-            <>
-              <button
-                type="button"
-                class="btn media-lightbox-tool-btn"
-                data-testid="media-lightbox-prev"
-                aria-label="上一张"
-                title="上一张 ←"
-                onClick={() => go(-1)}
-              >
-                <Icon name="chevron-left" size={18} aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                class="btn media-lightbox-tool-btn"
-                data-testid="media-lightbox-next"
-                aria-label="下一张"
-                title="下一张 →"
-                onClick={() => go(1)}
-              >
-                <Icon name="chevron-right" size={18} aria-hidden="true" />
-              </button>
-            </>
-          )}
-          <a
-            class="btn media-lightbox-tool-btn"
-            data-testid="media-lightbox-download"
-            href={downloadUrl(current.path)}
-            download={current.name}
-            title="下载"
-            aria-label="下载"
-          >
-            <Icon name="download" size={18} aria-hidden="true" />
-          </a>
-          <button
-            type="button"
-            class="btn media-lightbox-tool-btn"
-            data-testid="media-lightbox-close"
-            aria-label="关闭"
-            title="关闭 Esc"
-            onClick={onClose}
-          >
-            <Icon name="x" size={18} aria-hidden="true" />
-          </button>
-        </div>
+        <MediaToolbar
+          name={current.name}
+          path={current.path}
+          kind={ft === 'video' ? 'video' : 'image'}
+          index={index}
+          count={len}
+          onDownload={() => downloadSingleFile(current.path)}
+          onCopyPath={copyPath}
+          onZoomIn={() => setScale(zoomIn)}
+          onZoomOut={() => setScale(zoomOut)}
+          onZoomFit={() => setScale(fitScale())}
+          onRotateLeft={() => setRotateDeg(rotateLeft)}
+          onRotateRight={() => setRotateDeg(rotateRight)}
+          onPrev={() => go(-1)}
+          onNext={() => go(1)}
+          onClose={onClose}
+          testIdPrefix="media-lightbox"
+        />
       </div>
 
       {len > 1 && (
@@ -188,6 +179,10 @@ const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
             class="media-lightbox-media"
             src={displayAssetUrl(current.path)}
             alt={current.name}
+            style={{
+              transform: `rotate(${rotateDeg}deg) scale(${scale})`,
+              transformOrigin: 'center center',
+            }}
           />
         )}
       </div>

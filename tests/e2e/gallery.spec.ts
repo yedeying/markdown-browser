@@ -39,11 +39,11 @@ test('masonry → click image → lightbox → arrow next → Esc', async ({ pag
   await page.locator('[data-testid="folder-masonry"] .masonry-tile').first().click()
   await expect(page.locator('[data-testid="media-lightbox"]')).toBeVisible()
 
-  const nameBefore = await page.locator('.media-lightbox-toolbar-name').textContent()
+  const nameBefore = await page.locator('.media-lightbox-toolbar .media-toolbar-name').textContent()
   await page.locator('.media-lightbox-toolbar [data-testid="media-lightbox-next"]').click()
-  await expect(page.locator('.media-lightbox-toolbar-name')).not.toHaveText(nameBefore || '')
+  await expect(page.locator('.media-lightbox-toolbar .media-toolbar-name')).not.toHaveText(nameBefore || '')
   await page.keyboard.press('ArrowLeft')
-  await expect(page.locator('.media-lightbox-toolbar-name')).toHaveText(nameBefore || '')
+  await expect(page.locator('.media-lightbox-toolbar .media-toolbar-name')).toHaveText(nameBefore || '')
 
   await page.keyboard.press('Escape')
   await expect(page.locator('[data-testid="media-lightbox"]')).toHaveCount(0)

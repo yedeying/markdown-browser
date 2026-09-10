@@ -801,53 +801,24 @@
   left: 0;
   right: 0;
   z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
+}
+.media-lightbox-toolbar .media-toolbar {
+  width: 100%;
   background: linear-gradient(rgba(0, 0, 0, 0.72), transparent);
-  box-sizing: border-box;
 }
-.media-lightbox-toolbar-title {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
+.media-lightbox-toolbar .media-toolbar-title {
   color: rgba(255, 255, 255, 0.92);
-  font-size: 13px;
 }
-.media-lightbox-toolbar-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
-}
-.media-lightbox-toolbar-count {
-  flex-shrink: 0;
+.media-lightbox-toolbar .media-toolbar-count {
   color: rgba(255, 255, 255, 0.55);
-  font-variant-numeric: tabular-nums;
 }
-.media-lightbox-toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.media-lightbox-tool-btn {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.media-lightbox-toolbar .media-toolbar-btn {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
   border: none;
   border-radius: 8px;
-  text-decoration: none;
 }
-.media-lightbox-tool-btn:hover {
+.media-lightbox-toolbar .media-toolbar-btn:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #fff;
 }
