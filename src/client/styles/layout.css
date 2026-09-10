@@ -278,12 +278,21 @@
 
 .video-viewer {
   display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.video-viewer-stage {
+  display: flex;
   align-items: center;
   justify-content: center;
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
   padding: 32px;
-  background: var(--bg);
+  min-height: 0;
 }
 
 .video-viewer video {

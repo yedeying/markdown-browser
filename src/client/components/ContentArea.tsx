@@ -639,7 +639,13 @@ const ContentArea: FunctionalComponent<Props> = ({
       )
     }
     if (fileType === 'video') {
-      return <VideoViewer filePath={filePath} />
+      return (
+        <VideoViewer
+          filePath={filePath}
+          playlist={mediaPlaylist}
+          onNavigate={handleMediaNavigate}
+        />
+      )
     }
 
     // filePath 有值但内容尚未对应该路径：延迟半秒再出骨架；更快则空白，绝不渲染旧文件 raw
