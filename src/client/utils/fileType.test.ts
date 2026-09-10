@@ -17,6 +17,12 @@ test('known file types are unchanged', () => {
   expect(getFileType('clip.mp4')).toBe('video')
 })
 
+test('heic/heif are images', () => {
+  expect(getFileType('photo.heic')).toBe('image')
+  expect(getFileType('photo.HEIC')).toBe('image')
+  expect(getFileType('scan.heif')).toBe('image')
+})
+
 test('known extensionless names get syntax highlighting langs', () => {
   expect(getFileType('Dockerfile')).toBe('code')
   expect(getFileType('Makefile')).toBe('code')

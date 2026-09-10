@@ -49,7 +49,10 @@ function anyReserved(...paths: Array<string | undefined | null>): boolean {
   return paths.some(p => typeof p === 'string' && hasReservedSegment(p))
 }
 
-const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp'])
+const IMAGE_EXTS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp',
+  '.heic', '.heif',
+])
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.ogg', '.mov', '.avi'])
 const BINARY_EXTS = new Set([...IMAGE_EXTS, ...VIDEO_EXTS])
 
