@@ -263,6 +263,7 @@
   align-items: center;
   justify-content: center;
   flex: 1;
+  container-type: size;
   overflow: auto;
   padding: 32px;
   min-height: 0;
@@ -274,6 +275,11 @@
   object-fit: contain;
   border-radius: 4px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+.image-viewer-stage img.is-quarter-turn {
+  max-width: 100cqh;
+  max-height: 100cqw;
 }
 
 .video-viewer {

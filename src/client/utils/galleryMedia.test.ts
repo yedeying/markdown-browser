@@ -98,7 +98,7 @@ test('mediaPlaylistForPath returns empty when tree or parent is unknown', () => 
   expect(mediaPlaylistForPath('', siblingTree, false)).toEqual([])
 })
 
-test('stepPlaylistPath steps within playlist bounds', () => {
+test('stepPlaylistPath wraps at both playlist ends', () => {
   const playlist = [
     file('a.png', 'a.png'),
     file('b.png', 'b.png'),
@@ -106,8 +106,8 @@ test('stepPlaylistPath steps within playlist bounds', () => {
   ]
   expect(stepPlaylistPath(playlist, 'b.png', -1)).toBe('a.png')
   expect(stepPlaylistPath(playlist, 'b.png', 1)).toBe('c.png')
-  expect(stepPlaylistPath(playlist, 'a.png', -1)).toBeNull()
-  expect(stepPlaylistPath(playlist, 'c.png', 1)).toBeNull()
+  expect(stepPlaylistPath(playlist, 'a.png', -1)).toBe('c.png')
+  expect(stepPlaylistPath(playlist, 'c.png', 1)).toBe('a.png')
   expect(stepPlaylistPath(playlist, 'missing.png', 1)).toBeNull()
   expect(stepPlaylistPath([], 'a.png', 1)).toBeNull()
 })

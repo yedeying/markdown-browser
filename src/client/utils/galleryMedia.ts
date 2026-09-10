@@ -50,7 +50,6 @@ export function stepPlaylistPath(
 ): string | null {
   const i = playlist.findIndex((n) => n.path === currentPath)
   if (i === -1) return null
-  const next = i + delta
-  if (next < 0 || next >= playlist.length) return null
+  const next = ((i + delta) % playlist.length + playlist.length) % playlist.length
   return playlist[next].path
 }

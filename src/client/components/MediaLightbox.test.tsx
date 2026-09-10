@@ -46,6 +46,10 @@ test('shared toolbar controls image transform and resets it for each path', () =
   expect(container.querySelector('[data-testid="media-lightbox-download"]')).not.toBeNull()
   expect(container.querySelector('[data-testid="media-lightbox-close"]')).not.toBeNull()
   expect(container.querySelector('[data-testid="media-lightbox-copy-path"]')).not.toBeNull()
+  const scroll = container.querySelector('.media-toolbar-actions-scroll')
+  const close = container.querySelector('[data-testid="media-lightbox-close"]')
+  expect(scroll?.contains(close)).toBe(false)
+  expect(close?.parentElement?.classList.contains('media-toolbar-pinned')).toBe(true)
 
   const image = container.querySelector('img') as HTMLImageElement
   click('media-lightbox-zoom-in')

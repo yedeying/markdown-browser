@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { h, render } from 'preact'
 import { act } from 'preact/test-utils'
 import { Window } from 'happy-dom'
@@ -52,6 +54,18 @@ test('toolbar controls image transform and changing files resets it', () => {
     .toBe('rotate(0deg) scale(1)')
 })
 
+test('quarter-turn rotation fits against the swapped stage axes', () => {
+  act(() => render(h(ImageViewer, { filePath: 'photos/a.jpg' }), container))
+  const image = container.querySelector('img') as HTMLImageElement
+
+  click('image-viewer-rotate-right')
+  expect(image.classList.contains('is-quarter-turn')).toBe(true)
+
+  const css = readFileSync(join(import.meta.dir, '../styles/layout.css'), 'utf8')
+  expect(css).toMatch(/\.image-viewer-stage img\.is-quarter-turn\s*\{[^}]*max-width:\s*100cqh/s)
+  expect(css).toMatch(/\.image-viewer-stage img\.is-quarter-turn\s*\{[^}]*max-height:\s*100cqw/s)
+})
+
 test('only ctrl or command wheel zooms the image and prevents browser zoom', () => {
   act(() => render(h(ImageViewer, { filePath: 'photos/a.jpg' }), container))
   const stage = container.querySelector('[data-testid="image-viewer-stage"]') as HTMLElement
@@ -90,6 +104,23 @@ test('playlist controls navigate to adjacent media paths', () => {
   click('image-viewer-prev')
   click('image-viewer-next')
   expect(navigated).toEqual(['photos/a.jpg', 'photos/c.png'])
+})
+
+test('playlist navigation wraps from the first item to the last', () => {
+  const playlist: FileNode[] = [
+    { name: 'a.jpg', path: 'photos/a.jpg', type: 'file' },
+    { name: 'b.mp4', path: 'photos/b.mp4', type: 'file' },
+    { name: 'c.png', path: 'photos/c.png', type: 'file' },
+  ]
+  const navigated: string[] = []
+  act(() => render(h(ImageViewer, {
+    filePath: 'photos/a.jpg',
+    playlist,
+    onNavigate: (path) => navigated.push(path),
+  }), container))
+
+  click('image-viewer-prev')
+  expect(navigated).toEqual(['photos/c.png'])
 })
 
 test('ContentArea builds the visible sibling playlist and selects the navigated tree node', async () => {

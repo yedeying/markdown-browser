@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { h, render } from 'preact'
 import { act } from 'preact/test-utils'
 import { Window } from 'happy-dom'
@@ -108,6 +110,30 @@ test('close appears only when onClose is provided', () => {
   expect(container.querySelector('[data-testid="media-toolbar-close"]')).toBeNull()
   mount({ onClose() {} })
   expect(container.querySelector('[data-testid="media-toolbar-close"]')).not.toBeNull()
+})
+
+test('keeps close outside the horizontally scrollable actions on narrow toolbars', () => {
+  mount({
+    count: 3,
+    onZoomIn() {},
+    onZoomOut() {},
+    onZoomFit() {},
+    onRotateLeft() {},
+    onRotateRight() {},
+    onPrev() {},
+    onNext() {},
+    onClose() {},
+  })
+
+  const scroll = container.querySelector('.media-toolbar-actions-scroll')
+  const close = container.querySelector('[data-testid="media-toolbar-close"]')
+  expect(scroll).not.toBeNull()
+  expect(scroll?.contains(close)).toBe(false)
+  expect(close?.parentElement?.classList.contains('media-toolbar-pinned')).toBe(true)
+
+  const css = readFileSync(join(import.meta.dir, '../styles/components.css'), 'utf8')
+  expect(css).toMatch(/\.media-toolbar-actions\s*\{[^}]*min-width:\s*0/s)
+  expect(css).toMatch(/\.media-toolbar-actions-scroll\s*\{[^}]*overflow-x:\s*auto/s)
 })
 
 test('prev/next stay hidden when count is 1 or callbacks are missing', () => {

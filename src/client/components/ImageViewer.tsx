@@ -82,6 +82,7 @@ const ImageViewer: FunctionalComponent<Props> = ({
         onWheel={handleWheel}
       >
         <img
+          class={rotateDeg % 180 !== 0 ? 'is-quarter-turn' : undefined}
           src={src}
           alt={fileName}
           title={fileName}

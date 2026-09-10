@@ -59,6 +59,23 @@ test('playlist controls navigate to adjacent media paths', () => {
   expect(navigated).toEqual(['photos/a.jpg', 'photos/c.mp4'])
 })
 
+test('playlist navigation wraps from the last item to the first', () => {
+  const playlist: FileNode[] = [
+    { name: 'a.jpg', path: 'photos/a.jpg', type: 'file' },
+    { name: 'b.mp4', path: 'photos/b.mp4', type: 'file' },
+    { name: 'c.mp4', path: 'photos/c.mp4', type: 'file' },
+  ]
+  const navigated: string[] = []
+  act(() => render(h(VideoViewer, {
+    filePath: 'photos/c.mp4',
+    playlist,
+    onNavigate: (path) => navigated.push(path),
+  }), container))
+
+  click('video-viewer-next')
+  expect(navigated).toEqual(['photos/a.jpg'])
+})
+
 test('ContentArea builds video playlist and selects the navigated tree node', async () => {
   const { default: ContentArea } = await import('./ContentArea.js')
   const tree: FileNode[] = [

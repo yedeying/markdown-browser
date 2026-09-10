@@ -81,37 +81,41 @@ const MediaToolbar: FunctionalComponent<MediaToolbarProps> = ({
         )}
       </div>
       <div class="media-toolbar-actions">
-        {showImageTools && onZoomOut && (
-          <ToolButton testId={id('zoom-out')} label="缩小" icon="zoom-out" onClick={onZoomOut} />
-        )}
-        {showImageTools && onZoomFit && (
-          <ToolButton testId={id('zoom-fit')} label="适应窗口" icon="maximize" onClick={onZoomFit} />
-        )}
-        {showImageTools && onZoomIn && (
-          <ToolButton testId={id('zoom-in')} label="放大" icon="zoom-in" onClick={onZoomIn} />
-        )}
-        {showImageTools && onRotateLeft && (
-          <ToolButton testId={id('rotate-left')} label="向左旋转" icon="rotate-ccw" onClick={onRotateLeft} />
-        )}
-        {showImageTools && onRotateRight && (
-          <ToolButton testId={id('rotate-right')} label="向右旋转" icon="rotate-cw" onClick={onRotateRight} />
-        )}
-        <ToolButton testId={id('download')} label="下载" icon="download" onClick={onDownload} />
-        <ToolButton
-          testId={id('copy-path')}
-          label="复制路径"
-          title={path}
-          icon="copy"
-          onClick={onCopyPath}
-        />
-        {hasPlaylist && onPrev && (
-          <ToolButton testId={id('prev')} label="上一张" title="上一张 ←" icon="chevron-left" onClick={onPrev} />
-        )}
-        {hasPlaylist && onNext && (
-          <ToolButton testId={id('next')} label="下一张" title="下一张 →" icon="chevron-right" onClick={onNext} />
-        )}
+        <div class="media-toolbar-actions-scroll">
+          {showImageTools && onZoomOut && (
+            <ToolButton testId={id('zoom-out')} label="缩小" icon="zoom-out" onClick={onZoomOut} />
+          )}
+          {showImageTools && onZoomFit && (
+            <ToolButton testId={id('zoom-fit')} label="适应窗口" icon="maximize" onClick={onZoomFit} />
+          )}
+          {showImageTools && onZoomIn && (
+            <ToolButton testId={id('zoom-in')} label="放大" icon="zoom-in" onClick={onZoomIn} />
+          )}
+          {showImageTools && onRotateLeft && (
+            <ToolButton testId={id('rotate-left')} label="向左旋转" icon="rotate-ccw" onClick={onRotateLeft} />
+          )}
+          {showImageTools && onRotateRight && (
+            <ToolButton testId={id('rotate-right')} label="向右旋转" icon="rotate-cw" onClick={onRotateRight} />
+          )}
+          <ToolButton testId={id('download')} label="下载" icon="download" onClick={onDownload} />
+          <ToolButton
+            testId={id('copy-path')}
+            label="复制路径"
+            title={path}
+            icon="copy"
+            onClick={onCopyPath}
+          />
+          {hasPlaylist && onPrev && (
+            <ToolButton testId={id('prev')} label="上一张" title="上一张 ←" icon="chevron-left" onClick={onPrev} />
+          )}
+          {hasPlaylist && onNext && (
+            <ToolButton testId={id('next')} label="下一张" title="下一张 →" icon="chevron-right" onClick={onNext} />
+          )}
+        </div>
         {onClose && (
-          <ToolButton testId={id('close')} label="关闭" title="关闭 Esc" icon="x" onClick={onClose} />
+          <div class="media-toolbar-pinned">
+            <ToolButton testId={id('close')} label="关闭" title="关闭 Esc" icon="x" onClick={onClose} />
+          </div>
         )}
       </div>
     </div>
