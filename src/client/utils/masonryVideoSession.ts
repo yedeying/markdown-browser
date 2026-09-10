@@ -140,6 +140,7 @@ export class MasonryVideoSession {
   private readonly covers = new Map<string, string>()
   private readonly inFlight = new Map<string, CoverJob>()
   private readonly queued = new Map<string, CoverJob>()
+  private readonly previewPaths = new Set<string>()
   private disposed = false
 
   constructor(opts?: MasonryVideoSessionOpts) {
@@ -196,6 +197,7 @@ export class MasonryVideoSession {
       job.controller.abort()
     }
     this.inFlight.clear()
+    this.previewPaths.clear()
     for (const url of this.covers.values()) URL.revokeObjectURL(url)
     this.covers.clear()
   }
@@ -204,10 +206,24 @@ export class MasonryVideoSession {
     return this.covers.get(path)
   }
 
+  /** Reserve one of the shared video decode/play slots for an interactive preview. */
+  tryAcquirePreview(path: string): boolean {
+    if (this.disposed) return false
+    if (this.previewPaths.has(path)) return true
+    if (this.inFlight.size + this.previewPaths.size >= this.maxConcurrent) return false
+    this.previewPaths.add(path)
+    return true
+  }
+
+  releasePreview(path: string): void {
+    if (!this.previewPaths.delete(path)) return
+    this.pump()
+  }
+
   private pump(): void {
     if (this.disposed) return
     for (const [path, job] of this.queued) {
-      if (this.inFlight.size >= this.maxConcurrent) return
+      if (this.inFlight.size + this.previewPaths.size >= this.maxConcurrent) return
       this.queued.delete(path)
       void this.run(job)
     }

@@ -218,3 +218,42 @@ test('external AbortSignal cancels queued work', async () => {
   expect(ran).toBe(1)
   session.dispose()
 })
+
+test('cover capture and previews share one concurrency budget', async () => {
+  let releaseCover!: () => void
+  const session = new MasonryVideoSession({
+    maxConcurrent: 2,
+    loader: async () => {
+      await new Promise<void>((resolve) => { releaseCover = resolve })
+      return { width: 16, height: 9, blob: new Blob([new Uint8Array([8])]) }
+    },
+  })
+
+  session.requestCover('cover.mp4', '/cover')
+  expect(session.tryAcquirePreview('preview-a.mp4')).toBe(true)
+  expect(session.tryAcquirePreview('preview-b.mp4')).toBe(false)
+
+  releaseCover()
+  await delay(20)
+  expect(session.tryAcquirePreview('preview-b.mp4')).toBe(true)
+  session.dispose()
+})
+
+test('a preview slot keeps queued cover capture within the shared budget', async () => {
+  let ran = 0
+  const session = new MasonryVideoSession({
+    maxConcurrent: 1,
+    loader: async () => {
+      ran++
+      return { width: 16, height: 9, blob: new Blob([new Uint8Array([9])]) }
+    },
+  })
+
+  expect(session.tryAcquirePreview('preview.mp4')).toBe(true)
+  session.requestCover('cover.mp4', '/cover')
+  expect(ran).toBe(0)
+  session.releasePreview('preview.mp4')
+  await delay(20)
+  expect(ran).toBe(1)
+  session.dispose()
+})

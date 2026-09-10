@@ -85,6 +85,7 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pointerStartRef = useRef({ x: 0, y: 0 })
   const cancelClickRef = useRef(false)
+  const touchPreviewGestureRef = useRef(false)
   const onLoadErrorRef = useRef(onLoadError)
   onLoadErrorRef.current = onLoadError
   const onAspectRatioRef = useRef(onAspectRatio)
@@ -197,6 +198,7 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
   }, [isImage, imgError, eager, node.path])
 
   const handleClick = (e: MouseEvent) => {
+    touchPreviewGestureRef.current = false
     if (cancelClickRef.current) {
       cancelClickRef.current = false
       e.preventDefault()
@@ -222,7 +224,15 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
       role="button"
       tabIndex={-1}
       onClick={handleClick}
-      onContextMenu={(e) => { e.stopPropagation(); onContextMenu(node, e as MouseEvent) }}
+      onContextMenu={(e) => {
+        if (isVideo && !selectionMode && touchPreviewGestureRef.current) {
+          e.preventDefault()
+          e.stopPropagation()
+          return
+        }
+        e.stopPropagation()
+        onContextMenu(node, e as MouseEvent)
+      }}
       onPointerEnter={(e) => {
         if (isVideo && e.pointerType === 'mouse') startPreview()
       }}
@@ -232,6 +242,7 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
       onPointerDown={(e) => {
         if (!isVideo || selectionMode || e.pointerType !== 'touch') return
         cancelClickRef.current = false
+        touchPreviewGestureRef.current = true
         pointerStartRef.current = { x: e.clientX, y: e.clientY }
         clearPreviewTimer()
         previewTimerRef.current = setTimeout(() => {
@@ -245,15 +256,20 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
         const dy = Math.abs(e.clientY - pointerStartRef.current.y)
         if (dx > 10 || dy > 10) {
           cancelClickRef.current = true
+          touchPreviewGestureRef.current = false
           stopPreview()
         }
       }}
       onPointerUp={(e) => {
-        if (isVideo && !selectionMode && e.pointerType === 'touch') stopPreview()
+        if (isVideo && !selectionMode && e.pointerType === 'touch') {
+          stopPreview()
+          setTimeout(() => { touchPreviewGestureRef.current = false }, 0)
+        }
       }}
       onPointerCancel={(e) => {
         if (isVideo && !selectionMode && e.pointerType === 'touch') {
           cancelClickRef.current = false
+          touchPreviewGestureRef.current = false
           stopPreview()
         }
       }}
@@ -373,7 +389,6 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
   const [videoCovers, setVideoCovers] = useState<Record<string, string>>({})
   const [videoFailed, setVideoFailed] = useState<Record<string, true>>({})
   const videoSessionRef = useRef<MasonryVideoSession | null>(null)
-  const activePreviewPathsRef = useRef(new Set<string>())
   const packTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [pack, setPack] = useState<PackSnapshot>({ ratios: {}, failed: {} })
   const pathKey = nodesKey(nodes)
@@ -381,7 +396,6 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
   useEffect(() => {
     setVideoCovers({})
     setVideoFailed({})
-    activePreviewPathsRef.current.clear()
     const session = new MasonryVideoSession({
       maxConcurrent: 2,
       onCover(path, objectUrl, ratio) {
@@ -506,15 +520,11 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
   }
 
   const handlePreviewStart = (path: string): boolean => {
-    const active = activePreviewPathsRef.current
-    if (active.has(path)) return true
-    if (active.size >= 2) return false
-    active.add(path)
-    return true
+    return videoSessionRef.current?.tryAcquirePreview(path) ?? false
   }
 
   const handlePreviewEnd = (path: string) => {
-    activePreviewPathsRef.current.delete(path)
+    videoSessionRef.current?.releasePreview(path)
   }
 
   const settled = new Set([

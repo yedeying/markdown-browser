@@ -141,3 +141,73 @@ test('limits simultaneous previews to two tiles', async () => {
 
   expect(container.querySelectorAll('.masonry-tile-video-preview')).toHaveLength(2)
 })
+
+test('touch long-press suppresses context menu and lift still opens the video', async () => {
+  const selected: FileNode[] = []
+  await act(async () => {
+    render(h(FolderMasonryView, {
+      nodes: [videoNode],
+      currentPath: null,
+      onSelect(node) { selected.push(node) },
+      selectionProps,
+    }), container)
+  })
+
+  const tile = container.querySelector('.masonry-tile.is-video') as HTMLElement
+  tile.dispatchEvent(new dom.PointerEvent('pointerdown', {
+    bubbles: true,
+    pointerType: 'touch',
+    clientX: 10,
+    clientY: 10,
+  }))
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 520))
+  })
+  const contextMenu = new dom.MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+  tile.dispatchEvent(contextMenu)
+  tile.dispatchEvent(new dom.PointerEvent('pointerup', {
+    bubbles: true,
+    pointerType: 'touch',
+    clientX: 10,
+    clientY: 10,
+  }))
+  tile.dispatchEvent(new dom.MouseEvent('click', { bubbles: true, cancelable: true }))
+
+  expect(contextMenu.defaultPrevented).toBe(true)
+  expect(selected).toEqual([videoNode])
+})
+
+test('touch movement beyond ten pixels cancels opening the video', async () => {
+  const selected: FileNode[] = []
+  await act(async () => {
+    render(h(FolderMasonryView, {
+      nodes: [videoNode],
+      currentPath: null,
+      onSelect(node) { selected.push(node) },
+      selectionProps,
+    }), container)
+  })
+
+  const tile = container.querySelector('.masonry-tile.is-video') as HTMLElement
+  tile.dispatchEvent(new dom.PointerEvent('pointerdown', {
+    bubbles: true,
+    pointerType: 'touch',
+    clientX: 10,
+    clientY: 10,
+  }))
+  tile.dispatchEvent(new dom.PointerEvent('pointermove', {
+    bubbles: true,
+    pointerType: 'touch',
+    clientX: 21,
+    clientY: 10,
+  }))
+  tile.dispatchEvent(new dom.PointerEvent('pointerup', {
+    bubbles: true,
+    pointerType: 'touch',
+    clientX: 21,
+    clientY: 10,
+  }))
+  tile.dispatchEvent(new dom.MouseEvent('click', { bubbles: true, cancelable: true }))
+
+  expect(selected).toEqual([])
+})
