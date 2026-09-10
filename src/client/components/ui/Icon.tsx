@@ -41,6 +41,10 @@ import {
   X,
   ChevronLeft,
   Download,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  RotateCcw,
 } from 'lucide-preact'
 
 export type IconName =
@@ -85,6 +89,11 @@ export type IconName =
   | 'x'
   | 'chevron-left'
   | 'download'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'maximize'
+  | 'rotate-ccw'
+  | 'rotate-cw'
 
 const ICONS = {
   folder: Folder,
@@ -128,6 +137,11 @@ const ICONS = {
   x: X,
   'chevron-left': ChevronLeft,
   download: Download,
+  'zoom-in': ZoomIn,
+  'zoom-out': ZoomOut,
+  maximize: Maximize,
+  'rotate-ccw': RotateCcw,
+  'rotate-cw': RotateCw,
 } as const
 
 interface Props {
