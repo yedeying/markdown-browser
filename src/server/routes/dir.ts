@@ -646,9 +646,15 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
               c.header('X-Vmd-Image-Transform', `${result.info.width}x${result.info.height} ${fmt}`)
               return c.body(result.data)
             }
+            if (mustTranscodeForBrowser(ext)) {
+              return c.json({ error: 'Unable to transcode image for display' }, 415)
+            }
           } catch (e) {
             if (e instanceof DOMException && e.name === 'AbortError') {
               return new Response(null, { status: 499, statusText: 'Client Closed Request' })
+            }
+            if (mustTranscodeForBrowser(ext)) {
+              return c.json({ error: 'Unable to transcode image for display' }, 415)
             }
             // 转码失败 → 落回原图
           }

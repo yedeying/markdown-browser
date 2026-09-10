@@ -93,6 +93,11 @@ describe('transformImage', () => {
     expect(data).toEqual(gif)
   })
 
+  test('undecodable HEIC does not passthrough original bytes', async () => {
+    const junk = Buffer.from('not-a-real-heic-file')
+    await expect(transformImage({ data: junk, ext: '.heic', fmt: 'webp' })).rejects.toThrow()
+  })
+
   test('HEIC extension is transcoded, not passthrough', async () => {
     const { passthrough, contentType } = await transformImage({
       data: pngBuf,

@@ -16,6 +16,7 @@ beforeAll(async () => {
     create: { width: 32, height: 24, channels: 3, background: '#336699' },
   }).png().toBuffer()
   writeFileSync(join(base, 'photo.heic'), pngBuf)
+  writeFileSync(join(base, 'broken.heic'), Buffer.from('not-a-real-heic-file'))
   writeFileSync(join(base, 'plain.png'), pngBuf)
   const router = createDirRouter(base, join(base, '__dist__'), null)
   app = router.app
@@ -44,6 +45,16 @@ test('GET /api/asset PNG without w/fmt still passthroughs', async () => {
   expect(res.headers.get('Content-Type')).toBe('image/png')
   expect(res.headers.get('X-Vmd-Image-Transform')).toBeNull()
   expect(Buffer.from(await res.arrayBuffer()).equals(pngBuf)).toBe(true)
+})
+
+test('GET /api/asset undecodable HEIC is not 200 image/heic', async () => {
+  const res = await app.request('/api/asset/broken.heic', {
+    headers: { Accept: 'image/webp,image/*' },
+  })
+  expect(res.status).toBe(415)
+  expect(res.headers.get('Content-Type') || '').not.toBe('image/heic')
+  const body = Buffer.from(await res.arrayBuffer())
+  expect(body.equals(Buffer.from('not-a-real-heic-file'))).toBe(false)
 })
 
 test('GET /api/download HEIC returns original bytes', async () => {

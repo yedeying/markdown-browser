@@ -297,7 +297,9 @@ export async function transformImage(opts: TransformOptions): Promise<TransformR
       }
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw e
-      // 解码失败（损坏/不支持）→ 直通原字节，由客户端决定
+      // HEIC/HEIF 浏览器无法直显：解码失败不得回落原字节
+      if (mustTranscodeForBrowser(ext)) throw e
+      // 其它格式解码失败（损坏/不支持）→ 直通原字节，由客户端决定
       return passthroughResult(opts.data, ext)
     }
   }, opts.signal)
