@@ -218,6 +218,32 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
     for (const p of toLoad) onExpandRef.current?.(p)
   }, [currentPath, level, applyExpanded])
 
+  /**
+   * 兜底懒加载：渲染出骨架屏的展开目录，补发一次 onExpand。
+   * toggle 时链尾往往还没加载出来（collectCompactPaths 只能看到已有 children），
+   * localStorage 恢复的展开态也没人触发加载 —— 两种情况都会让骨架屏永久停留。
+   */
+  const lazyRequestedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (searchResults) return
+    for (const node of nodes) {
+      if (node.type !== 'folder' || !expanded.has(node.path)) continue
+      let tail = node
+      for (const path of collectCompactPaths(node).slice(1)) {
+        const child = (tail.children || []).find((c) => c.path === path)
+        if (!child) break
+        tail = child
+      }
+      if (tail.children != null) {
+        lazyRequestedRef.current.delete(tail.path)
+        continue
+      }
+      if (lazyRequestedRef.current.has(tail.path)) continue
+      lazyRequestedRef.current.add(tail.path)
+      onExpandRef.current?.(tail.path)
+    }
+  }, [nodes, expanded, searchResults])
+
   // 侧栏树键盘导航（仅根实例）
   useEffect(() => {
     if (level !== 0 || mobileMode) return
