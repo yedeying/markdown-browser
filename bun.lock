@@ -14,6 +14,7 @@
         "@fontsource/ibm-plex-sans": "^5.3.0",
         "@fontsource/jetbrains-mono": "^5.3.0",
         "fflate": "^0.8.3",
+        "heic-decode": "^2.1.0",
         "highlight.js": "^11.10.0",
         "hono": "^4.4.0",
         "katex": "^0.16.11",
@@ -538,6 +539,8 @@
 
     "he": ["he@1.2.0", "https://mirrors.tencent.com/npm/he/-/he-1.2.0.tgz", { "bin": { "he": "bin/he" } }, "sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw=="],
 
+    "heic-decode": ["heic-decode@2.1.0", "https://mirrors.tencent.com/npm/heic-decode/-/heic-decode-2.1.0.tgz", { "dependencies": { "libheif-js": "^1.19.8" } }, "sha512-0fB3O3WMk38+PScbHLVp66jcNhsZ/ErtQ6u2lMYu/YxXgbBtl+oKOhGQHa4RpvE68k8IzbWkABzHnyAIjR758A=="],
+
     "highlight.js": ["highlight.js@11.11.1", "https://mirrors.tencent.com/npm/highlight.js/-/highlight.js-11.11.1.tgz", {}, "sha512-Xwwo44whKBVCYoliBQwaPvtd/2tYFkRQtXDWj1nackaV2JPXx3L0+Jvd8/qCJ2p+ML0/XVkJ2q+Mr+UVdpJK5w=="],
 
     "hono": ["hono@4.12.8", "https://mirrors.tencent.com/npm/hono/-/hono-4.12.8.tgz", {}, "sha512-VJCEvtrezO1IAR+kqEYnxUOoStaQPGrCmX3j4wDTNOcD1uRPFpGlwQUIW8niPuvHXaTUxeOUl5MMDGrl+tmO9A=="],
@@ -561,6 +564,8 @@
     "langium": ["langium@4.2.1", "https://mirrors.tencent.com/npm/langium/-/langium-4.2.1.tgz", { "dependencies": { "chevrotain": "~11.1.1", "chevrotain-allstar": "~0.3.1", "vscode-languageserver": "~9.0.1", "vscode-languageserver-textdocument": "~1.0.11", "vscode-uri": "~3.1.0" } }, "sha512-zu9QWmjpzJcomzdJQAHgDVhLGq5bLosVak1KVa40NzQHXfqr4eAHupvnPOVXEoLkg6Ocefvf/93d//SB7du4YQ=="],
 
     "layout-base": ["layout-base@1.0.2", "https://mirrors.tencent.com/npm/layout-base/-/layout-base-1.0.2.tgz", {}, "sha512-8h2oVEZNktL4BH2JCOI90iD1yXwL6iNW7KcCKT2QZgQJR2vbqDsldCTPRU9NifTCqHZci57XvQQ15YTu+sTYPg=="],
+
+    "libheif-js": ["libheif-js@1.23.2", "https://mirrors.tencent.com/npm/libheif-js/-/libheif-js-1.23.2.tgz", {}, "sha512-qvHIXtggEsw1lCNCWBYKloL2Z36DJBm0R9ThGiH2JnhKYdeZFLPFkP30Lw4yMskxxhx0bKg1gLrBHX1D2w2pSw=="],
 
     "lodash-es": ["lodash-es@4.17.23", "https://mirrors.tencent.com/npm/lodash-es/-/lodash-es-4.17.23.tgz", {}, "sha512-kVI48u3PZr38HdYz98UmfPnXl2DXrpdctLrFLCd3kOx1xUkOmpFPx7gCWWM5MPkL/fD8zb+Ph0QzjGFs4+hHWg=="],
 

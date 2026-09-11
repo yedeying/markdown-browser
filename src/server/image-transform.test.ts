@@ -110,26 +110,35 @@ describe('transformImage', () => {
 
   test('transformImage decodes heic to webp when fixture available', async () => {
     const fixture = join(import.meta.dir, '../../tests/fixtures/sample.heic')
-    if (!existsSync(fixture)) {
-      // no cheap HEIC sample in-repo; sharp on this machine also cannot encode heif
-      return
-    }
-    let heic: Buffer
-    try {
-      heic = Buffer.from(await Bun.file(fixture).bytes())
-      // metadata() can succeed on HEVC HEIC even when pixel decode is missing
-      await sharp(heic).webp({ quality: 80 }).toBuffer()
-    } catch {
-      return
-    }
-    const { passthrough, contentType, info } = await transformImage({
+    if (!existsSync(fixture)) return
+    const heic = Buffer.from(await Bun.file(fixture).bytes())
+    // Sharp prebuilds often cannot decode HEVC HEIC pixels; fallback must still work.
+    const { passthrough, contentType, info, data } = await transformImage({
       data: heic,
       ext: '.heic',
       fmt: 'webp',
+      maxWidth: 400,
     })
     expect(passthrough).toBe(false)
     expect(contentType).toBe('image/webp')
     expect(info.format).toBe('webp')
+    expect(info.width).toBeLessThanOrEqual(400)
+    expect(data.length).toBeGreaterThan(0)
+    const outMeta = await sharp(data).metadata()
+    expect(outMeta.format).toBe('webp')
+  })
+
+  test('HEVC HEIC fixture is not returned as raw passthrough', async () => {
+    const fixture = join(import.meta.dir, '../../tests/fixtures/sample.heic')
+    if (!existsSync(fixture)) return
+    const heic = Buffer.from(await Bun.file(fixture).bytes())
+    const { data, contentType } = await transformImage({
+      data: heic,
+      ext: '.heic',
+      fmt: 'jpeg',
+    })
+    expect(contentType).toBe('image/jpeg')
+    expect(data.equals(heic)).toBe(false)
   })
 
   test('SVG 直通', async () => {

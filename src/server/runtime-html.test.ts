@@ -70,7 +70,23 @@ test('renderDirIndexHtml helper', () => {
     const html = renderDirIndexHtml(root, { mode: 'dir', dirName: 'MyLib' })
     expect(html).toContain('__VMD_MODE__="dir"')
     expect(html).toContain('__VMD_DIR_NAME__="MyLib"')
+    expect(html).toContain('__VMD_MASONRY_RECURSE_DEPTH__=3')
   } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('renderDirIndexHtml respects VMD_MASONRY_RECURSE_DEPTH', () => {
+  const prev = process.env.VMD_MASONRY_RECURSE_DEPTH
+  process.env.VMD_MASONRY_RECURSE_DEPTH = '7'
+  const root = mkdtempSync(join(tmpdir(), 'vmd-ri-depth-'))
+  writeFileSync(join(root, 'index.html'), '<html><head></head><body></body></html>')
+  try {
+    const html = renderDirIndexHtml(root, { mode: 'dir', dirName: 'D' })
+    expect(html).toContain('__VMD_MASONRY_RECURSE_DEPTH__=7')
+  } finally {
+    if (prev === undefined) delete process.env.VMD_MASONRY_RECURSE_DEPTH
+    else process.env.VMD_MASONRY_RECURSE_DEPTH = prev
     rmSync(root, { recursive: true, force: true })
   }
 })

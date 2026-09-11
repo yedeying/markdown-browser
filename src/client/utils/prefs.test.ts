@@ -51,6 +51,12 @@ const ALL_KEYS: PrefKey[] = [
   'readingFontSize',
   'readingLineHeight',
   'folderView',
+  'masonryColMode',
+  'masonryColSize',
+  'masonryColCount',
+  'masonryRecurse',
+  'masonryImageQuality',
+  'masonryLoadConcurrency',
   'sort',
   'showHidden',
   'editorFontSize',
@@ -65,6 +71,12 @@ test('getPref returns typed defaults when storage is empty', () => {
   expect(getPref('readingFontSize')).toBe(16)
   expect(getPref('readingLineHeight')).toBe(1.7)
   expect(getPref('folderView')).toBe('list')
+  expect(getPref('masonryColMode')).toBe('size')
+  expect(getPref('masonryColSize')).toBe('narrow')
+  expect(getPref('masonryColCount')).toBe(2)
+  expect(getPref('masonryRecurse')).toBe(false)
+  expect(getPref('masonryImageQuality')).toBe('original')
+  expect(getPref('masonryLoadConcurrency')).toBe(20)
   expect(getPref('sort')).toEqual({ field: 'name', order: 'asc' })
   expect(getPref('showHidden')).toBe(false)
   expect(getPref('editorFontSize')).toBe(14)
@@ -79,6 +91,10 @@ test('getPref validates stored values and falls back to defaults', () => {
   localStorage.setItem('vmd_reading_font_size', '12')
   localStorage.setItem('vmd_reading_line_height', '2.5')
   localStorage.setItem('vmd_folder_view_mode', 'table')
+  localStorage.setItem('vmd_masonry_col_mode', 'nope')
+  localStorage.setItem('vmd_masonry_col_size', 'huge')
+  localStorage.setItem('vmd_masonry_col_count', '99')
+  localStorage.setItem('vmd_masonry_recurse', 'yes')
   localStorage.setItem('vmd_sort', '{not json')
   localStorage.setItem('vmd_show_hidden', 'yes')
   localStorage.setItem('vmd_editor_font_size', '20')
@@ -91,6 +107,10 @@ test('getPref validates stored values and falls back to defaults', () => {
   expect(getPref('readingFontSize')).toBe(16)
   expect(getPref('readingLineHeight')).toBe(1.7)
   expect(getPref('folderView')).toBe('list')
+  expect(getPref('masonryColMode')).toBe('size')
+  expect(getPref('masonryColSize')).toBe('narrow')
+  expect(getPref('masonryColCount')).toBe(8)
+  expect(getPref('masonryRecurse')).toBe(false)
   expect(getPref('sort')).toEqual({ field: 'name', order: 'asc' })
   expect(getPref('showHidden')).toBe(false)
   expect(getPref('editorFontSize')).toBe(14)
@@ -106,6 +126,12 @@ test('setPref persists values readable by getPref', () => {
   setPref('readingFontSize', 17)
   setPref('readingLineHeight', 1.55)
   setPref('folderView', 'masonry')
+  setPref('masonryColMode', 'fixed')
+  setPref('masonryColSize', 'wide')
+  setPref('masonryColCount', 4)
+  setPref('masonryRecurse', true)
+  setPref('masonryImageQuality', 'thumb')
+  setPref('masonryLoadConcurrency', 8)
   setPref('sort', { field: 'size', order: 'desc' })
   setPref('showHidden', true)
   setPref('editorFontSize', 15)
@@ -119,6 +145,12 @@ test('setPref persists values readable by getPref', () => {
   expect(getPref('readingFontSize')).toBe(17)
   expect(getPref('readingLineHeight')).toBe(1.55)
   expect(getPref('folderView')).toBe('masonry')
+  expect(getPref('masonryColMode')).toBe('fixed')
+  expect(getPref('masonryColSize')).toBe('wide')
+  expect(getPref('masonryColCount')).toBe(4)
+  expect(getPref('masonryRecurse')).toBe(true)
+  expect(getPref('masonryImageQuality')).toBe('thumb')
+  expect(getPref('masonryLoadConcurrency')).toBe(8)
   expect(getPref('sort')).toEqual({ field: 'size', order: 'desc' })
   expect(getPref('showHidden')).toBe(true)
   expect(getPref('editorFontSize')).toBe(15)

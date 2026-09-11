@@ -10,6 +10,7 @@ import { MountManager } from './mount-manager.js'
 import { CONFIG_FILENAME } from './reserved-files.js'
 import { treeCache } from './tree-cache.js'
 import { stripVmdRuntimeScripts } from './runtime-html.js'
+import { resolveMasonryRecurseDepth } from './masonry-config.js'
 
 async function findAvailablePort(startPort: number, host = '0.0.0.0'): Promise<number> {
   const maxPort = Math.max(startPort + 100, 9000)
@@ -51,6 +52,7 @@ function renderMultiIndex(distPath: string, payload: {
     const vars: string[] = [
       `window.__VMD_MODE__="multi"`,
       `window.__VMD_MOUNTS__=${JSON.stringify(payload.mounts)}`,
+      `window.__VMD_MASONRY_RECURSE_DEPTH__=${JSON.stringify(resolveMasonryRecurseDepth())}`,
     ]
     if (payload.mountAlias) {
       vars.push(`window.__VMD_CURRENT_MOUNT__=${JSON.stringify(payload.mountAlias)}`)

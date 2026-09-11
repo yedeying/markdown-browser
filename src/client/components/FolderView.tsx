@@ -13,17 +13,25 @@ import BottomSheet, { type BottomSheetItem } from './BottomSheet.js'
 import ShareDialog from './ShareDialog.js'
 import UploadStatusPanel from './UploadStatusPanel.js'
 import UploadConflictModal from './UploadConflictModal.js'
-import { fsApi } from '../utils/fsApi.js'
+import { fsApi, fetchFilesTree } from '../utils/fsApi.js'
 import { filterVisible } from '../utils/hiddenFiles.js'
 import { sortNodes } from '../utils/sortNodes.js'
-import { type FolderViewPref, type SortField, type SortOrder } from '../utils/prefs.js'
+import {
+  type FolderViewPref,
+  type MasonryColSizePref,
+  type SortField,
+  type SortOrder,
+  clampMasonryColCount,
+} from '../utils/prefs.js'
 import { usePref } from '../hooks/usePref.js'
 import { showToast } from './ui/Toast.js'
 import Icon from './ui/Icon.js'
 import {
   buildMediaPlaylist,
-  folderHasMedia,
   filterMasonryNodes,
+  flattenMediaNodes,
+  folderHasMedia,
+  getClientMasonryRecurseDepth,
   isMediaFile,
 } from '../utils/galleryMedia.js'
 import {
@@ -149,9 +157,16 @@ const FolderView: FunctionalComponent<Props> = ({
   // 分享弹窗
   const [shareTarget, setShareTarget] = useState<FileNode | null>(null)
   const [viewMode, setViewMode] = usePref('folderView')
+  const [masonryColMode, setMasonryColMode] = usePref('masonryColMode')
+  const [masonryColSize, setMasonryColSize] = usePref('masonryColSize')
+  const [masonryColCount, setMasonryColCount] = usePref('masonryColCount')
+  const [masonryRecurse, setMasonryRecurse] = usePref('masonryRecurse')
   const [cardSize, setCardSize] = useState<CardSize>(() =>
     loadPref<CardSize>(CARD_SIZE_KEY, 'm', ['s', 'm', 'l'])
   )
+  const [recurseNodes, setRecurseNodes] = useState<FileNode[] | null>(null)
+  const [recurseLoading, setRecurseLoading] = useState(false)
+  const [recurseError, setRecurseError] = useState<string | null>(null)
 
   // ── 排序偏好（跨列表/网格/列视图共享，持久化到 vmd_sort）──────
   const [sortPref, setSortPref] = usePref('sort')
@@ -219,11 +234,49 @@ const FolderView: FunctionalComponent<Props> = ({
     if (!folder || folder.path !== columnBrowsePath) return children
     return sortNodes(filterVisible(folder.children || [], showHidden), sortPref.field, sortPref.order)
   })()
-  const hasMedia = folderHasMedia(mediaScopeChildren)
+  const hasShallowMedia = folderHasMedia(mediaScopeChildren)
+  // 递归开启时始终露出瀑布流入口（子目录相册）；关闭时仅当前层有媒体才显示
+  const hasMedia = hasShallowMedia || masonryRecurse
   const effectiveView: FolderViewPref =
     viewMode === 'masonry' && !hasMedia ? 'grid' : viewMode
-  const masonryNodes = filterMasonryNodes(children)
+  const shallowMasonryNodes = filterMasonryNodes(children)
+  const masonryNodes = masonryRecurse
+    ? (recurseNodes ?? (recurseLoading ? [] : shallowMasonryNodes))
+    : shallowMasonryNodes
   const dirName = window.__VMD_DIR_NAME__ || '文件库'
+
+  // 递归拉取当前目录 depth 层媒体（不写侧栏 tree）
+  useEffect(() => {
+    if (!masonryRecurse || viewMode !== 'masonry') {
+      setRecurseNodes(null)
+      setRecurseLoading(false)
+      setRecurseError(null)
+      return
+    }
+    const ac = new AbortController()
+    const depth = getClientMasonryRecurseDepth()
+    setRecurseLoading(true)
+    setRecurseError(null)
+    void (async () => {
+      try {
+        const tree = await fetchFilesTree(node.path, depth, {
+          showHidden,
+          signal: ac.signal,
+        })
+        if (ac.signal.aborted) return
+        const flat = flattenMediaNodes(tree)
+        const sorted = sortNodes(flat, sortPref.field, sortPref.order)
+        setRecurseNodes(sorted)
+        setRecurseLoading(false)
+      } catch (e) {
+        if (ac.signal.aborted) return
+        setRecurseError(e instanceof Error ? e.message : String(e))
+        setRecurseNodes([])
+        setRecurseLoading(false)
+      }
+    })()
+    return () => ac.abort()
+  }, [masonryRecurse, viewMode, node.path, showHidden, sortPref.field, sortPref.order])
 
   const handleColumnActiveFolder = useCallback((folder: FileNode) => {
     setColumnBrowsePath(folder.path)
@@ -323,17 +376,18 @@ const FolderView: FunctionalComponent<Props> = ({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (getNavFocus() !== 'folder') return
-      // 键盘移动光标时退出多选
-      if (selectionMode) {
-        setSelectionMode(false)
-        setSelectedPaths(new Set())
-      }
       if (modal || ctxMenu || bottomSheet || shareTarget || lightbox) return
       if (isTypingTarget(e.target)) return
       if (isOverlayBlocking()) return
 
       const dir = normalizeNavKey(e)
       if (!dir) return
+
+      // 仅在真正导航时退出多选（不要在单独按 Cmd/Ctrl 时清掉）
+      if (selectionMode) {
+        setSelectionMode(false)
+        setSelectedPaths(new Set())
+      }
 
       const mode = document.querySelector('[data-testid="folder-masonry"]')
         ? 'masonry'
@@ -1063,6 +1117,8 @@ const FolderView: FunctionalComponent<Props> = ({
               if (targets.length > 0) {
                 setModal({
                   mode: 'confirm',
+                  // 确认时靠 node + selectedPaths 还原多选目标（见 handleModalConfirm）
+                  node: targets[0],
                   message: `确认删除 ${targets.length} 项？此操作不可撤销。`,
                 })
               }
@@ -1115,6 +1171,70 @@ const FolderView: FunctionalComponent<Props> = ({
                   {size.toUpperCase()}
                 </button>
               ))}
+            </div>
+          )}
+          {effectiveView === 'masonry' && (
+            <div class="folder-masonry-opts" data-testid="masonry-opts">
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '24px' }}>列：</span>
+              <button
+                type="button"
+                class={`btn ${masonryColMode === 'auto' ? 'active' : ''}`}
+                data-testid="masonry-col-auto"
+                title="按容器宽度自动分列"
+                onClick={() => setMasonryColMode('auto')}
+              >自动</button>
+              {([
+                ['narrow', '窄'],
+                ['medium', '中'],
+                ['wide', '宽'],
+              ] as const).map(([size, label]) => (
+                <button
+                  key={size}
+                  type="button"
+                  class={`btn ${masonryColMode === 'size' && masonryColSize === size ? 'active' : ''}`}
+                  data-testid={`masonry-col-${size}`}
+                  title={`${label}列`}
+                  onClick={() => {
+                    setMasonryColMode('size')
+                    setMasonryColSize(size as MasonryColSizePref)
+                  }}
+                >{label}</button>
+              ))}
+              <button
+                type="button"
+                class={`btn ${masonryColMode === 'fixed' ? 'active' : ''}`}
+                data-testid="masonry-col-fixed"
+                title="固定列数"
+                onClick={() => setMasonryColMode('fixed')}
+              >固定</button>
+              {masonryColMode === 'fixed' && (
+                <div class="masonry-col-stepper" data-testid="masonry-col-count" role="group" aria-label="固定列数">
+                  <button
+                    type="button"
+                    class="btn masonry-col-stepper-btn"
+                    data-testid="masonry-col-dec"
+                    title="减少列数"
+                    disabled={masonryColCount <= 1}
+                    onClick={() => setMasonryColCount(clampMasonryColCount(masonryColCount - 1))}
+                  >−</button>
+                  <span class="masonry-col-stepper-value" aria-live="polite">{masonryColCount}</span>
+                  <button
+                    type="button"
+                    class="btn masonry-col-stepper-btn"
+                    data-testid="masonry-col-inc"
+                    title="增加列数"
+                    disabled={masonryColCount >= 8}
+                    onClick={() => setMasonryColCount(clampMasonryColCount(masonryColCount + 1))}
+                  >+</button>
+                </div>
+              )}
+              <button
+                type="button"
+                class={`btn ${masonryRecurse ? 'active' : ''}`}
+                data-testid="masonry-recurse"
+                title={`递归子目录媒体（深度 ${getClientMasonryRecurseDepth()}）`}
+                onClick={() => setMasonryRecurse(!masonryRecurse)}
+              >递归</button>
             </div>
           )}
           <div style={{ flex: 1 }} />
@@ -1205,15 +1325,56 @@ const FolderView: FunctionalComponent<Props> = ({
           onBlankClick={clearGridSelection}
         />
       ) : effectiveView === 'masonry' ? (
-        <FolderMasonryView
-          nodes={masonryNodes}
-          currentPath={null}
-          focusPath={selectionMode ? null : gridFocusPath}
-          onSelect={openNodeFromGrid}
-          selectionProps={selectionProps}
-          onBgContextMenu={openBgCtxMenu}
-          onMarqueeSelect={handleMarqueeSelect}
-        />
+        recurseError ? (
+          <div class="empty-state" data-testid="masonry-recurse-error" style={{ flex: 1 }}>
+            <div class="empty-state-text">递归加载失败：{recurseError}</div>
+            <button
+              type="button"
+              class="btn"
+              onClick={() => {
+                // bump by toggling recurse off/on via path re-run: set error null and remount effect
+                setRecurseError(null)
+                setRecurseNodes(null)
+                setRecurseLoading(true)
+                const depth = getClientMasonryRecurseDepth()
+                void fetchFilesTree(node.path, depth, { showHidden })
+                  .then((tree) => {
+                    setRecurseNodes(sortNodes(flattenMediaNodes(tree), sortPref.field, sortPref.order))
+                    setRecurseLoading(false)
+                  })
+                  .catch((e) => {
+                    setRecurseError(e instanceof Error ? e.message : String(e))
+                    setRecurseNodes([])
+                    setRecurseLoading(false)
+                  })
+              }}
+            >重试</button>
+          </div>
+        ) : recurseLoading && masonryRecurse && recurseNodes == null ? (
+          <div class="empty-state" data-testid="masonry-recurse-loading" style={{ flex: 1 }}>
+            <div class="empty-state-text">加载子目录媒体…</div>
+          </div>
+        ) : masonryNodes.length === 0 ? (
+          <div class="empty-state" data-testid="masonry-empty" style={{ flex: 1 }}
+            onContextMenu={openBgCtxMenu}
+          >
+            <div class="empty-state-icon"><Icon name="inbox" size={40} aria-hidden="true" /></div>
+            <div class="empty-state-text">{masonryRecurse ? '子目录中无图片或视频' : '无图片或视频'}</div>
+          </div>
+        ) : (
+          <FolderMasonryView
+            nodes={masonryNodes}
+            currentPath={null}
+            focusPath={selectionMode ? null : gridFocusPath}
+            onSelect={openNodeFromGrid}
+            selectionProps={selectionProps}
+            onBgContextMenu={openBgCtxMenu}
+            onMarqueeSelect={handleMarqueeSelect}
+            colMode={masonryColMode}
+            colSize={masonryColSize}
+            colCount={masonryColCount}
+          />
+        )
       ) : (
         <FolderColumnView
           rootNode={node}
@@ -1236,7 +1397,7 @@ const FolderView: FunctionalComponent<Props> = ({
 
       {lightbox && (
         <MediaLightbox
-          playlist={buildMediaPlaylist(children)}
+          playlist={buildMediaPlaylist(masonryNodes.length ? masonryNodes : children)}
           startPath={lightbox.startPath}
           onClose={() => setLightbox(null)}
         />

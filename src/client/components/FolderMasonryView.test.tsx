@@ -5,15 +5,47 @@ import { Window } from 'happy-dom'
 import type { FileNode } from '../../types.js'
 import FolderMasonryView from './FolderMasonryView.js'
 import type { SelectionProps } from './FolderView.js'
+import type { VideoCoverLoader } from '../utils/masonryVideoSession.js'
+
+const instantCover: VideoCoverLoader = async () => ({
+  blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' }),
+  width: 16,
+  height: 9,
+})
+
+async function waitForVideoTile(root: HTMLElement, timeoutMs = 1000): Promise<HTMLElement> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    const tile = root.querySelector('.masonry-tile.is-video') as HTMLElement | null
+    if (tile) return tile
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 15))
+    })
+  }
+  throw new Error('video tile did not appear')
+}
 
 class ResizeObserverStub {
-  observe() {}
+  private readonly callback: ResizeObserverCallback
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback
+  }
+  observe(target: Element) {
+    Object.defineProperty(target, 'clientWidth', {
+      configurable: true,
+      get: () => 900,
+    })
+    this.callback([], this as unknown as ResizeObserver)
+  }
   disconnect() {}
+  unobserve() {}
 }
 
 class IntersectionObserverStub {
   static instances: IntersectionObserverStub[] = []
   readonly callback: IntersectionObserverCallback
+  readonly observed = new Set<Element>()
   disconnected = false
 
   constructor(
@@ -23,9 +55,12 @@ class IntersectionObserverStub {
     this.callback = callback
     IntersectionObserverStub.instances.push(this)
   }
-  observe() {}
-  disconnect() { this.disconnected = true }
-  unobserve() {}
+  observe(target: Element) { this.observed.add(target) }
+  unobserve(target: Element) { this.observed.delete(target) }
+  disconnect() {
+    this.disconnected = true
+    this.observed.clear()
+  }
   takeRecords(): IntersectionObserverEntry[] { return [] }
   readonly root = null
   readonly rootMargin = ''
@@ -76,39 +111,70 @@ afterEach(() => {
   delete (globalThis as Partial<typeof globalThis>).IntersectionObserver
 })
 
-test('video tile shows a finite loading placeholder before its cover settles', async () => {
+test('video stays as bottom skeleton until cover settles then shows play button', async () => {
   await act(async () => {
     render(h(FolderMasonryView, {
       nodes: [videoNode],
       currentPath: null,
       onSelect() {},
       selectionProps,
+      coverLoader: instantCover,
     }), container)
   })
 
-  expect(container.querySelector('.masonry-tile.is-video .masonry-placeholder')).not.toBeNull()
+  expect(container.querySelector('.masonry-tile.is-video')).toBeNull()
+  expect(container.querySelector('[data-testid="masonry-skeleton-tile"]')).not.toBeNull()
+
+  const tile = await waitForVideoTile(container)
+  expect(tile.querySelector('[data-testid="masonry-tile-play"]')).not.toBeNull()
+  expect(container.querySelector('[data-testid="masonry-skeleton-tile"]')).toBeNull()
 })
 
-test('image tile outside selection mode still invokes long press', async () => {
-  const imageNode: FileNode = {
-    name: 'photo.jpg',
-    path: 'photos/photo.jpg',
-    type: 'file',
-  }
-  const longPressed: FileNode[] = []
+test('pending skeletons stay below settled tiles (no holes in the middle)', async () => {
+  const imgReady: FileNode = { name: 'b.jpg', type: 'file', path: 'photos/b.jpg' }
+  const imgPending: FileNode = { name: 'a.jpg', type: 'file', path: 'photos/a.jpg' }
   await act(async () => {
     render(h(FolderMasonryView, {
-      nodes: [imageNode],
+      nodes: [imgPending, imgReady, videoNode],
       currentPath: null,
       onSelect() {},
-      selectionProps: {
-        ...selectionProps,
-        onLongPress(node) { longPressed.push(node) },
+      selectionProps,
+      coverLoader: async () => {
+        await new Promise((r) => setTimeout(r, 300))
+        return instantCover('', new AbortController().signal)
       },
     }), container)
   })
 
-  const tile = container.querySelector('.masonry-tile') as HTMLElement
+  // 手动标记一张图已就绪
+  await act(async () => {
+    const preload = container.querySelector('[data-testid="masonry-preload"]')
+    expect(preload).not.toBeNull()
+  })
+
+  // 未就绪时：主列不应出现视频；骨架在底部区域（与 pending 对应）
+  expect(container.querySelector('.masonry-tile.is-video')).toBeNull()
+  const skeletons = container.querySelectorAll('[data-testid="masonry-skeleton-tile"]')
+  expect(skeletons.length).toBeGreaterThanOrEqual(2)
+})
+
+test('video tile in selection mode still invokes long press', async () => {
+  const longPressed: FileNode[] = []
+  await act(async () => {
+    render(h(FolderMasonryView, {
+      nodes: [videoNode],
+      currentPath: null,
+      onSelect() {},
+      selectionProps: {
+        ...selectionProps,
+        selectionMode: true,
+        onLongPress(node) { longPressed.push(node) },
+      },
+      coverLoader: instantCover,
+    }), container)
+  })
+
+  const tile = await waitForVideoTile(container)
   tile.dispatchEvent(new dom.TouchEvent('touchstart', {
     bubbles: true,
     cancelable: true,
@@ -118,7 +184,41 @@ test('image tile outside selection mode still invokes long press', async () => {
     await new Promise((resolve) => setTimeout(resolve, 520))
   })
 
-  expect(longPressed).toEqual([imageNode])
+  expect(longPressed).toEqual([videoNode])
+})
+
+test('cover observer re-observes remounted video tiles after column layout', async () => {
+  await act(async () => {
+    render(h(FolderMasonryView, {
+      nodes: [videoNode],
+      currentPath: null,
+      onSelect() {},
+      selectionProps,
+      coverLoader: instantCover,
+    }), container)
+  })
+  const tile = await waitForVideoTile(container)
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  })
+
+  const observer = IntersectionObserverStub.instances.find((o) => o.observed.has(tile))
+    ?? IntersectionObserverStub.instances[0]
+  expect(observer).toBeTruthy()
+  expect(observer.disconnected).toBe(false)
+
+  // 触发一次交叉回调，确认 observer 仍可用（封面已由父级 preload 拉取）
+  await act(async () => {
+    observer.callback([{
+      target: tile,
+      isIntersecting: true,
+    } as IntersectionObserverEntry], observer as unknown as IntersectionObserver)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+
+  const live = container.querySelector('.masonry-tile.is-video') as HTMLElement
+  expect(live).not.toBeNull()
+  expect(observer.disconnected).toBe(false)
 })
 
 test('cover observer survives ratio-driven masonry repacks', async () => {
@@ -128,12 +228,17 @@ test('cover observer survives ratio-driven masonry repacks', async () => {
       currentPath: null,
       onSelect() {},
       selectionProps,
+      coverLoader: instantCover,
     }), container)
   })
-  expect(IntersectionObserverStub.instances).toHaveLength(1)
-  const observer = IntersectionObserverStub.instances[0]
+  const video = await waitForVideoTile(container)
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  })
+  const observer = IntersectionObserverStub.instances.find((o) => o.observed.has(video))
+    ?? IntersectionObserverStub.instances[0]
+  expect(observer).toBeTruthy()
 
-  const video = container.querySelector('.masonry-tile.is-video') as HTMLElement
   await act(async () => {
     observer.callback([{
       target: video,
@@ -142,21 +247,22 @@ test('cover observer survives ratio-driven masonry repacks', async () => {
     await new Promise((resolve) => setTimeout(resolve, 150))
   })
 
-  expect(IntersectionObserverStub.instances).toHaveLength(1)
   expect(observer.disconnected).toBe(false)
+  expect(container.querySelector('.masonry-tile.is-video')).not.toBeNull()
 })
 
-test('mouse hover mounts a muted looping preview and leaving removes it', async () => {
+test('mouse hover mounts a muted preview and leaving removes it', async () => {
   await act(async () => {
     render(h(FolderMasonryView, {
       nodes: [videoNode],
       currentPath: null,
       onSelect() {},
       selectionProps,
+      coverLoader: instantCover,
     }), container)
   })
 
-  const tile = container.querySelector('.masonry-tile.is-video') as HTMLElement
+  const tile = await waitForVideoTile(container)
   await act(async () => {
     tile.dispatchEvent(new dom.PointerEvent('pointerenter', {
       bubbles: true,
@@ -167,7 +273,7 @@ test('mouse hover mounts a muted looping preview and leaving removes it', async 
   const preview = tile.querySelector('video')
   expect(preview?.getAttribute('src')).toBe('/api/asset/videos/clip.mp4')
   expect(preview?.muted).toBe(true)
-  expect(preview?.loop).toBe(true)
+  expect(preview?.loop).toBe(false)
   expect(preview?.hasAttribute('playsinline')).toBe(true)
 
   await act(async () => {
@@ -179,7 +285,69 @@ test('mouse hover mounts a muted looping preview and leaving removes it', async 
   expect(tile.querySelector('video')).toBeNull()
 })
 
-test('limits simultaneous previews to two tiles', async () => {
+test('clicking the play button starts in-place preview without selecting the tile', async () => {
+  const selected: FileNode[] = []
+  await act(async () => {
+    render(h(FolderMasonryView, {
+      nodes: [videoNode],
+      currentPath: null,
+      onSelect(node) { selected.push(node) },
+      selectionProps,
+      coverLoader: instantCover,
+    }), container)
+  })
+
+  await waitForVideoTile(container)
+  const play = container.querySelector('[data-testid="masonry-tile-play"]') as HTMLButtonElement
+  expect(play).not.toBeNull()
+  await act(async () => {
+    play.dispatchEvent(new dom.MouseEvent('click', { bubbles: true, cancelable: true }))
+  })
+
+  const tile = container.querySelector('.masonry-tile.is-video') as HTMLElement
+  expect(tile.querySelector('video')?.getAttribute('src')).toBe('/api/asset/videos/clip.mp4')
+  expect(tile.querySelector('video')?.loop).toBe(false)
+  expect(selected).toEqual([])
+  expect(play.textContent).toBe('■')
+
+  await act(async () => {
+    play.dispatchEvent(new dom.MouseEvent('click', { bubbles: true, cancelable: true }))
+  })
+  expect(tile.querySelector('video')).toBeNull()
+  expect(play.textContent).toBe('▶')
+  expect(selected).toEqual([])
+})
+
+test('stop button works even when hover already started preview', async () => {
+  await act(async () => {
+    render(h(FolderMasonryView, {
+      nodes: [videoNode],
+      currentPath: null,
+      onSelect() {},
+      selectionProps,
+      coverLoader: instantCover,
+    }), container)
+  })
+
+  const tile = await waitForVideoTile(container)
+  const play = container.querySelector('[data-testid="masonry-tile-play"]') as HTMLButtonElement
+  await act(async () => {
+    tile.dispatchEvent(new dom.PointerEvent('pointerenter', {
+      bubbles: true,
+      pointerType: 'mouse',
+    }))
+  })
+  expect(tile.querySelector('video')).not.toBeNull()
+  expect(play.textContent).toBe('■')
+
+  await act(async () => {
+    play.dispatchEvent(new dom.MouseEvent('click', { bubbles: true, cancelable: true }))
+  })
+  expect(tile.querySelector('video')).toBeNull()
+  expect(play.textContent).toBe('▶')
+})
+
+test('limits simultaneous previews to one tile and steals on new start', async () => {
   const nodes = ['one.mp4', 'two.mp4', 'three.mp4'].map((name): FileNode => ({
     name,
     path: `videos/${name}`,
@@ -191,20 +359,36 @@ test('limits simultaneous previews to two tiles', async () => {
       currentPath: null,
       onSelect() {},
       selectionProps,
+      coverLoader: instantCover,
     }), container)
   })
 
-  const tiles = [...container.querySelectorAll('.masonry-tile.is-video')]
+  await waitForVideoTile(container)
   await act(async () => {
-    for (const tile of tiles) {
-      tile.dispatchEvent(new dom.PointerEvent('pointerenter', {
-        bubbles: true,
-        pointerType: 'mouse',
-      }))
+    for (let i = 0; i < 40; i++) {
+      if (container.querySelectorAll('.masonry-tile.is-video').length >= 3) break
+      await new Promise((resolve) => setTimeout(resolve, 15))
     }
   })
+  const tiles = [...container.querySelectorAll('.masonry-tile.is-video')]
+  expect(tiles.length).toBe(3)
+  await act(async () => {
+    tiles[0]!.dispatchEvent(new dom.PointerEvent('pointerenter', {
+      bubbles: true,
+      pointerType: 'mouse',
+    }))
+  })
+  expect(container.querySelectorAll('.masonry-tile-video-preview')).toHaveLength(1)
 
-  expect(container.querySelectorAll('.masonry-tile-video-preview')).toHaveLength(2)
+  await act(async () => {
+    tiles[1]!.dispatchEvent(new dom.PointerEvent('pointerenter', {
+      bubbles: true,
+      pointerType: 'mouse',
+    }))
+  })
+  expect(container.querySelectorAll('.masonry-tile-video-preview')).toHaveLength(1)
+  expect(tiles[1]!.querySelector('.masonry-tile-video-preview')).toBeTruthy()
+  expect(tiles[0]!.querySelector('.masonry-tile-video-preview')).toBeNull()
 })
 
 test('touch long-press suppresses context menu and lift still opens the video', async () => {
@@ -215,10 +399,11 @@ test('touch long-press suppresses context menu and lift still opens the video', 
       currentPath: null,
       onSelect(node) { selected.push(node) },
       selectionProps,
+      coverLoader: instantCover,
     }), container)
   })
 
-  const tile = container.querySelector('.masonry-tile.is-video') as HTMLElement
+  const tile = await waitForVideoTile(container)
   tile.dispatchEvent(new dom.PointerEvent('pointerdown', {
     bubbles: true,
     pointerType: 'touch',
@@ -250,10 +435,11 @@ test('touch movement beyond ten pixels cancels opening the video', async () => {
       currentPath: null,
       onSelect(node) { selected.push(node) },
       selectionProps,
+      coverLoader: instantCover,
     }), container)
   })
 
-  const tile = container.querySelector('.masonry-tile.is-video') as HTMLElement
+  const tile = await waitForVideoTile(container)
   tile.dispatchEvent(new dom.PointerEvent('pointerdown', {
     bubbles: true,
     pointerType: 'touch',

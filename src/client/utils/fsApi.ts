@@ -1,5 +1,6 @@
 /** 前端文件管理 API 封装 */
 
+import type { FileNode } from '../../types.js'
 import { getShowHidden } from './prefs.js'
 
 type FsResult<T = Record<string, unknown>> =
@@ -81,7 +82,7 @@ export async function apiFetch(url: string, init?: RequestInit): Promise<Respons
 /** 生成静态资源 URL（img src / video src 等，不经过 fetch 封装） */
 export function assetUrl(
   path: string,
-  opts?: { w?: number; fmt?: string },
+  opts?: { w?: number; fmt?: string; poster?: boolean },
 ): string {
   const share = getSharePrefix()
   let url = share
@@ -91,6 +92,7 @@ export function assetUrl(
   const params = new URLSearchParams()
   if (opts?.w && opts.w > 0) params.set('w', String(Math.round(opts.w)))
   if (opts?.fmt) params.set('fmt', opts.fmt)
+  if (opts?.poster) params.set('poster', '1')
   const q = params.toString()
   if (!q) return url
   return url.includes('?') ? `${url}&${q}` : `${url}?${q}`
@@ -144,6 +146,22 @@ export function watchUrl(): string {
 export type PathStat =
   | { type: 'folder'; path: string; name: string }
   | { type: 'file'; path: string; name: string; size?: string }
+
+/** 拉取指定路径下 depth 层文件树（不写入侧栏 tree） */
+export async function fetchFilesTree(
+  path: string,
+  depth: number,
+  opts?: { showHidden?: boolean; signal?: AbortSignal },
+): Promise<FileNode[]> {
+  const q = path
+    ? `/api/files?path=${encodeURIComponent(path)}&depth=${depth}`
+    : `/api/files?path=&depth=${depth}`
+  const res = await apiFetch(withHidden(q, opts?.showHidden ?? getShowHidden()), {
+    signal: opts?.signal,
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return await res.json() as FileNode[]
+}
 
 /** 判断路径是文件还是目录（深链恢复用） */
 export async function fetchPathStat(path: string): Promise<PathStat | null> {

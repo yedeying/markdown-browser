@@ -21,6 +21,8 @@ import {
   NON_TRANSCODABLE_IMAGE_EXTS,
   DEFAULT_MAX_WIDTH,
 } from '../image-transform.js'
+import { parseBytesRange } from '../http-range.js'
+import { extractVideoPoster } from '../video-poster.js'
 import { nowMs, perfLog, perfLogTimed } from '../perfLog.js'
 import {
   CHUNK_SIZE,
@@ -601,8 +603,31 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       if (!realFile.startsWith(realBase)) {
         return c.json({ error: 'Forbidden' }, 403)
       }
-      const content = readFileSync(filePath)
       const ext = extname(filePath).toLowerCase()
+
+      // 视频封面：HEVC/MOV 浏览器常截黑帧，走 qlmanage/ffmpeg
+      if (VIDEO_EXTS.has(ext) && c.req.query('poster') === '1') {
+        const maxWidth = normalizeWidthParam(c.req.query('w')) || 400
+        try {
+          const poster = await extractVideoPoster(filePath, {
+            maxWidth,
+            signal: c.req.raw.signal,
+          })
+          if (!poster) {
+            return c.json({ error: 'Video poster unavailable' }, 415)
+          }
+          c.header('Content-Type', poster.contentType)
+          c.header('Cache-Control', 'public, max-age=86400')
+          c.header('X-Vmd-Video-Poster', `${poster.width}x${poster.height}`)
+          return c.body(poster.data)
+        } catch (e) {
+          if (e instanceof DOMException && e.name === 'AbortError') {
+            return new Response(null, { status: 499, statusText: 'Client Closed Request' })
+          }
+          return c.json({ error: 'Video poster failed' }, 500)
+        }
+      }
+
       const mimeTypes: Record<string, string> = {
         '.png': 'image/png',
         '.jpg': 'image/jpeg',
@@ -620,6 +645,32 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         '.mov': 'video/quicktime',
         '.avi': 'video/x-msvideo',
       }
+
+      // 视频：按 Range 流式切片，避免整文件 readFileSync 堵死点播
+      if (VIDEO_EXTS.has(ext)) {
+        const stat = statSync(filePath)
+        const size = stat.size
+        const type = mimeTypes[ext] || 'application/octet-stream'
+        const file = Bun.file(filePath)
+        c.header('Content-Type', type)
+        c.header('Cache-Control', 'public, max-age=3600')
+        c.header('Accept-Ranges', 'bytes')
+        const range = parseBytesRange(c.req.header('range'), size)
+        if (range) {
+          const { start, end } = range
+          const length = end - start + 1
+          c.header('Content-Range', `bytes ${start}-${end}/${size}`)
+          c.header('Content-Length', String(length))
+          return new Response(file.slice(start, end + 1), {
+            status: 206,
+            headers: c.res.headers,
+          })
+        }
+        c.header('Content-Length', String(size))
+        return new Response(file, { headers: c.res.headers })
+      }
+
+      const content = readFileSync(filePath)
 
       // 仅当 URL 显式带 ?w= / ?fmt=，或浏览器无法直显（HEIC/HEIF）时才转码。
       // 其余无参数直通原图，避免相册打开时数百请求挤进 sharp 队列。
@@ -663,6 +714,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
 
       c.header('Content-Type', mimeTypes[ext] || 'application/octet-stream')
       c.header('Cache-Control', 'public, max-age=3600')
+
       return c.body(content)
     } catch {
       return c.json({ error: 'File not found' }, 404)

@@ -5,6 +5,7 @@
  */
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { resolveMasonryRecurseDepth } from './masonry-config.js'
 
 const RUNTIME_SCRIPT_RE = /<script>window\.__VMD_[\s\S]*?<\/script>\s*/g
 
@@ -25,14 +26,16 @@ export function readDistIndexHtml(distPath: string): string {
   return readFileSync(join(distPath, 'index.html'), 'utf-8')
 }
 
-/** dir / single 模式：每次响应注入 mode + 目录显示名 */
+/** dir / single 模式：每次响应注入 mode + 目录显示名 + masonry recurse depth */
 export function renderDirIndexHtml(
   distPath: string,
   opts: { mode: 'dir' | 'single'; dirName: string },
 ): string {
   const html = readDistIndexHtml(distPath)
+  const depth = resolveMasonryRecurseDepth()
   const body =
     `window.__VMD_MODE__=${JSON.stringify(opts.mode)};` +
-    `window.__VMD_DIR_NAME__=${JSON.stringify(opts.dirName)};`
+    `window.__VMD_DIR_NAME__=${JSON.stringify(opts.dirName)};` +
+    `window.__VMD_MASONRY_RECURSE_DEPTH__=${JSON.stringify(depth)};`
   return injectRuntimeScript(html, body)
 }

@@ -10,11 +10,12 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
-  transition: all 0.15s;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
   white-space: nowrap;
 }
 
-.btn:hover {
+/* 排除实心底按钮：否则会盖成 --th-bg（亮色下浅灰底 + 白字） */
+.btn:hover:not(.btn-primary):not(.btn-danger):not(.success):not(.modal-btn-danger) {
   background: var(--th-bg);
 }
 
@@ -99,6 +100,11 @@
 .btn.success {
   background: var(--success);
   border-color: var(--success);
+  color: #fff;
+}
+.btn.success:hover {
+  background: color-mix(in srgb, var(--success) 82%, black);
+  border-color: color-mix(in srgb, var(--success) 82%, black);
   color: #fff;
 }
 
@@ -529,6 +535,55 @@
 .folder-column-row.active .row-icon { color: var(--accent); }
 .col-preview-icon { color: var(--text-muted); margin-bottom: 8px; }
 .folder-card-size-group { display: flex; gap: 4px; align-items: center; }
+.folder-masonry-opts {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-left: 8px;
+}
+.masonry-col-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  height: 24px;
+  background: var(--code-bg, var(--bg));
+}
+.masonry-col-stepper-btn {
+  min-width: 24px;
+  height: 100%;
+  padding: 0 6px;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1;
+  box-shadow: none !important;
+}
+.masonry-col-stepper-btn:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.masonry-col-stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.masonry-col-stepper-value {
+  min-width: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  user-select: none;
+}
 
 /* Folder row active highlight in tree */
 .folder-row.active { background: var(--active-bg); color: var(--active-text); box-shadow: inset 2px 0 0 var(--accent); }
@@ -553,6 +608,10 @@
   min-height: 0;
 }
 .folder-breadcrumb-seg {
+  /* clip-path 会裁掉 CSS border，斜边描不出线：
+     外层背景当描边色，::before 用内缩 1px 的同形状铺填充色 */
+  --_bc-edge: var(--border);
+  --_bc-fill: var(--th-bg);
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -563,9 +622,8 @@
   box-sizing: border-box;
   margin: 0 0 0 -6px;
   padding: 0 22px 0 20px;
-  border: 1px solid var(--border);
-  border-left: none;
-  background: var(--th-bg);
+  border: none;
+  background: var(--_bc-edge);
   color: var(--text-muted);
   font: inherit;
   font-size: 13px;
@@ -574,13 +632,38 @@
   cursor: pointer;
   flex-shrink: 1;
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%);
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+/* 各边法向内缩 1px 后的顶点（tip 12px、高 30px 下解出） */
+.folder-breadcrumb-seg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--_bc-fill);
+  clip-path: polygon(
+    2.08px 1px,
+    calc(100% - 12.48px) 1px,
+    calc(100% - 1.28px) 50%,
+    calc(100% - 12.48px) calc(100% - 1px),
+    2.08px calc(100% - 1px),
+    13.28px 50%
+  );
+  transition: background 0.12s ease;
 }
 .folder-breadcrumb-seg.is-first {
   margin-left: 0;
   padding-left: 12px;
-  border-left: 1px solid var(--border);
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%);
+}
+.folder-breadcrumb-seg.is-first::before {
+  clip-path: polygon(
+    1px 1px,
+    calc(100% - 12.48px) 1px,
+    calc(100% - 1.28px) 50%,
+    calc(100% - 12.48px) calc(100% - 1px),
+    1px calc(100% - 1px)
+  );
 }
 .folder-breadcrumb-seg .folder-breadcrumb-label {
   overflow: hidden;
@@ -589,7 +672,7 @@
   min-width: 0;
 }
 .folder-breadcrumb-seg:hover {
-  background: var(--hover);
+  --_bc-fill: var(--hover);
   color: var(--text);
   z-index: 1;
   text-decoration: none;
@@ -600,8 +683,8 @@
   z-index: 2;
 }
 .folder-breadcrumb-seg.is-current {
-  background: var(--accent);
-  border-color: var(--accent);
+  --_bc-edge: var(--accent);
+  --_bc-fill: var(--accent);
   color: var(--on-accent, #fff);
   font-weight: 600;
   cursor: default;
@@ -613,12 +696,10 @@
 .folder-breadcrumb-seg.is-first.is-current {
   margin-left: 0;
   padding-left: 12px;
-  border-left: 1px solid var(--accent);
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%);
 }
 .folder-breadcrumb-seg.is-current:hover {
-  background: var(--accent);
-  border-color: var(--accent);
+  --_bc-fill: var(--accent);
   color: var(--on-accent, #fff);
 }
 
@@ -663,8 +744,35 @@
   background: var(--code-bg);
   border: 2px solid transparent;
   box-sizing: border-box;
+  animation: masonry-tile-enter 0.22s ease-out;
+}
+@keyframes masonry-tile-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.masonry-preload {
+  display: block;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.masonry-preload-sentinel {
+  display: inline-block;
+  width: 1px;
+  height: 1px;
+}
+.masonry-tile.is-skeleton {
+  cursor: default;
+  pointer-events: none;
+  animation: none;
+  border-color: transparent;
+}
+.masonry-tile.is-skeleton .masonry-tile-media {
+  width: 100%;
 }
 .masonry-tile:hover { outline: 1px solid var(--accent-faint-border, var(--border)); }
+.masonry-tile.is-skeleton:hover { outline: none; }
 /* 瀑布流与网格一致：仅 kb-focus 为光标高亮 */
 .masonry-tile.kb-focus {
   border-color: var(--accent);
@@ -737,11 +845,13 @@
 .masonry-tile-glyph { color: var(--text-muted); stroke-width: 1.4; z-index: 1; }
 .masonry-tile-play {
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   bottom: 8px;
   right: 8px;
   width: 28px;
   height: 28px;
+  margin: 0;
+  border: none;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
@@ -749,7 +859,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding-left: 2px;
+  padding: 0 0 0 2px;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+.masonry-tile-play:hover {
+  background: rgba(0, 0, 0, 0.72);
+}
+.masonry-tile-play.is-playing {
+  padding-left: 0;
+  background: rgba(0, 0, 0, 0.72);
 }
 
 .masonry-tile-caption {
@@ -1199,7 +1319,11 @@
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .modal-btn-cancel { background: var(--th-bg); border-color: var(--border); }
 .modal-btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
-.modal-btn-danger:hover { opacity: 0.85; }
+.modal-btn-danger:hover {
+  background: color-mix(in srgb, var(--danger) 88%, black);
+  border-color: color-mix(in srgb, var(--danger) 88%, black);
+  color: #fff;
+}
 
 /* ================================
    BottomSheet（移动端底部工具栏）
@@ -1792,25 +1916,31 @@
   color: var(--text-muted);
 }
 
-.btn-primary {
+.btn.btn-primary {
   background: var(--accent);
   color: var(--on-accent);
-  border-color: transparent;
+  border-color: var(--accent);
 }
-/* 必须显式写背景：.btn:hover 会把 background 改成 --th-bg，
-   同优先级下若这里只改 opacity，主色底会被盖掉。 */
-.btn-primary:hover {
+.btn.btn-primary:hover {
   background: var(--accent-active);
   color: var(--on-accent);
-  border-color: transparent;
+  border-color: var(--accent-active);
+}
+.btn.btn-primary:active {
+  background: color-mix(in srgb, var(--accent-active) 88%, black);
+  border-color: color-mix(in srgb, var(--accent-active) 88%, black);
 }
 
-.btn-danger {
+.btn.btn-danger {
   background: none;
   color: var(--danger);
   border-color: var(--danger);
 }
-.btn-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.btn.btn-danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+  border-color: var(--danger);
+}
 
 /* ================================
    分享 API 用法区域

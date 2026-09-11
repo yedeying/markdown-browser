@@ -1,5 +1,10 @@
 import { test, expect, afterEach } from 'bun:test'
-import { loadVideoCover, MasonryVideoSession } from './masonryVideoSession.ts'
+import {
+  coverSeekTimes,
+  frameLooksBlank,
+  loadVideoCover,
+  MasonryVideoSession,
+} from './masonryVideoSession.ts'
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
@@ -165,26 +170,94 @@ test('a permanently failed cover is not requested again', async () => {
   session.dispose()
 })
 
+test('coverSeekTimes skips the true zero black intro', () => {
+  expect(coverSeekTimes(10)[0]!).toBeGreaterThanOrEqual(0.05)
+  expect(coverSeekTimes(10).some((t) => t >= 1)).toBe(true)
+  expect(coverSeekTimes(0.2).every((t) => t > 0)).toBe(true)
+})
+
+test('frameLooksBlank detects near-black probes', () => {
+  const black = new Uint8ClampedArray(16 * 16 * 4)
+  const white = new Uint8ClampedArray(16 * 16 * 4)
+  for (let i = 0; i < white.length; i += 4) {
+    white[i] = 255
+    white[i + 1] = 255
+    white[i + 2] = 255
+    white[i + 3] = 255
+  }
+
+  const makeCanvas = (data: Uint8ClampedArray) => {
+    const canvas = {
+      width: 16,
+      height: 16,
+      getContext: () => ({
+        drawImage() {},
+        getImageData: () => ({ data, width: 16, height: 16 }),
+      }),
+    }
+    return canvas as unknown as HTMLCanvasElement
+  }
+
+  const prevDoc = globalThis.document
+  ;(globalThis as unknown as { document: Pick<Document, 'createElement'> }).document = {
+    createElement: () => makeCanvas(black),
+  }
+  try {
+    expect(frameLooksBlank(makeCanvas(black), 32, 32)).toBe(true)
+    ;(globalThis as unknown as { document: Pick<Document, 'createElement'> }).document = {
+      createElement: () => makeCanvas(white),
+    }
+    expect(frameLooksBlank(makeCanvas(white), 32, 32)).toBe(false)
+  } finally {
+    if (prevDoc) globalThis.document = prevDoc
+    else delete (globalThis as Partial<typeof globalThis>).document
+  }
+})
+
 test('loadVideoCover rejects when video loading stalls', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => new Response(null, { status: 415 })) as typeof fetch
+
   const originalDocument = globalThis.document
   const video = new EventTarget() as HTMLVideoElement
   Object.assign(video, {
     muted: false,
+    defaultMuted: false,
     playsInline: false,
     preload: '',
     src: '',
+    duration: NaN,
+    videoWidth: 0,
+    videoHeight: 0,
+    currentTime: 0,
+    readyState: 0,
+    style: { cssText: '' },
     pause() {},
     load() {},
     removeAttribute() {},
+    setAttribute() {},
+    remove() {},
   })
-  ;(globalThis as unknown as { document: Pick<Document, 'createElement'> }).document = {
-    createElement: () => video,
+  ;(globalThis as unknown as {
+    document: Pick<Document, 'createElement' | 'body'>
+  }).document = {
+    createElement: (tag: string) => {
+      if (tag === 'video') return video
+      const canvas = {
+        width: 0,
+        height: 0,
+        getContext: () => null,
+      }
+      return canvas as unknown as HTMLElement
+    },
+    body: { appendChild() { return video } } as unknown as HTMLElement,
   }
 
   try {
     await expect(loadVideoCover('/stalled', new AbortController().signal, 10))
-      .rejects.toThrow('timed out')
+      .rejects.toThrow(/timed out|blank|dimensions|canvas/)
   } finally {
+    globalThis.fetch = originalFetch
     if (originalDocument) globalThis.document = originalDocument
     else delete (globalThis as Partial<typeof globalThis>).document
   }
@@ -265,30 +338,33 @@ test('external AbortSignal cancels queued work', async () => {
   session.dispose()
 })
 
-test('cover capture and previews share one concurrency budget', async () => {
+test('preview slots are independent from cover capture budget', async () => {
   let releaseCover!: () => void
   const session = new MasonryVideoSession({
     maxConcurrent: 2,
+    maxPreviews: 1,
     loader: async () => {
       await new Promise<void>((resolve) => { releaseCover = resolve })
       return { width: 16, height: 9, blob: new Blob([new Uint8Array([8])]) }
     },
   })
 
-  session.requestCover('cover.mp4', '/cover')
+  session.requestCover('cover-a.mp4', '/a')
+  session.requestCover('cover-b.mp4', '/b')
+  // 封面槽已满，预览仍可点；第二路抢占第一路
   expect(session.tryAcquirePreview('preview-a.mp4')).toBe(true)
-  expect(session.tryAcquirePreview('preview-b.mp4')).toBe(false)
+  expect(session.tryAcquirePreview('preview-b.mp4')).toBe(true)
 
   releaseCover()
   await delay(20)
-  expect(session.tryAcquirePreview('preview-b.mp4')).toBe(true)
   session.dispose()
 })
 
-test('a preview slot keeps queued cover capture within the shared budget', async () => {
+test('preview pauses cover capture until released', async () => {
   let ran = 0
   const session = new MasonryVideoSession({
     maxConcurrent: 1,
+    maxPreviews: 1,
     loader: async () => {
       ran++
       return { width: 16, height: 9, blob: new Blob([new Uint8Array([9])]) }
@@ -297,9 +373,78 @@ test('a preview slot keeps queued cover capture within the shared budget', async
 
   expect(session.tryAcquirePreview('preview.mp4')).toBe(true)
   session.requestCover('cover.mp4', '/cover')
+  await delay(20)
   expect(ran).toBe(0)
   session.releasePreview('preview.mp4')
   await delay(20)
   expect(ran).toBe(1)
+  session.dispose()
+})
+
+test('tryAcquirePreview steals the previous preview and notifies eviction', async () => {
+  const evicted: string[] = []
+  const session = new MasonryVideoSession({
+    maxPreviews: 1,
+    onPreviewEvicted: (path) => evicted.push(path),
+  })
+
+  expect(session.tryAcquirePreview('a.mp4')).toBe(true)
+  expect(session.tryAcquirePreview('b.mp4')).toBe(true)
+  expect(evicted).toEqual(['a.mp4'])
+  session.releasePreview('b.mp4')
+  session.dispose()
+})
+
+test('prioritizeCover moves a queued job to the front', async () => {
+  const started: string[] = []
+  let releaseFirst!: () => void
+  const session = new MasonryVideoSession({
+    maxConcurrent: 1,
+    loader: async (url) => {
+      started.push(url)
+      if (url === '/a') {
+        await new Promise<void>((resolve) => { releaseFirst = resolve })
+      }
+      return { width: 16, height: 9, blob: new Blob([new Uint8Array([10])]) }
+    },
+  })
+
+  session.requestCover('a.mp4', '/a')
+  session.requestCover('b.mp4', '/b')
+  session.requestCover('c.mp4', '/c')
+  session.prioritizeCover('c.mp4')
+  releaseFirst()
+  await delay(40)
+  expect(started[0]).toBe('/a')
+  expect(started[1]).toBe('/c')
+  session.dispose()
+})
+
+test('acquiring preview suspends in-flight covers and requeues them', async () => {
+  let aborted = 0
+  let ran = 0
+  const session = new MasonryVideoSession({
+    maxConcurrent: 1,
+    loader: async (_url, signal) => {
+      ran++
+      await new Promise<void>((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          aborted++
+          reject(new DOMException('Aborted', 'AbortError'))
+        })
+      })
+      return { width: 16, height: 9, blob: new Blob([new Uint8Array([11])]) }
+    },
+  })
+
+  session.requestCover('cover.mp4', '/cover')
+  await delay(5)
+  expect(ran).toBe(1)
+  expect(session.tryAcquirePreview('play.mp4')).toBe(true)
+  await delay(10)
+  expect(aborted).toBe(1)
+  session.releasePreview('play.mp4')
+  await delay(10)
+  expect(ran).toBe(2)
   session.dispose()
 })

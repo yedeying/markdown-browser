@@ -38,7 +38,7 @@ export const DEFAULT_MAX_WIDTH = 1600
 const MAX_CACHE_ENTRIES = 96
 
 /** 并发转码上限：超过即排队，防止一次打开几百张图把 CPU/内存打爆 */
-export const TRANSFORM_MAX_CONCURRENCY = 3
+export const TRANSFORM_MAX_CONCURRENCY = 6
 
 // ---------------------------------------------------------------------------
 // 解析
@@ -257,52 +257,125 @@ export async function transformImage(opts: TransformOptions): Promise<TransformR
   return withConcurrency(async () => {
     throwIfAborted(opts.signal)
     try {
-      const img = sharp(opts.data)
-      const meta = await img.metadata()
-      let width = meta.width ?? 0
-      let height = meta.height ?? 0
-      if (meta.format === 'svg') {
-        // sharp 能读 SVG，但这里仍直通（避免执行不可信向量）
-        const passthrough = passthroughResult(opts.data, ext)
-        passthrough.info.format = 'svg'
-        return passthrough
-      }
-      if (meta.format === 'gif') {
-        const passthrough = passthroughResult(opts.data, ext)
-        passthrough.info.format = 'gif'
-        return passthrough
-      }
-
-      if (maxWidth > 0 && width > maxWidth) {
-        img.resize({ width: maxWidth, withoutEnlargement: true, fit: 'inside' })
-      }
-
-      let out: Buffer
-      if (fmt === 'avif') {
-        // 缩略图用低 effort，避免瀑布流并发时 AVIF 把连接池拖死
-        const effort = maxWidth > 0 && maxWidth <= 800 ? 2 : 4
-        out = await img.avif({ quality: 60, effort }).toBuffer()
-      } else if (fmt === 'webp') {
-        out = await img.webp({ quality: maxWidth > 0 && maxWidth <= 800 ? 72 : 80 }).toBuffer()
-      } else {
-        out = await img.jpeg({ quality: 80, mozjpeg: true }).toBuffer()
-      }
-      const outMeta = await sharp(out).metadata()
-      cache.set(cacheKey, out)
-      return {
-        data: out,
-        contentType: mimeFor(fmt),
-        passthrough: false,
-        info: { width: outMeta.width ?? width, height: outMeta.height ?? height, format: fmt },
-      }
+      return await encodeWithSharp(opts.data, ext, fmt, maxWidth, cacheKey)
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw e
-      // HEIC/HEIF 浏览器无法直显：解码失败不得回落原字节
-      if (mustTranscodeForBrowser(ext)) throw e
-      // 其它格式解码失败（损坏/不支持）→ 直通原字节，由客户端决定
-      return passthroughResult(opts.data, ext)
+      if (!mustTranscodeForBrowser(ext)) {
+        // 其它格式解码失败（损坏/不支持）→ 直通原字节，由客户端决定
+        return passthroughResult(opts.data, ext)
+      }
+      // Prebuilt sharp often lacks HEVC: metadata can succeed while pixels fail.
+      // Fall back to libheif-js (heic-decode), then re-encode via sharp.
+      try {
+        throwIfAborted(opts.signal)
+        const raw = await decodeHeicToRgba(opts.data)
+        throwIfAborted(opts.signal)
+        return await encodeRawRgba(raw, fmt, maxWidth, cacheKey)
+      } catch (fallbackErr) {
+        if (fallbackErr instanceof DOMException && fallbackErr.name === 'AbortError') {
+          throw fallbackErr
+        }
+        throw e
+      }
     }
   }, opts.signal)
+}
+
+interface RgbaFrame {
+  width: number
+  height: number
+  data: Buffer
+}
+
+async function decodeHeicToRgba(data: Buffer): Promise<RgbaFrame> {
+  const { default: decodeHeic } = await import('heic-decode')
+  const decoded = await decodeHeic({ buffer: data })
+  return {
+    width: decoded.width,
+    height: decoded.height,
+    data: Buffer.from(decoded.data),
+  }
+}
+
+async function encodeRawRgba(
+  raw: RgbaFrame,
+  fmt: OutputFormat,
+  maxWidth: number,
+  cacheKey: string,
+): Promise<TransformResult> {
+  let img = sharp(raw.data, {
+    raw: { width: raw.width, height: raw.height, channels: 4 },
+  })
+  if (maxWidth > 0 && raw.width > maxWidth) {
+    img = img.resize({ width: maxWidth, withoutEnlargement: true, fit: 'inside' })
+  }
+  const out = await encodeSharpPipeline(img, fmt, maxWidth)
+  const outMeta = await sharp(out).metadata()
+  cache.set(cacheKey, out)
+  return {
+    data: out,
+    contentType: mimeFor(fmt),
+    passthrough: false,
+    info: {
+      width: outMeta.width ?? raw.width,
+      height: outMeta.height ?? raw.height,
+      format: fmt,
+    },
+  }
+}
+
+async function encodeWithSharp(
+  data: Buffer,
+  ext: string,
+  fmt: OutputFormat,
+  maxWidth: number,
+  cacheKey: string,
+): Promise<TransformResult> {
+  const img = sharp(data)
+  const meta = await img.metadata()
+  let width = meta.width ?? 0
+  let height = meta.height ?? 0
+  if (meta.format === 'svg') {
+    // sharp 能读 SVG，但这里仍直通（避免执行不可信向量）
+    const passthrough = passthroughResult(data, ext)
+    passthrough.info.format = 'svg'
+    return passthrough
+  }
+  if (meta.format === 'gif') {
+    const passthrough = passthroughResult(data, ext)
+    passthrough.info.format = 'gif'
+    return passthrough
+  }
+
+  if (maxWidth > 0 && width > maxWidth) {
+    img.resize({ width: maxWidth, withoutEnlargement: true, fit: 'inside' })
+  }
+
+  const out = await encodeSharpPipeline(img, fmt, maxWidth)
+  const outMeta = await sharp(out).metadata()
+  cache.set(cacheKey, out)
+  return {
+    data: out,
+    contentType: mimeFor(fmt),
+    passthrough: false,
+    info: { width: outMeta.width ?? width, height: outMeta.height ?? height, format: fmt },
+  }
+}
+
+async function encodeSharpPipeline(
+  img: sharp.Sharp,
+  fmt: OutputFormat,
+  maxWidth: number,
+): Promise<Buffer> {
+  if (fmt === 'avif') {
+    // 缩略图用低 effort，避免瀑布流并发时 AVIF 把连接池拖死
+    const effort = maxWidth > 0 && maxWidth <= 800 ? 2 : 4
+    return img.avif({ quality: 60, effort }).toBuffer()
+  }
+  if (fmt === 'webp') {
+    return img.webp({ quality: maxWidth > 0 && maxWidth <= 800 ? 72 : 80 }).toBuffer()
+  }
+  return img.jpeg({ quality: 80, mozjpeg: true }).toBuffer()
 }
 
 function passthroughResult(data: Buffer, ext: string): TransformResult {

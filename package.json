@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build:client": "vite build",
-    "build:server": "bun build src/cli.ts --outdir dist --target bun",
-    "build": "vite build && bun build src/cli.ts --outdir dist --target bun",
+    "build:server": "bun build src/cli.ts --outdir dist --target bun --external heic-decode --external libheif-js",
+    "build": "vite build && bun build src/cli.ts --outdir dist --target bun --external heic-decode --external libheif-js",
     "preview": "vite preview",
     "test": "bun test",
     "test:e2e": "playwright test"
@@ -23,6 +23,7 @@
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "fflate": "^0.8.3",
+    "heic-decode": "^2.1.0",
     "highlight.js": "^11.10.0",
     "hono": "^4.4.0",
     "katex": "^0.16.11",

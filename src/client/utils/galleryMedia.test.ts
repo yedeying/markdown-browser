@@ -3,7 +3,9 @@ import type { FileNode } from '../../types.js'
 import {
   buildMediaPlaylist,
   filterMasonryNodes,
+  flattenMediaNodes,
   folderHasMedia,
+  getClientMasonryRecurseDepth,
   isMediaFile,
   mediaPlaylistForPath,
   stepPlaylistPath,
@@ -48,6 +50,35 @@ test('buildMediaPlaylist is media-only in order', () => {
     file('d.mp4', 'd.mp4'),
   ]
   expect(buildMediaPlaylist(nodes).map((n) => n.path)).toEqual(['b.png', 'd.mp4'])
+})
+
+test('flattenMediaNodes walks nested folders and skips non-media', () => {
+  const tree = [
+    file('root.jpg', 'root.jpg'),
+    file('note.md', 'note.md'),
+    folder('a', 'a', [
+      file('a1.png', 'a/a1.png'),
+      folder('b', 'a/b', [
+        file('deep.mp4', 'a/b/deep.mp4'),
+        file('skip.txt', 'a/b/skip.txt'),
+      ]),
+    ]),
+  ]
+  expect(flattenMediaNodes(tree).map((n) => n.path)).toEqual([
+    'root.jpg',
+    'a/a1.png',
+    'a/b/deep.mp4',
+  ])
+})
+
+test('getClientMasonryRecurseDepth reads injected window value', () => {
+  const prev = (globalThis as { window?: unknown }).window
+  ;(globalThis as { window: { __VMD_MASONRY_RECURSE_DEPTH__: number } }).window = {
+    __VMD_MASONRY_RECURSE_DEPTH__: 5,
+  }
+  expect(getClientMasonryRecurseDepth()).toBe(5)
+  if (prev) (globalThis as { window: unknown }).window = prev
+  else delete (globalThis as { window?: unknown }).window
 })
 
 test('heic counts as media for masonry', () => {

@@ -8,11 +8,18 @@ import {
   type AccentPref,
   type EditorFontSizePref,
   type FolderViewPref,
+  type MasonryColModePref,
+  type MasonryColSizePref,
+  type MasonryImageQualityPref,
   type ReadingFontSizePref,
   type ReadingLineHeightPref,
   type ReadingWidthPref,
   type SortField,
   type SortOrder,
+  clampMasonryColCount,
+  clampMasonryLoadConcurrency,
+  MASONRY_LOAD_CONCURRENCY_MAX,
+  MASONRY_LOAD_CONCURRENCY_MIN,
 } from '../utils/prefs.js'
 import type { AdminSettings, StartupMode } from '../../types.js'
 import Icon from './ui/Icon.js'
@@ -45,6 +52,12 @@ const SettingsDialog: FunctionalComponent<Props> = ({ onClose, currentMountAlias
   const [readingFontSize, setReadingFontSize] = usePref('readingFontSize')
   const [readingLineHeight, setReadingLineHeight] = usePref('readingLineHeight')
   const [folderView, setFolderView] = usePref('folderView')
+  const [masonryColMode, setMasonryColMode] = usePref('masonryColMode')
+  const [masonryColSize, setMasonryColSize] = usePref('masonryColSize')
+  const [masonryColCount, setMasonryColCount] = usePref('masonryColCount')
+  const [masonryRecurse, setMasonryRecurse] = usePref('masonryRecurse')
+  const [masonryImageQuality, setMasonryImageQuality] = usePref('masonryImageQuality')
+  const [masonryLoadConcurrency, setMasonryLoadConcurrency] = usePref('masonryLoadConcurrency')
   const [sort, setSort] = usePref('sort')
   const [showHidden, setShowHidden] = usePref('showHidden')
   const [editorFontSize, setEditorFontSize] = usePref('editorFontSize')
@@ -252,6 +265,87 @@ const SettingsDialog: FunctionalComponent<Props> = ({ onClose, currentMountAlias
                 <option value="column">分栏</option>
                 <option value="masonry">瀑布流</option>
               </select>
+            </label>
+            <label class="settings-row">
+              <span class="settings-label">瀑布流列模式</span>
+              <select
+                value={masonryColMode}
+                onChange={(event) => setMasonryColMode(event.currentTarget.value as MasonryColModePref)}
+              >
+                <option value="auto">自动</option>
+                <option value="size">窄/中/宽</option>
+                <option value="fixed">固定列数</option>
+              </select>
+            </label>
+            {masonryColMode === 'size' && (
+              <label class="settings-row">
+                <span class="settings-label">瀑布流列宽</span>
+                <select
+                  value={masonryColSize}
+                  onChange={(event) => setMasonryColSize(event.currentTarget.value as MasonryColSizePref)}
+                >
+                  <option value="narrow">窄</option>
+                  <option value="medium">中</option>
+                  <option value="wide">宽</option>
+                </select>
+              </label>
+            )}
+            {masonryColMode === 'fixed' && (
+              <div class="settings-row">
+                <span class="settings-label">瀑布流列数</span>
+                <div class="masonry-col-stepper" role="group" aria-label="固定列数">
+                  <button
+                    type="button"
+                    class="btn masonry-col-stepper-btn"
+                    title="减少列数"
+                    disabled={masonryColCount <= 1}
+                    onClick={() => setMasonryColCount(clampMasonryColCount(masonryColCount - 1))}
+                  >−</button>
+                  <span class="masonry-col-stepper-value" aria-live="polite">{masonryColCount}</span>
+                  <button
+                    type="button"
+                    class="btn masonry-col-stepper-btn"
+                    title="增加列数"
+                    disabled={masonryColCount >= 8}
+                    onClick={() => setMasonryColCount(clampMasonryColCount(masonryColCount + 1))}
+                  >+</button>
+                </div>
+              </div>
+            )}
+            <label class="settings-row settings-toggle">
+              <span class="settings-label">瀑布流递归子目录</span>
+              <input
+                type="checkbox"
+                checked={masonryRecurse}
+                onChange={(event) => setMasonryRecurse(event.currentTarget.checked)}
+              />
+            </label>
+            <label class="settings-row">
+              <span class="settings-label">瀑布流图片</span>
+              <select
+                value={masonryImageQuality}
+                onChange={(event) =>
+                  setMasonryImageQuality(event.currentTarget.value as MasonryImageQualityPref)
+                }
+              >
+                <option value="thumb">缩略图</option>
+                <option value="original">原图</option>
+              </select>
+            </label>
+            <label class="settings-row">
+              <span class="settings-label">瀑布流加载并发</span>
+              <input
+                type="number"
+                min={MASONRY_LOAD_CONCURRENCY_MIN}
+                max={MASONRY_LOAD_CONCURRENCY_MAX}
+                step={1}
+                value={masonryLoadConcurrency}
+                onChange={(event) => {
+                  const n = Number(event.currentTarget.value)
+                  if (!Number.isFinite(n)) return
+                  setMasonryLoadConcurrency(clampMasonryLoadConcurrency(n))
+                }}
+              />
             </label>
             <div class="settings-row">
               <span class="settings-label">默认排序</span>

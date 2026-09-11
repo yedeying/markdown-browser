@@ -41,8 +41,30 @@ export type ReadingWidthPref = 720 | 900 | 1140 | 'full'
 export type ReadingFontSizePref = 14 | 15 | 16 | 17
 export type ReadingLineHeightPref = 1.55 | 1.7 | 1.9
 export type FolderViewPref = 'list' | 'grid' | 'column' | 'masonry'
+export type MasonryColModePref = 'auto' | 'size' | 'fixed'
+export type MasonryColSizePref = 'narrow' | 'medium' | 'wide'
+/** 瀑布流图片：列宽缩略图 or 原图（HEIC 仍会转码） */
+export type MasonryImageQualityPref = 'thumb' | 'original'
 export type EditorFontSizePref = 13 | 14 | 15
 export type JsonlPreviewModePref = 'st' | 'jsonl'
+
+export const MASONRY_COL_COUNT_MIN = 1
+export const MASONRY_COL_COUNT_MAX = 8
+export const MASONRY_LOAD_CONCURRENCY_MIN = 1
+export const MASONRY_LOAD_CONCURRENCY_MAX = 32
+
+export function clampMasonryColCount(n: number): number {
+  if (!Number.isFinite(n)) return 2
+  return Math.min(MASONRY_COL_COUNT_MAX, Math.max(MASONRY_COL_COUNT_MIN, Math.round(n)))
+}
+
+export function clampMasonryLoadConcurrency(n: number): number {
+  if (!Number.isFinite(n)) return 20
+  return Math.min(
+    MASONRY_LOAD_CONCURRENCY_MAX,
+    Math.max(MASONRY_LOAD_CONCURRENCY_MIN, Math.round(n)),
+  )
+}
 
 export interface PrefValues {
   theme: ThemePref
@@ -52,6 +74,12 @@ export interface PrefValues {
   readingFontSize: ReadingFontSizePref
   readingLineHeight: ReadingLineHeightPref
   folderView: FolderViewPref
+  masonryColMode: MasonryColModePref
+  masonryColSize: MasonryColSizePref
+  masonryColCount: number
+  masonryRecurse: boolean
+  masonryImageQuality: MasonryImageQualityPref
+  masonryLoadConcurrency: number
   sort: SortPref
   showHidden: boolean
   editorFontSize: EditorFontSizePref
@@ -69,6 +97,12 @@ const STORAGE_KEYS: Record<PrefKey, string> = {
   readingFontSize: 'vmd_reading_font_size',
   readingLineHeight: 'vmd_reading_line_height',
   folderView: 'vmd_folder_view_mode',
+  masonryColMode: 'vmd_masonry_col_mode',
+  masonryColSize: 'vmd_masonry_col_size',
+  masonryColCount: 'vmd_masonry_col_count',
+  masonryRecurse: 'vmd_masonry_recurse',
+  masonryImageQuality: 'vmd_masonry_image_quality',
+  masonryLoadConcurrency: 'vmd_masonry_load_concurrency',
   sort: SORT_KEY,
   showHidden: SHOW_HIDDEN_KEY,
   editorFontSize: 'vmd_editor_font_size',
@@ -82,6 +116,9 @@ const READING_WIDTHS: ReadingWidthPref[] = [720, 900, 1140, 'full']
 const READING_FONT_SIZES: ReadingFontSizePref[] = [14, 15, 16, 17]
 const READING_LINE_HEIGHTS: ReadingLineHeightPref[] = [1.55, 1.7, 1.9]
 const FOLDER_VIEWS: FolderViewPref[] = ['list', 'grid', 'column', 'masonry']
+const MASONRY_COL_MODES: MasonryColModePref[] = ['auto', 'size', 'fixed']
+const MASONRY_COL_SIZES: MasonryColSizePref[] = ['narrow', 'medium', 'wide']
+const MASONRY_IMAGE_QUALITIES: MasonryImageQualityPref[] = ['thumb', 'original']
 const EDITOR_FONT_SIZES: EditorFontSizePref[] = [13, 14, 15]
 const JSONL_PREVIEW_MODES: JsonlPreviewModePref[] = ['st', 'jsonl']
 
@@ -93,6 +130,13 @@ const DEFAULTS: PrefValues = {
   readingFontSize: 16,
   readingLineHeight: 1.7,
   folderView: 'list',
+  masonryColMode: 'size',
+  masonryColSize: 'narrow',
+  masonryColCount: 2,
+  masonryRecurse: false,
+  // 先按原图 + 高并发体感，可在设置里改回缩略图
+  masonryImageQuality: 'original',
+  masonryLoadConcurrency: 20,
   sort: { ...DEFAULT_SORT },
   showHidden: false,
   editorFontSize: 14,
@@ -163,6 +207,32 @@ function parsePref<K extends PrefKey>(key: K, raw: string | null): PrefValues[K]
     }
     case 'folderView':
       return (FOLDER_VIEWS.includes(raw as FolderViewPref) ? raw : DEFAULTS.folderView) as PrefValues[K]
+    case 'masonryColMode':
+      return (MASONRY_COL_MODES.includes(raw as MasonryColModePref)
+        ? raw
+        : DEFAULTS.masonryColMode) as PrefValues[K]
+    case 'masonryColSize':
+      return (MASONRY_COL_SIZES.includes(raw as MasonryColSizePref)
+        ? raw
+        : DEFAULTS.masonryColSize) as PrefValues[K]
+    case 'masonryColCount': {
+      if (raw == null || raw === '') return DEFAULTS.masonryColCount as PrefValues[K]
+      const n = Number(raw)
+      return (Number.isFinite(n) ? clampMasonryColCount(n) : DEFAULTS.masonryColCount) as PrefValues[K]
+    }
+    case 'masonryRecurse':
+      return (raw === '1') as PrefValues[K]
+    case 'masonryImageQuality':
+      return (MASONRY_IMAGE_QUALITIES.includes(raw as MasonryImageQualityPref)
+        ? raw
+        : DEFAULTS.masonryImageQuality) as PrefValues[K]
+    case 'masonryLoadConcurrency': {
+      if (raw == null || raw === '') return DEFAULTS.masonryLoadConcurrency as PrefValues[K]
+      const n = Number(raw)
+      return (Number.isFinite(n)
+        ? clampMasonryLoadConcurrency(n)
+        : DEFAULTS.masonryLoadConcurrency) as PrefValues[K]
+    }
     case 'sort':
       return parseSort(raw) as PrefValues[K]
     case 'showHidden':
@@ -191,8 +261,11 @@ function serializePref<K extends PrefKey>(key: K, value: PrefValues[K]): string 
     case 'sort':
       return JSON.stringify(value)
     case 'showHidden':
+    case 'masonryRecurse':
       return value ? '1' : '0'
     case 'readingWidth':
+    case 'masonryColCount':
+    case 'masonryLoadConcurrency':
       return String(value)
     default:
       return String(value)
@@ -207,6 +280,12 @@ export function setPref<K extends PrefKey>(key: K, value: PrefValues[K]): void {
   let normalized = value
   if (key === 'sidebarWidth') {
     normalized = clampSidebarWidth(value as number) as PrefValues[K]
+  }
+  if (key === 'masonryColCount') {
+    normalized = clampMasonryColCount(value as number) as PrefValues[K]
+  }
+  if (key === 'masonryLoadConcurrency') {
+    normalized = clampMasonryLoadConcurrency(value as number) as PrefValues[K]
   }
   if (key === 'sort') {
     normalized = parseSort(JSON.stringify(value)) as PrefValues[K]
