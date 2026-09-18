@@ -8,7 +8,7 @@ import Editor from './Editor.js'
 import StChatPreview from './StChatPreview.js'
 import JsonlLinePreview from './JsonlLinePreview.js'
 import { apiFetch, assetUrl } from '../utils/fsApi.js'
-import { filterVisible } from '../utils/hiddenFiles.js'
+import { filterVisible, isHiddenPath } from '../utils/hiddenFiles.js'
 import { sortNodes } from '../utils/sortNodes.js'
 import type { SortField, SortOrder } from '../utils/prefs.js'
 import { getPref } from '../utils/prefs.js'
@@ -28,7 +28,7 @@ import {
   treeNodeTestId,
 } from '../utils/keyboardNav.js'
 import { useDelayedFlag } from '../hooks/useDelayedFlag.js'
-import { findNodeByPath, syncColumnStackFromTree } from '../utils/columnStack.js'
+import { findNodeByPath, syncColumnStackFromTree, collapseColumnStackOnHideHidden } from '../utils/columnStack.js'
 
 
 /** 列预览区按行滚动；滚得动返回 true，已到顶/底返回 false */
@@ -254,6 +254,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   treeRef.current = tree
   const showHiddenRef = useRef(showHidden)
   showHiddenRef.current = showHidden
+  const prevShowHiddenRef = useRef(showHidden)
   const sortFieldRef = useRef(sortField)
   sortFieldRef.current = sortField
   const sortOrderRef = useRef(sortOrder)
@@ -265,6 +266,28 @@ const FolderColumnView: FunctionalComponent<Props> = ({
     if (activeFolderRef) activeFolderRef.current = folder
     onActiveFolderChange?.(folder)
   }, [columnStack, rootNode, activeFolderRef, onActiveFolderChange])
+
+  // 关掉显示隐藏：列栈含隐藏目录则退回列根，隐藏文件的选中/预览一并丢掉
+  useEffect(() => {
+    const prev = prevShowHiddenRef.current
+    prevShowHiddenRef.current = showHidden
+    if (!(prev && !showHidden)) return
+    setColumnStack((stack) => collapseColumnStackOnHideHidden(stack, rootNodeRef.current))
+    setSelectedInCol((sel) => {
+      const next: Record<number, string> = {}
+      let changed = false
+      for (const [k, v] of Object.entries(sel)) {
+        if (isHiddenPath(v)) {
+          changed = true
+          continue
+        }
+        next[Number(k)] = v
+      }
+      return changed ? next : sel
+    })
+    setPreview((p) => (p && isHiddenPath(p.node.path) ? null : p))
+    setPreviewFocus(false)
+  }, [showHidden])
 
   // 面包屑：截断到指定目录（含列根 = 只留一列）
   useEffect(() => {

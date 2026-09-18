@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { FileNode } from '../../types.js'
-import { syncColumnStackFromTree } from './columnStack.ts'
+import { collapseColumnStackOnHideHidden, syncColumnStackFromTree } from './columnStack.ts'
 
 function folder(path: string, children?: FileNode[]): FileNode {
   const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path || 'root'
@@ -10,6 +10,27 @@ function folder(path: string, children?: FileNode[]): FileNode {
 function file(path: string): FileNode {
   return { name: path.slice(path.lastIndexOf('/') + 1), type: 'file', path }
 }
+
+test('collapseColumnStackOnHideHidden retreats drilled hidden folders to column root', () => {
+  const hidden = folder('.agents', [file('.agents/notes.md')])
+  const root = folder('', [hidden, folder('docs')])
+  const prev = [root, hidden]
+  const next = collapseColumnStackOnHideHidden(prev, root)
+  expect(next.map((n) => n.path)).toEqual([''])
+})
+
+test('collapseColumnStackOnHideHidden keeps a fully visible column stack', () => {
+  const docs = folder('docs', [file('docs/a.md')])
+  const root = folder('', [docs])
+  const prev = [root, docs]
+  expect(collapseColumnStackOnHideHidden(prev, root)).toBe(prev)
+})
+
+test('collapseColumnStackOnHideHidden leaves a hidden column root for the outer view to reset', () => {
+  const hiddenRoot = folder('.agents', [file('.agents/notes.md')])
+  const prev = [hiddenRoot]
+  expect(collapseColumnStackOnHideHidden(prev, hiddenRoot)).toBe(prev)
+})
 
 test('sync keeps drilled columns when virtual root path is empty and tree refreshes', () => {
   const nested = folder('docs', [file('docs/a.md')])

@@ -195,8 +195,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     }
   }
 
-  // 隐藏文件显隐：与 usePref 等价，但首屏若 URL 含隐藏段则同步打开开关，
-  // 使首轮 tree/stat/file 即带 showHidden=1（避免先 404 再重拉）。
+  // 隐藏文件显隐：与 usePref 等价；直链含隐藏段时同步打开开关，
+  // 让首轮列表就带上 showHidden=1，树和面包屑能看见当前位置。
   const [showHidden, setShowHiddenState] = useState(() => {
     revealHiddenForPath(stripPrefix(window.location.pathname))
     return getShowHidden()
@@ -262,6 +262,17 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
       setHasNavHistory(stack.length - 1 > 0)
     }
   }, [selectFile, loadChildren, urlPrefix])
+
+  // 关掉「显示隐藏」时：当前选中/URL 仍在隐藏路径，退到工作区根
+  const prevShowHiddenRef = useRef(showHidden)
+  useEffect(() => {
+    const prev = prevShowHiddenRef.current
+    prevShowHiddenRef.current = showHidden
+    if (!(prev && !showHidden)) return
+    const path = selectedNode?.path || stripPrefix(window.location.pathname)
+    if (!path || !isHiddenPath(path)) return
+    handleSelect(makeRootNode(tree, dirName))
+  }, [showHidden, handleSelect, selectedNode, tree, dirName])
 
   // SSE 静默重载：返回是否真的重载了（self-save 窗口内会被抑制），
   // ContentArea 据此决定是否还要恢复滚动位置

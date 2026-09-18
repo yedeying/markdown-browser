@@ -1,4 +1,5 @@
 import type { FileNode } from '../../types.js'
+import { isHiddenPath } from './hiddenFiles.js'
 
 export function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
   for (const n of nodes) {
@@ -58,4 +59,18 @@ export function syncColumnStackFromTree(
     return prev
   }
   return next
+}
+
+/**
+ * 关闭「显示隐藏」时：列栈只要含隐藏目录，整段钻入作废，退回列根。
+ * 列根本身是隐藏目录时原样返回，由外层把选中项退到工作区根。
+ */
+export function collapseColumnStackOnHideHidden(
+  stack: FileNode[],
+  rootNode: FileNode,
+): FileNode[] {
+  if (!stack.some((n) => isHiddenPath(n.path))) return stack
+  if (isHiddenPath(rootNode.path)) return stack
+  if (stack.length === 1 && stack[0].path === rootNode.path) return stack
+  return [rootNode]
 }
