@@ -1125,6 +1125,10 @@
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  /* .folder-view 的 user-select:none 是为文件列表框选准备的，
+     会一路继承到这里，让预览内容选不中 —— 预览区是阅读内容，要能复制 */
+  user-select: text;
+  -webkit-user-select: text;
 }
 .col-preview-panel.kb-focus {
   outline: 2px solid var(--accent);
@@ -1134,6 +1138,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  user-select: none;
+  -webkit-user-select: none;
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
