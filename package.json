@@ -1,6 +1,6 @@
 {
   "name": "vmd",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Markdown preview tool with directory browser and live editing",
   "type": "module",
   "scripts": {
