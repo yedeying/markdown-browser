@@ -111,34 +111,33 @@ test('2f: hidden files toggle', async ({ page }) => {
   await expect(page.locator('[data-testid="folder-list"]')).not.toContainText('.hidden-note.md')
 })
 
-test('2f-server: the API itself hides dotfiles unless showHidden=1', async ({ request }) => {
-  // 客户端过滤不算数：默认响应里根本不能出现点路径，否则任何客户端
-  // （curl / 老版本前端）都能拿到 .docker/config.json 之类的文件。
+test('2f-server: listings hide dotfiles unless showHidden=1, but reads never 404', async ({ request }) => {
+  // 列举默认不含点路径：否则任何客户端（curl / 老前端）都能顺着列表
+  // 摸到 .docker/config.json 之类的文件。
   const listing = await request.get('/api/files?path=&depth=3')
   expect(listing.ok()).toBeTruthy()
   const listingText = await listing.text()
   expect(listingText).not.toContain('.hidden-note.md')
   expect(listingText).not.toContain('.private')
   expect(listingText).toContain('README.md')
-
-  expect((await request.get('/api/files?path=.private&depth=1')).status()).toBe(404)
-  expect((await request.get('/api/file/.hidden-note.md')).status()).toBe(404)
-  expect((await request.get('/api/file/.private/plain-name.md')).status()).toBe(404)
   expect(await (await request.get('/api/search?q=plain-name&type=name')).json()).toEqual([])
 
-  // 显式开启后同样的请求可用
+  // 显式开启后同样的列举可用
   const shownListing = await request.get('/api/files?path=&depth=3&showHidden=1')
   expect(await shownListing.text()).toContain('.hidden-note.md')
-  expect((await request.get('/api/file/.private/plain-name.md?showHidden=1')).status()).toBe(200)
   const shownSearch = await request.get('/api/search?q=plain-name&type=name&showHidden=1')
   expect((await shownSearch.json() as unknown[]).length).toBeGreaterThan(0)
+
+  // 点名要某个路径时不该 404 —— 标记只管「列什么」
+  expect((await request.get('/api/files?path=.private&depth=1')).status()).toBe(200)
+  expect((await request.get('/api/file/.hidden-note.md')).status()).toBe(200)
+  expect((await request.get('/api/file/.private/plain-name.md')).status()).toBe(200)
 })
 
 test('2f-server: opening a hidden file still works once the toggle is on', async ({ page }) => {
   await page.goto('/')
   await page.click('[data-testid="toggle-hidden-files"]')
 
-  // 树是重新从服务端拉的（不是本地过滤），点开后内容请求也必须带上 showHidden=1
   await page.click('[data-testid="tree-node-.hidden-note.md"]')
   await expect(page.locator('[data-testid="markdown-preview"]')).toContainText('Hidden Note')
 })

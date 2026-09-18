@@ -17,7 +17,8 @@ export function isHiddenPath(path: string): boolean {
 
 /**
  * 路径含隐藏段时打开「显示隐藏」开关（持久化 pref）。
- * 与用户手动开关并集：只要进到隐藏路径就打开，便于直链 /api/stat|/api/file 带上 showHidden=1。
+ * 与用户手动开关并集：直链进隐藏路径时打开，列表才会带上 showHidden=1，
+ * 树和面包屑才能看见当前位置。
  * @returns 调用后 showHidden 是否为 true
  */
 export function revealHiddenForPath(path: string | null | undefined): boolean {

@@ -191,14 +191,13 @@ test('ordinary file management still works', async () => {
 // 读取：挂载点路径本身就是敏感信息
 // ============================================================
 
-test('GET /api/file refuses the reserved config file even with showHidden=1', async () => {
+test('GET /api/file refuses the reserved config file', async () => {
   expect((await app.request(`/api/file/${CONFIG}`)).status).toBe(404)
-  expect((await app.request(`/api/file/${CONFIG}?showHidden=1`)).status).toBe(404)
-  expect((await app.request('/api/file/.vmd-shares.json?showHidden=1')).status).toBe(404)
+  expect((await app.request('/api/file/.vmd-shares.json')).status).toBe(404)
 })
 
-test('GET /api/asset refuses the reserved config file even with showHidden=1', async () => {
-  expect((await app.request(`/api/asset/${CONFIG}?showHidden=1`)).status).toBe(404)
+test('GET /api/asset refuses the reserved config file', async () => {
+  expect((await app.request(`/api/asset/${CONFIG}`)).status).toBe(404)
 })
 
 test('the reserved config file is never listed, even with showHidden=1', async () => {

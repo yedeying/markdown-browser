@@ -74,7 +74,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1073741824).toFixed(1)}G`
 }
 
-/** 请求是否显式要求包含点文件：仅 ?showHidden=1，其它一切取值都按“不显示”处理 */
+/** 列举类请求是否要求包含点文件：仅 ?showHidden=1，其它一切取值都按“不显示”处理 */
 export function wantsHidden(showHiddenParam: string | undefined): boolean {
   return showHiddenParam === '1'
 }
@@ -86,7 +86,9 @@ export function hasHiddenSegment(relPath: string): boolean {
 
 /**
  * 读取单层目录（不递归）
- * 返回的 FileNode.path 是相对于 base 的路径
+ * 返回的 FileNode.path 是相对于 base 的路径。
+ * 点文件默认不出现在列举结果里（?showHidden=1 才列出）；
+ * 这只影响“列什么”，不影响“能不能读”——直接读某个点路径始终允许。
  */
 function listDir(dir: string, base: string, showHidden: boolean): FileNode[] {
   const t0 = nowMs()
@@ -106,8 +108,6 @@ function listDir(dir: string, base: string, showHidden: boolean): FileNode[] {
   for (const name of entries) {
     // 服务端托管文件不属于用户内容，showHidden 也不该把它露出来
     if (isReservedFilename(name)) continue
-    // 默认不返回点文件/点文件夹：客户端必须显式带 ?showHidden=1 才能看到，
-    // 否则 ~/.docker/config.json 之类的敏感文件会对所有客户端可见（且可经 /api/file 读取）。
     if (!showHidden && name.startsWith('.')) {
       skippedHidden++
       continue
@@ -300,18 +300,13 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   // 兼容两种模式：
   //   1. 无参数 / depth 省略  → 兼容老客户端，返回最大深度 3 层
   //   2. ?path=<rel>&depth=1 → 懒加载单层
-  // 点文件仅在 ?showHidden=1 时列出（默认既不列出也不向下递归）
+  // 点文件仅在 ?showHidden=1 时列出；显式指定 path 为点目录时照常返回其内容
   app.get('/api/files', (c) => {
     const t0 = nowMs()
     const relPath = (c.req.query('path') || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
     const depthParam = c.req.query('depth')
     const hasLazyParams = c.req.query('path') !== undefined || depthParam !== undefined
     const showHidden = wantsHidden(c.req.query('showHidden'))
-
-    // 未开启显示隐藏文件时，连点目录本身也不可列举
-    if (!showHidden && hasHiddenSegment(relPath)) {
-      return c.json({ error: 'Not found' }, 404)
-    }
 
     // 路径越界检查
     const targetDir = relPath ? join(basePath, relPath) : basePath
@@ -353,15 +348,11 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
   // GET /api/stat?path= — 判断路径是文件还是目录（深链用，避免把目录当文件读）
   app.get('/api/stat', (c) => {
     const relPath = (c.req.query('path') || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-    const showHidden = wantsHidden(c.req.query('showHidden'))
 
     if (!relPath) {
       return c.json({ type: 'folder', path: '', name: basename(basePath) })
     }
     if (hasReservedSegment(relPath)) {
-      return c.json({ error: 'Not found' }, 404)
-    }
-    if (!showHidden && hasHiddenSegment(relPath)) {
       return c.json({ error: 'Not found' }, 404)
     }
 
@@ -399,11 +390,6 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
 
     // 挂载点路径和分享令牌本身就是敏感信息：当作不存在
     if (hasReservedSegment(decoded)) {
-      return c.json({ error: 'File not found' }, 404)
-    }
-
-    // 纵深防御：列表/搜索默认不返回点路径，直接猜路径也读不到
-    if (!wantsHidden(c.req.query('showHidden')) && hasHiddenSegment(decoded)) {
       return c.json({ error: 'File not found' }, 404)
     }
 
@@ -593,10 +579,6 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       return c.json({ error: 'File not found' }, 404)
     }
 
-    if (!wantsHidden(c.req.query('showHidden')) && hasHiddenSegment(decodeURIComponent(relPath))) {
-      return c.json({ error: 'File not found' }, 404)
-    }
-
     try {
       const realBase = realpathSync(basePath)
       const realFile = realpathSync(filePath)
@@ -728,9 +710,6 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       return c.json({ error: '非法路径' }, 400)
     }
     if (hasReservedSegment(relPath) || isUploadStagingPath(relPath)) {
-      return c.json({ error: 'File not found' }, 404)
-    }
-    if (!wantsHidden(c.req.query('showHidden')) && hasHiddenSegment(relPath)) {
       return c.json({ error: 'File not found' }, 404)
     }
     try {

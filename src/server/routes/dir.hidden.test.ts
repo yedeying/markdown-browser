@@ -5,8 +5,8 @@ import { join } from 'path'
 import { createDirRouter, hasHiddenSegment, wantsHidden } from './dir.ts'
 import type { FileNode } from '../../types.ts'
 
-// 点文件默认必须对所有客户端不可见（既不列出、也不可读），
-// 只有显式 ?showHidden=1 时才返回 —— 这个开关由客户端 vmd_show_hidden 偏好驱动。
+// showHidden 只决定「列举时列什么」：列表/搜索默认不含点路径，?showHidden=1 才含。
+// 读取单个路径（file / asset / download / stat）不看这个标记，也不因隐藏而 404。
 
 let base: string
 let app: ReturnType<typeof createDirRouter>['app']
@@ -57,7 +57,9 @@ test('hasHiddenSegment flags any dot segment, not just the file name', () => {
   expect(hasHiddenSegment('')).toBe(false)
 })
 
-test('GET /api/files hides dotfiles and dot-directories by default', async () => {
+// ── 列举：showHidden 决定列什么 ─────────────────────────────
+
+test('GET /api/files omits dotfiles and dot-directories by default', async () => {
   const res = await app.request('/api/files?path=&depth=3')
   expect(res.status).toBe(200)
   const listed = names(await res.json() as FileNode[])
@@ -80,15 +82,6 @@ test('GET /api/files?showHidden=1 lists dotfiles but still honors IGNORE_DIRS', 
   expect(listed).not.toContain('HEAD.md')
 })
 
-test('GET /api/files refuses to list a dot-directory directly when showHidden is off', async () => {
-  const res = await app.request('/api/files?path=.docker&depth=1')
-  expect(res.status).toBe(404)
-
-  const allowed = await app.request('/api/files?path=.docker&depth=1&showHidden=1')
-  expect(allowed.status).toBe(200)
-  expect(names(await allowed.json() as FileNode[])).toContain('config.json')
-})
-
 test('showHidden=1 listing does not poison the default listing cache', async () => {
   await app.request('/api/files?path=&depth=1&showHidden=1')
   const res = await app.request('/api/files?path=&depth=1')
@@ -97,23 +90,11 @@ test('showHidden=1 listing does not poison the default listing cache', async () 
   expect(listed).not.toContain('.docker')
 })
 
-test('GET /api/file/* refuses hidden paths unless showHidden=1', async () => {
-  expect((await app.request('/api/file/.hidden-note.md')).status).toBe(404)
-  expect((await app.request('/api/file/.docker/config.json')).status).toBe(404)
-  // 父目录是点目录也算隐藏
-  expect((await app.request('/api/file/.private/plain-name.md')).status).toBe(404)
-
-  const ok = await app.request('/api/file/.hidden-note.md?showHidden=1')
-  expect(ok.status).toBe(200)
-  expect(await ok.text()).toContain('secret note')
-
-  // 普通文件不受影响
-  expect((await app.request('/api/file/README.md')).status).toBe(200)
-})
-
-test('GET /api/asset/* refuses hidden paths unless showHidden=1', async () => {
-  expect((await app.request('/api/asset/.docker/config.json')).status).toBe(404)
-  expect((await app.request('/api/asset/.docker/config.json?showHidden=1')).status).toBe(200)
+test('explicitly listing a dot-directory works without the flag', async () => {
+  // 已经点名要这个目录了，不该因为「默认隐藏」而 404
+  const res = await app.request('/api/files?path=.docker&depth=1')
+  expect(res.status).toBe(200)
+  expect(names(await res.json() as FileNode[])).toContain('config.json')
 })
 
 test('name search omits hidden paths by default and includes them with showHidden=1', async () => {
@@ -134,4 +115,30 @@ test('content search omits hidden paths by default and includes them with showHi
   const shown = await app.request('/api/search?q=plain-name%20marker&type=content&showHidden=1')
   const shownPaths = (await shown.json() as Array<{ filePath: string }>).map(r => r.filePath)
   expect(shownPaths).toContain('.private/plain-name.md')
+})
+
+// ── 读取单个路径：不看 showHidden，也不因隐藏而 404 ──────────
+
+test('GET /api/file/* serves hidden paths without the flag', async () => {
+  const note = await app.request('/api/file/.hidden-note.md')
+  expect(note.status).toBe(200)
+  expect(await note.text()).toContain('secret note')
+  expect((await app.request('/api/file/.docker/config.json')).status).toBe(200)
+  // 父目录是点目录也照样能读
+  expect((await app.request('/api/file/.private/plain-name.md')).status).toBe(200)
+  expect((await app.request('/api/file/README.md')).status).toBe(200)
+})
+
+test('GET /api/asset/* serves hidden paths without the flag', async () => {
+  expect((await app.request('/api/asset/.docker/config.json')).status).toBe(200)
+})
+
+test('GET /api/download/* serves hidden paths without the flag', async () => {
+  expect((await app.request('/api/download/.hidden-note.md')).status).toBe(200)
+})
+
+test('GET /api/stat resolves hidden paths without the flag', async () => {
+  const res = await app.request('/api/stat?path=.private/plain-name.md')
+  expect(res.status).toBe(200)
+  expect(await res.json()).toMatchObject({ type: 'file', path: '.private/plain-name.md' })
 })

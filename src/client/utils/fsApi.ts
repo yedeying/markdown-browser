@@ -53,9 +53,8 @@ export function getApiPrefix(url: string): string {
 }
 
 /**
- * 给读取类 API 附加 showHidden=1。
- * 服务端默认不列出、也不返回点路径下的内容，所以开启"显示隐藏文件"后
- * 每个读取请求都必须显式带上这个标记。
+ * 给列举类 API（/api/files、/api/search）附加 showHidden=1。
+ * 点路径的直接读取不需要这个标记——服务端只用它决定「列什么」。
  */
 export function withHidden(url: string, showHidden: boolean = getShowHidden()): string {
   if (!showHidden) return url
@@ -87,7 +86,7 @@ export function assetUrl(
   const share = getSharePrefix()
   let url = share
     ? `${share}/api/asset/${encodeURI(path)}`
-    : withHidden(`${getMountPrefix()}/api/asset/${encodeURI(path)}`)
+    : `${getMountPrefix()}/api/asset/${encodeURI(path)}`
 
   const params = new URLSearchParams()
   if (opts?.w && opts.w > 0) params.set('w', String(Math.round(opts.w)))
@@ -134,7 +133,7 @@ export function downloadUrl(path: string): string {
   const share = getSharePrefix()
   if (share) return `${share}/api/download/${encodeURI(path)}`
   const mount = getMountPrefix()
-  return withHidden(`${mount}/api/download/${encodeURI(path)}`)
+  return `${mount}/api/download/${encodeURI(path)}`
 }
 
 /** 生成 SSE watch URL */
@@ -166,7 +165,7 @@ export async function fetchFilesTree(
 /** 判断路径是文件还是目录（深链恢复用） */
 export async function fetchPathStat(path: string): Promise<PathStat | null> {
   const q = `/api/stat?path=${encodeURIComponent(path)}`
-  const res = await apiFetch(withHidden(q))
+  const res = await apiFetch(q)
   if (!res.ok) return null
   return await res.json() as PathStat
 }

@@ -9,7 +9,7 @@ import { patchChildren } from '../utils/treePatch.js'
  * 首次加载根目录 1 层；文件夹展开时再按需 fetch 子节点。
  * tree-change SSE 事件携带 affectedPath 时只失效相关子树。
  *
- * showHidden 变化时整棵树重新拉取：服务端默认不返回点文件，
+ * showHidden 变化时整棵树重新拉取：服务端列表默认不含点文件，
  * 光靠客户端过滤是拿不到隐藏节点的。
  */
 export function useFileTree(showHidden = false) {
@@ -164,7 +164,7 @@ export function useFileTree(showHidden = false) {
   }, [fetchLevel, loadChildren])
 
   useEffect(() => {
-    refresh()
+    void refresh()
   }, [showHidden])
 
   /**

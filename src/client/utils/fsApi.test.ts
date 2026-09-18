@@ -1,7 +1,8 @@
 import { test, expect, beforeEach } from 'bun:test'
 import { assetUrl, displayAssetUrl, withHidden } from './fsApi.ts'
 
-// 服务端默认不返回点文件，读取类 API 必须显式带上 showHidden=1。
+// showHidden 只加在列举类 API 上；读取单个路径不需要它。
+
 class MemoryStorage {
   private store = new Map<string, string>()
   getItem(key: string): string | null {
@@ -24,12 +25,11 @@ beforeEach(() => {
 
 test('withHidden leaves the url untouched when hidden files are off', () => {
   expect(withHidden('/api/files?path=&depth=1', false)).toBe('/api/files?path=&depth=1')
-  expect(withHidden('/api/file/notes/a.md', false)).toBe('/api/file/notes/a.md')
 })
 
 test('withHidden appends the flag with the right separator', () => {
   expect(withHidden('/api/files?path=&depth=1', true)).toBe('/api/files?path=&depth=1&showHidden=1')
-  expect(withHidden('/api/file/notes/a.md', true)).toBe('/api/file/notes/a.md?showHidden=1')
+  expect(withHidden('/api/search', true)).toBe('/api/search?showHidden=1')
 })
 
 test('withHidden falls back to the stored vmd_show_hidden preference', () => {
@@ -46,12 +46,12 @@ test('displayAssetUrl forces webp for heic/heif', () => {
   expect(displayAssetUrl('a.png')).toBe('/api/asset/a.png')
 })
 
-test('assetUrl appends w/fmt query params after withHidden', () => {
+test('assetUrl appends w/fmt query params and never carries showHidden', () => {
   expect(assetUrl('pics/a.png')).toBe('/api/asset/pics/a.png')
   expect(assetUrl('pics/a.png', { w: 400 })).toBe('/api/asset/pics/a.png?w=400')
   localStorage.setItem('vmd_show_hidden', '1')
   expect(assetUrl('pics/a.png', { w: 400, fmt: 'webp' })).toBe(
-    '/api/asset/pics/a.png?showHidden=1&w=400&fmt=webp',
+    '/api/asset/pics/a.png?w=400&fmt=webp',
   )
 })
 
