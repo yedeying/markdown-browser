@@ -116,6 +116,29 @@ export function mustTranscodeForBrowser(ext: string): boolean {
   return e === '.heic' || e === '.heif'
 }
 
+/**
+ * 可选缩放/换格式（?w= / ?fmt=）是否启用。
+ * Docker/NAS 默认关：libvips 转码会把弱机打成 502。
+ * VMD_IMAGE_TRANSFORM=1/0 可覆盖。HEIC/HEIF 不受此开关影响。
+ */
+export function optionalImageTransformEnabled(): boolean {
+  const raw = process.env.VMD_IMAGE_TRANSFORM?.trim().toLowerCase()
+  if (raw === '0' || raw === 'false' || raw === 'off') return false
+  if (raw === '1' || raw === 'true' || raw === 'on') return true
+  return process.env.DOCKER_CONTAINER !== 'true' && !process.env.KUBERNETES_SERVICE_HOST
+}
+
+/** 这条 asset 请求要不要进 sharp：HEIC 必转，其余看可选开关 + 查询参数 */
+export function shouldTransformAsset(
+  ext: string,
+  explicitFmt: OutputFormat | null,
+  explicitW: number,
+): boolean {
+  if (mustTranscodeForBrowser(ext)) return true
+  if (!optionalImageTransformEnabled()) return false
+  return explicitFmt !== null || explicitW > 0
+}
+
 /** 按源扩展名 + 目标格式确定编码（.jpg 只降级 jpeg，不做 avif/webp） */
 export function fmtForExt(ext: string, requested: OutputFormat): OutputFormat {
   const e = ext.toLowerCase()

@@ -64,6 +64,50 @@ describe('isTranscodable / mustTranscodeForBrowser', () => {
   })
 })
 
+describe('optionalImageTransformEnabled / shouldTransformAsset', () => {
+  const envKeys = ['VMD_IMAGE_TRANSFORM', 'DOCKER_CONTAINER', 'KUBERNETES_SERVICE_HOST'] as const
+  const saved: Record<string, string | undefined> = {}
+
+  const snapshot = () => {
+    for (const k of envKeys) saved[k] = process.env[k]
+  }
+  const restore = () => {
+    for (const k of envKeys) {
+      if (saved[k] === undefined) delete process.env[k]
+      else process.env[k] = saved[k]
+    }
+  }
+  const clear = () => {
+    for (const k of envKeys) delete process.env[k]
+  }
+
+  test('Docker defaults off; VMD_IMAGE_TRANSFORM overrides; HEIC still transforms', async () => {
+    const { optionalImageTransformEnabled, shouldTransformAsset } = await import('./image-transform.js')
+    snapshot()
+    try {
+      clear()
+      expect(optionalImageTransformEnabled()).toBe(true)
+      expect(shouldTransformAsset('.jpg', 'webp', 1200)).toBe(true)
+
+      process.env.DOCKER_CONTAINER = 'true'
+      expect(optionalImageTransformEnabled()).toBe(false)
+      expect(shouldTransformAsset('.jpg', 'webp', 1200)).toBe(false)
+      expect(shouldTransformAsset('.heic', 'webp', 0)).toBe(true)
+
+      process.env.VMD_IMAGE_TRANSFORM = '1'
+      expect(optionalImageTransformEnabled()).toBe(true)
+      expect(shouldTransformAsset('.jpg', 'webp', 1200)).toBe(true)
+
+      process.env.VMD_IMAGE_TRANSFORM = '0'
+      delete process.env.DOCKER_CONTAINER
+      expect(optionalImageTransformEnabled()).toBe(false)
+      expect(shouldTransformAsset('.png', null, 400)).toBe(false)
+    } finally {
+      restore()
+    }
+  })
+})
+
 describe('transformImage', () => {
   test('输出尺寸不超过 maxWidth（fit:inside 不放大小图）', async () => {
     const small = await sharp({ create: { width: 100, height: 50, channels: 3, background: '#111' } }).png().toBuffer()

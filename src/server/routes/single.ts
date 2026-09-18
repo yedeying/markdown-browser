@@ -16,6 +16,7 @@ import {
   fmtForExt,
   isTranscodable,
   mustTranscodeForBrowser,
+  shouldTransformAsset,
   NON_TRANSCODABLE_IMAGE_EXTS,
   DEFAULT_MAX_WIDTH,
 } from '../image-transform.js'
@@ -128,7 +129,7 @@ export function createSingleRouter(filePath: string, distPath: string, authConfi
       if (isTranscodableImage(ext) && !NON_TRANSCODABLE_IMAGE_EXTS.has(ext)) {
         const explicitFmt = normalizeFmtParam(c.req.query('fmt'))
         const explicitW = normalizeWidthParam(c.req.query('w'))
-        if (mustTranscodeForBrowser(ext) || explicitFmt || explicitW > 0) {
+        if (shouldTransformAsset(ext, explicitFmt, explicitW)) {
           const fmt = explicitFmt ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
           const maxWidth = explicitW || DEFAULT_MAX_WIDTH
           const stat = statSync(assetPath)

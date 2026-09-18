@@ -29,7 +29,7 @@ COPY --from=builder /app/dist ./dist
 # 默认工作区（多挂载模式读取 .vmd-config.json）
 RUN mkdir -p /workspace
 
-# 标记 Docker 环境，禁用浏览器自启
+# 标记 Docker 环境：禁用浏览器自启；可选图片转码默认关闭（NAS 扛不住 sharp）
 ENV DOCKER_CONTAINER=true
 
 # 暴露端口

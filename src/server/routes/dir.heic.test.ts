@@ -47,6 +47,26 @@ test('GET /api/asset PNG without w/fmt still passthroughs', async () => {
   expect(Buffer.from(await res.arrayBuffer()).equals(pngBuf)).toBe(true)
 })
 
+test('GET /api/asset PNG with w/fmt transcodes locally but passthroughs in Docker', async () => {
+  const local = await app.request('/api/asset/plain.png?w=1200&fmt=webp')
+  expect(local.status).toBe(200)
+  expect(local.headers.get('Content-Type')).toBe('image/webp')
+  expect(local.headers.get('X-Vmd-Image-Transform')).toBeTruthy()
+
+  const prev = process.env.DOCKER_CONTAINER
+  process.env.DOCKER_CONTAINER = 'true'
+  try {
+    const docker = await app.request('/api/asset/plain.png?w=1200&fmt=webp')
+    expect(docker.status).toBe(200)
+    expect(docker.headers.get('Content-Type')).toBe('image/png')
+    expect(docker.headers.get('X-Vmd-Image-Transform')).toBeNull()
+    expect(Buffer.from(await docker.arrayBuffer()).equals(pngBuf)).toBe(true)
+  } finally {
+    if (prev === undefined) delete process.env.DOCKER_CONTAINER
+    else process.env.DOCKER_CONTAINER = prev
+  }
+})
+
 test('GET /api/asset undecodable HEIC is not 200 image/heic', async () => {
   const res = await app.request('/api/asset/broken.heic', {
     headers: { Accept: 'image/webp,image/*' },
