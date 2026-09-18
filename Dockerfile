@@ -13,8 +13,9 @@ RUN bun install --frozen-lockfile
 # 前端构建（单独 RUN 层，减少峰值内存）
 RUN bun x vite build
 
-# 后端构建
-RUN bun build src/cli.ts --outdir dist --target bun
+# 后端构建：与 package.json 的 build:server 一致，
+# 把 heic-decode / libheif-js 留在 node_modules，避免把 wasm 胶水打进 cli.js
+RUN bun run build:server
 
 # 多阶段构建：stage 2 - 运行阶段（slim 基础镜像）
 FROM oven/bun:1.3.11-slim
