@@ -108,6 +108,17 @@ describe('optionalImageTransformEnabled / shouldTransformAsset', () => {
   })
 })
 
+describe('transformMaxWidth', () => {
+  test('HEIC without ?w= stays full size; optional formats keep the 1600 cap', async () => {
+    const { transformMaxWidth, DEFAULT_MAX_WIDTH } = await import('./image-transform.js')
+    expect(transformMaxWidth('.heic', 0)).toBe(0)
+    expect(transformMaxWidth('.HEIF', 0)).toBe(0)
+    expect(transformMaxWidth('.heic', 1200)).toBe(1200)
+    expect(transformMaxWidth('.png', 0)).toBe(DEFAULT_MAX_WIDTH)
+    expect(transformMaxWidth('.jpg', 400)).toBe(400)
+  })
+})
+
 describe('transformImage', () => {
   test('输出尺寸不超过 maxWidth（fit:inside 不放大小图）', async () => {
     const small = await sharp({ create: { width: 100, height: 50, channels: 3, background: '#111' } }).png().toBuffer()

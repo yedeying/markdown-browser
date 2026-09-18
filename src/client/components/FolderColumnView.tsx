@@ -7,7 +7,7 @@ import MarkdownPreview from './MarkdownPreview.js'
 import Editor from './Editor.js'
 import StChatPreview from './StChatPreview.js'
 import JsonlLinePreview from './JsonlLinePreview.js'
-import { apiFetch, assetUrl } from '../utils/fsApi.js'
+import { apiFetch, displayAssetUrl } from '../utils/fsApi.js'
 import { filterVisible, isHiddenPath } from '../utils/hiddenFiles.js'
 import { sortNodes } from '../utils/sortNodes.js'
 import type { SortField, SortOrder } from '../utils/prefs.js'
@@ -149,7 +149,7 @@ const ColPreviewImage: FunctionalComponent<{ path: string; name: string }> = ({ 
       )}
       <img
         key={path}
-        src={assetUrl(path, { w: 1200, fmt: 'webp' })}
+        src={displayAssetUrl(path)}
         alt={name}
         class={ready ? 'is-loaded' : ''}
         ref={(el) => {

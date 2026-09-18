@@ -128,6 +128,13 @@ export function optionalImageTransformEnabled(): boolean {
   return process.env.DOCKER_CONTAINER !== 'true' && !process.env.KUBERNETES_SERVICE_HOST
 }
 
+/** 未指定 ?w= 时：HEIC 保持全尺寸，其余可选转码仍有默认上限 */
+export function transformMaxWidth(ext: string, explicitW: number): number {
+  if (explicitW > 0) return explicitW
+  if (mustTranscodeForBrowser(ext)) return 0
+  return DEFAULT_MAX_WIDTH
+}
+
 /** 这条 asset 请求要不要进 sharp：HEIC 必转，其余看可选开关 + 查询参数 */
 export function shouldTransformAsset(
   ext: string,

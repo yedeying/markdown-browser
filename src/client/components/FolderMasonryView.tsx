@@ -4,7 +4,7 @@ import type { FileNode } from '../../types.js'
 import { getFileType } from '../utils/fileType.js'
 import { useLongPress } from '../hooks/useLongPress.js'
 import type { SelectionProps } from './FolderView.js'
-import { assetUrl, fetchAssetBlob } from '../utils/fsApi.js'
+import { assetUrl, masonryAssetUrl } from '../utils/fsApi.js'
 import { getNodeIconName } from '../utils/nodeIcon.js'
 import Icon from './ui/Icon.js'
 import { useMarqueeSelect } from '../hooks/useMarqueeSelect.js'
@@ -31,37 +31,21 @@ import { usePref } from '../hooks/usePref.js'
 /** 后台解码并发：不依赖视口交叉（preload 区被 overflow 裁剪，IO 永远不触发） */
 const masonryImagePreloadPool = createAsyncPool(20)
 
-/** 点播放时中止进行中的缩略图，把带宽让给视频 */
-let backgroundMediaAbort = new AbortController()
+/** 点播放时中止进行中的缩略图解码，把带宽让给视频 */
+const liveDecodeImgs = new Set<HTMLImageElement>()
 
 function beginPreviewBandwidthPriority(): void {
-  backgroundMediaAbort.abort()
-  backgroundMediaAbort = new AbortController()
+  for (const img of liveDecodeImgs) {
+    img.onload = null
+    img.onerror = null
+    img.src = ''
+  }
+  liveDecodeImgs.clear()
   masonryImagePreloadPool.pause()
 }
 
 function endPreviewBandwidthPriority(): void {
   masonryImagePreloadPool.resume()
-}
-
-function masonryImageCacheKey(
-  path: string,
-  quality: MasonryImageQualityPref,
-  thumbWidth: number,
-): string {
-  return quality === 'original' ? `${path}|orig` : `${path}|${thumbWidth}`
-}
-
-function fetchMasonryImageBlob(
-  path: string,
-  quality: MasonryImageQualityPref,
-  thumbWidth: number,
-  signal: AbortSignal,
-): Promise<Blob> {
-  if (quality === 'original') {
-    return fetchAssetBlob(path, { signal })
-  }
-  return fetchAssetBlob(path, { w: thumbWidth, fmt: 'webp', signal })
 }
 
 interface Props {
@@ -89,9 +73,6 @@ interface TileProps {
   /** 视口外延后加载；首屏若干张 eager */
   eager: boolean
   thumbWidth: number
-  thumbCache: Map<string, string>
-  thumbInflight: Map<string, Promise<string>>
-  bgGen: number
   imageQuality: MasonryImageQualityPref
   onAspectRatio: (path: string, ratio: number) => void
   onLoadError: (path: string) => void
@@ -103,17 +84,11 @@ interface TileProps {
   selectionProps: SelectionProps
 }
 
-function isAbortError(e: unknown): boolean {
-  return e instanceof DOMException && e.name === 'AbortError'
-}
-
 /** 后台解码：不占位、不展示，就绪后由主瀑布流接入（已加载优先且无闪跳） */
 const MasonryPreload: FunctionalComponent<{
   node: FileNode
   eager: boolean
   thumbWidth: number
-  thumbCache: Map<string, string>
-  thumbInflight: Map<string, Promise<string>>
   bgGen: number
   imageQuality: MasonryImageQualityPref
   onAspectRatio: (path: string, ratio: number) => void
@@ -123,8 +98,6 @@ const MasonryPreload: FunctionalComponent<{
   node,
   eager,
   thumbWidth,
-  thumbCache,
-  thumbInflight,
   bgGen,
   imageQuality,
   onAspectRatio,
@@ -146,21 +119,9 @@ const MasonryPreload: FunctionalComponent<{
 
   useEffect(() => {
     if (!isImage) return
-    const cacheKey = masonryImageCacheKey(node.path, imageQuality, thumbWidth)
-    if (thumbCache.has(cacheKey)) {
-      const url = thumbCache.get(cacheKey)!
-      const img = new Image()
-      img.onload = () => {
-        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-          onAspectRatioRef.current(node.path, img.naturalWidth / img.naturalHeight)
-        } else onLoadErrorRef.current(node.path)
-      }
-      img.onerror = () => onLoadErrorRef.current(node.path)
-      img.src = url
-      return
-    }
-
+    const src = masonryAssetUrl(node.path, imageQuality, thumbWidth)
     let cancelled = false
+    const img = new Image()
 
     void (async () => {
       await masonryImagePreloadPool.acquire(eager)
@@ -168,50 +129,35 @@ const MasonryPreload: FunctionalComponent<{
         masonryImagePreloadPool.release()
         return
       }
+      liveDecodeImgs.add(img)
       try {
-        let url = thumbCache.get(cacheKey)
-        if (!url) {
-          let inflight = thumbInflight.get(cacheKey)
-          if (!inflight) {
-            const signal = backgroundMediaAbort.signal
-            inflight = fetchMasonryImageBlob(node.path, imageQuality, thumbWidth, signal)
-              .then((blob) => {
-                const objectUrl = URL.createObjectURL(blob)
-                thumbCache.set(cacheKey, objectUrl)
-                thumbInflight.delete(cacheKey)
-                return objectUrl
-              })
-              .catch((err) => {
-                thumbInflight.delete(cacheKey)
-                throw err
-              })
-            thumbInflight.set(cacheKey, inflight)
-          }
-          url = await inflight
-        }
-        if (cancelled) return
-        const img = new Image()
         await new Promise<void>((resolve, reject) => {
           img.onload = () => resolve()
           img.onerror = () => reject(new Error('decode failed'))
-          img.src = url!
+          img.src = src
         })
         if (cancelled) return
         if (img.naturalWidth > 0 && img.naturalHeight > 0) {
           onAspectRatioRef.current(node.path, img.naturalWidth / img.naturalHeight)
         } else onLoadErrorRef.current(node.path)
-      } catch (e) {
-        if (cancelled || isAbortError(e)) return
+      } catch {
+        // 预览抢带宽会把 src 清空；cleanup 也会。这两种都不是加载失败
+        if (cancelled || !img.src) return
         onLoadErrorRef.current(node.path)
       } finally {
+        liveDecodeImgs.delete(img)
         masonryImagePreloadPool.release()
       }
     })()
 
     return () => {
       cancelled = true
+      img.onload = null
+      img.onerror = null
+      img.src = ''
+      liveDecodeImgs.delete(img)
     }
-  }, [isImage, node.path, thumbWidth, thumbCache, thumbInflight, eager, bgGen, imageQuality])
+  }, [isImage, node.path, thumbWidth, eager, bgGen, imageQuality])
 
   // 仅占位挂载；实际加载走并发池，不依赖 IntersectionObserver
   return <div class="masonry-preload-sentinel" data-path={node.path} />
@@ -226,9 +172,6 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
   videoError,
   eager,
   thumbWidth,
-  thumbCache,
-  thumbInflight,
-  bgGen,
   imageQuality,
   onAspectRatio,
   onLoadError,
@@ -247,7 +190,6 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
     onLongPress,
   } = selectionProps
 
-  const [blobSrc, setBlobSrc] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(() => aspectRatio != null && aspectRatio > 0)
   const [imgError, setImgError] = useState(false)
   const [previewing, setPreviewing] = useState(false)
@@ -346,95 +288,13 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
     onPreviewEndRef.current(node.path)
   }, [])
 
-  // 缩略图：目录级 cache + in-flight 去重。预览视频时走同一 abort/池暂停，避免抢带宽。
+  const thumbSrc = isImage ? masonryAssetUrl(node.path, imageQuality, thumbWidth) : null
+
   useEffect(() => {
-    if (!isImage || imgError) return
-
-    const cacheKey = masonryImageCacheKey(node.path, imageQuality, thumbWidth)
-    const cached = thumbCache.get(cacheKey)
-    if (cached) {
-      setBlobSrc(cached)
-      setLoaded(true)
-      return
-    }
-
-    let cancelled = false
-    let started = false
-    let io: IntersectionObserver | null = null
-    let heldPool = false
-
-    const start = () => {
-      if (started || cancelled) return
-      started = true
-      void (async () => {
-        await masonryImagePreloadPool.acquire(eager)
-        heldPool = true
-        if (cancelled) {
-          masonryImagePreloadPool.release()
-          heldPool = false
-          return
-        }
-        try {
-          let url = thumbCache.get(cacheKey)
-          if (!url) {
-            let inflight = thumbInflight.get(cacheKey)
-            if (!inflight) {
-              const signal = backgroundMediaAbort.signal
-              inflight = fetchMasonryImageBlob(node.path, imageQuality, thumbWidth, signal)
-                .then((blob) => {
-                const objectUrl = URL.createObjectURL(blob)
-                thumbCache.set(cacheKey, objectUrl)
-                thumbInflight.delete(cacheKey)
-                return objectUrl
-              }).catch((err) => {
-                thumbInflight.delete(cacheKey)
-                throw err
-              })
-              thumbInflight.set(cacheKey, inflight)
-            }
-            url = await inflight
-          }
-          if (cancelled) return
-          setBlobSrc(url)
-        } catch (e) {
-          if (cancelled || isAbortError(e)) return
-          setImgError(true)
-          onLoadErrorRef.current(node.path)
-        } finally {
-          if (heldPool) {
-            masonryImagePreloadPool.release()
-            heldPool = false
-          }
-        }
-      })()
-    }
-
-    if (eager) {
-      start()
-    } else {
-      const el = mediaRef.current
-      if (!el) {
-        start()
-      } else {
-        io = new IntersectionObserver(
-          (entries) => {
-            if (entries.some((en) => en.isIntersecting)) {
-              io?.disconnect()
-              io = null
-              start()
-            }
-          },
-          { rootMargin: '200px 0px' },
-        )
-        io.observe(el)
-      }
-    }
-
-    return () => {
-      cancelled = true
-      io?.disconnect()
-    }
-  }, [isImage, imgError, eager, node.path, thumbWidth, thumbCache, thumbInflight, bgGen, imageQuality])
+    if (!isImage) return
+    setImgError(false)
+    setLoaded(aspectRatio != null && aspectRatio > 0)
+  }, [isImage, node.path, thumbSrc, aspectRatio])
 
   const handleClick = (e: MouseEvent) => {
     touchPreviewGestureRef.current = false
@@ -539,12 +399,13 @@ const MasonryTile: FunctionalComponent<TileProps> = ({
           style={{ aspectRatio: String(mediaRatio) }}
         >
           {!loaded && <div class="masonry-placeholder" aria-hidden="true" />}
-          {blobSrc && (
+          {thumbSrc && (
             <img
-              src={blobSrc}
+              src={thumbSrc}
               alt={node.name}
               class={loaded ? 'is-loaded' : ''}
               decoding="async"
+              loading={eager ? 'eager' : 'lazy'}
               onLoad={(e) => {
                 const img = e.currentTarget
                 if (img.naturalWidth > 0 && img.naturalHeight > 0) {
@@ -651,8 +512,6 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
   const [bgGen, setBgGen] = useState(0)
   const videoSessionRef = useRef<MasonryVideoSession | null>(null)
   const packTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const thumbCacheRef = useRef(new Map<string, string>())
-  const thumbInflightRef = useRef(new Map<string, Promise<string>>())
   const [pack, setPack] = useState<PackSnapshot>({ ratios: {}, failed: {} })
   const pathKey = nodesKey(nodes)
 
@@ -667,10 +526,6 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
       imageQualityBootRef.current = false
       return
     }
-    const cache = thumbCacheRef.current
-    for (const url of cache.values()) URL.revokeObjectURL(url)
-    cache.clear()
-    thumbInflightRef.current.clear()
     setBgGen((g) => g + 1)
     setRatios({})
     setFailed({})
@@ -693,10 +548,6 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
     setVideoFailed({})
     setActivePreviewPath(null)
     endPreviewBandwidthPriority()
-    const cache = thumbCacheRef.current
-    for (const url of cache.values()) URL.revokeObjectURL(url)
-    cache.clear()
-    thumbInflightRef.current.clear()
     const session = new MasonryVideoSession({
       maxConcurrent: 4,
       maxPreviews: 1,
@@ -727,9 +578,6 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
       videoSessionRef.current = null
       session.dispose()
       endPreviewBandwidthPriority()
-      for (const url of thumbCacheRef.current.values()) URL.revokeObjectURL(url)
-      thumbCacheRef.current.clear()
-      thumbInflightRef.current.clear()
     }
   }, [pathKey, coverLoader])
 
@@ -988,9 +836,6 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
                   || !!failed[node.path]
                 }
                 thumbWidth={thumbWidth}
-                thumbCache={thumbCacheRef.current}
-                thumbInflight={thumbInflightRef.current}
-                bgGen={bgGen}
                 imageQuality={imageQuality}
                 onAspectRatio={handleAspectRatio}
                 onLoadError={handleLoadError}
@@ -1028,8 +873,6 @@ const FolderMasonryView: FunctionalComponent<Props> = ({
               node={node}
               eager={eagerPaths.has(node.path)}
               thumbWidth={thumbWidth}
-              thumbCache={thumbCacheRef.current}
-              thumbInflight={thumbInflightRef.current}
               bgGen={bgGen}
               imageQuality={imageQuality}
               onAspectRatio={handleAspectRatio}

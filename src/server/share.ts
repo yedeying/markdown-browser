@@ -22,8 +22,8 @@ import {
   isTranscodable,
   mustTranscodeForBrowser,
   shouldTransformAsset,
+  transformMaxWidth,
   NON_TRANSCODABLE_IMAGE_EXTS,
-  DEFAULT_MAX_WIDTH,
 } from './image-transform.js'
 
 const SHARES_FILE = SHARES_FILENAME
@@ -431,7 +431,7 @@ export function createSharePageRoutes(
         const explicitW = normalizeWidthParam(c.req.query('w'))
         if (shouldTransformAsset(ext, explicitFmt, explicitW)) {
           const fmt = explicitFmt ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
-          const maxWidth = explicitW || DEFAULT_MAX_WIDTH
+          const maxWidth = transformMaxWidth(ext, explicitW)
           const stat = statSync(targetAbs)
           try {
             const result = await transformImage({

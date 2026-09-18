@@ -19,8 +19,8 @@ import {
   isTranscodable,
   mustTranscodeForBrowser,
   shouldTransformAsset,
+  transformMaxWidth,
   NON_TRANSCODABLE_IMAGE_EXTS,
-  DEFAULT_MAX_WIDTH,
 } from '../image-transform.js'
 import { parseBytesRange } from '../http-range.js'
 import { extractVideoPoster } from '../video-poster.js'
@@ -662,7 +662,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         const explicitW = normalizeWidthParam(c.req.query('w'))
         if (shouldTransformAsset(ext, explicitFmt, explicitW)) {
           const fmt = explicitFmt ?? fmtForExt(ext, pickOutputFormat(c.req.header('accept')))
-          const maxWidth = explicitW || DEFAULT_MAX_WIDTH
+          const maxWidth = transformMaxWidth(ext, explicitW)
           const stat = statSync(filePath)
           try {
             const result = await transformImage({

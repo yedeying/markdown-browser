@@ -130,6 +130,46 @@ test('video stays as bottom skeleton until cover settles then shows play button'
   expect(container.querySelector('[data-testid="masonry-skeleton-tile"]')).toBeNull()
 })
 
+test('masonry image tiles use /api/asset src, not blob urls', async () => {
+  const OrigImage = globalThis.Image
+  class FakeImage {
+    onload: ((ev?: Event) => void) | null = null
+    onerror: ((ev?: Event) => void) | null = null
+    naturalWidth = 16
+    naturalHeight = 9
+    set src(_v: string) {
+      queueMicrotask(() => this.onload?.(new Event('load')))
+    }
+  }
+  ;(globalThis as unknown as { Image: typeof Image }).Image =
+    FakeImage as unknown as typeof Image
+
+  const imgNode: FileNode = { name: 'b.jpg', type: 'file', path: 'photos/b.jpg' }
+  try {
+    await act(async () => {
+      render(h(FolderMasonryView, {
+        nodes: [imgNode],
+        currentPath: null,
+        onSelect() {},
+        selectionProps,
+        coverLoader: instantCover,
+      }), container)
+    })
+    await act(async () => {
+      for (let i = 0; i < 40; i++) {
+        if (container.querySelector('.masonry-tile img')) break
+        await new Promise((resolve) => setTimeout(resolve, 15))
+      }
+    })
+    const img = container.querySelector('.masonry-tile img') as HTMLImageElement | null
+    expect(img).not.toBeNull()
+    expect(img!.getAttribute('src')).toBe('/api/asset/photos/b.jpg')
+    expect(img!.getAttribute('src')?.startsWith('blob:')).toBe(false)
+  } finally {
+    ;(globalThis as unknown as { Image: typeof Image }).Image = OrigImage
+  }
+})
+
 test('pending skeletons stay below settled tiles (no holes in the middle)', async () => {
   const imgReady: FileNode = { name: 'b.jpg', type: 'file', path: 'photos/b.jpg' }
   const imgPending: FileNode = { name: 'a.jpg', type: 'file', path: 'photos/a.jpg' }

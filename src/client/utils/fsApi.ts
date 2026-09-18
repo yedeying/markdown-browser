@@ -105,15 +105,25 @@ function isHeicPath(path: string): boolean {
   return ext === '.heic' || ext === '.heif'
 }
 
-/** 浏览器可显示的 asset URL；HEIC/HEIF 强制 fmt=webp */
+/** 浏览器可显示的 asset URL；HEIC/HEIF 只换格式、不缩放 */
 export function displayAssetUrl(
   path: string,
   opts?: { w?: number; fmt?: string },
 ): string {
   if (isHeicPath(path)) {
-    return assetUrl(path, { w: opts?.w, fmt: opts?.fmt ?? 'webp' })
+    return assetUrl(path, { fmt: opts?.fmt ?? 'webp' })
   }
   return assetUrl(path, opts)
+}
+
+/** 瀑布流缩略图：原图质量直出；thumb 带 w/fmt。一律走 img src，不 fetch blob */
+export function masonryAssetUrl(
+  path: string,
+  quality: 'original' | 'thumb',
+  thumbWidth: number,
+): string {
+  if (quality === 'original' || isHeicPath(path)) return displayAssetUrl(path)
+  return displayAssetUrl(path, { w: thumbWidth, fmt: 'webp' })
 }
 
 /** 拉取资源为 Blob（可 Abort）；瀑布流缩略图用，退出视图时取消 in-flight */

@@ -4,7 +4,7 @@ import type { FileNode } from '../../types.js'
 import { getFileType } from '../utils/fileType.js'
 import { useLongPress } from '../hooks/useLongPress.js'
 import type { SelectionProps } from './FolderView.js'
-import { assetUrl } from '../utils/fsApi.js'
+import { displayAssetUrl } from '../utils/fsApi.js'
 import { getNodeIconName } from '../utils/nodeIcon.js'
 import Icon from './ui/Icon.js'
 
@@ -82,7 +82,7 @@ const FolderCard: FunctionalComponent<Props> = ({
       >
         {showThumb ? (
           <img
-            src={assetUrl(node.path, { w: Math.max(thumbSize * 2, 160), fmt: 'webp' })}
+            src={displayAssetUrl(node.path)}
             alt={node.name}
             onError={() => setImgError(true)}
           />

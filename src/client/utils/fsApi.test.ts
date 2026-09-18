@@ -1,5 +1,5 @@
 import { test, expect, beforeEach } from 'bun:test'
-import { assetUrl, displayAssetUrl, withHidden } from './fsApi.ts'
+import { assetUrl, displayAssetUrl, masonryAssetUrl, withHidden } from './fsApi.ts'
 
 // showHidden 只加在列举类 API 上；读取单个路径不需要它。
 
@@ -42,8 +42,15 @@ test('withHidden falls back to the stored vmd_show_hidden preference', () => {
 
 test('displayAssetUrl forces webp for heic/heif', () => {
   expect(displayAssetUrl('a.heic')).toBe('/api/asset/a.heic?fmt=webp')
-  expect(displayAssetUrl('a.HEIF', { w: 800 })).toBe('/api/asset/a.HEIF?w=800&fmt=webp')
+  expect(displayAssetUrl('a.HEIF', { w: 800 })).toBe('/api/asset/a.HEIF?fmt=webp')
   expect(displayAssetUrl('a.png')).toBe('/api/asset/a.png')
+})
+
+test('masonryAssetUrl uses a plain asset URL for original quality and w/fmt for thumbs', () => {
+  expect(masonryAssetUrl('pics/a.png', 'original', 320)).toBe('/api/asset/pics/a.png')
+  expect(masonryAssetUrl('pics/a.png', 'thumb', 320)).toBe('/api/asset/pics/a.png?w=320&fmt=webp')
+  expect(masonryAssetUrl('pics/a.heic', 'original', 320)).toBe('/api/asset/pics/a.heic?fmt=webp')
+  expect(masonryAssetUrl('pics/a.heic', 'thumb', 240)).toBe('/api/asset/pics/a.heic?fmt=webp')
 })
 
 test('assetUrl appends w/fmt query params and never carries showHidden', () => {
