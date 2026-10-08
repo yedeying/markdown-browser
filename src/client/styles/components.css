@@ -398,10 +398,10 @@
   background: var(--accent-soft);
 }
 
-.toc-h1 { padding-left: 8px; font-weight: 600; }
-.toc-h2 { padding-left: 14px; }
-.toc-h3 { padding-left: 20px; }
-.toc-h4 { padding-left: 26px; }
+.toc-list a.toc-h1 { padding-left: 8px; font-weight: 600; }
+.toc-list a.toc-h2 { padding-left: 14px; }
+.toc-list a.toc-h3 { padding-left: 20px; }
+.toc-list a.toc-h4 { padding-left: 26px; }
 
 /* ============================
    Empty State
