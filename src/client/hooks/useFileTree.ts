@@ -109,33 +109,23 @@ export function useFileTree(showHidden = false) {
     if (affectedPath !== undefined) {
       // 从未展开过的目录不必拉取——否则 watch 噪音会打爆 /api/files。
       // 若 affected 自身未加载，改刷最近已加载祖先（上传嵌套目录时常见）。
+      // 首次加载在飞也算已加载：在飞响应可能早于本次变更，必须重拉。
+      // 不得把祖先标成未加载：祖先 children 仍留在 tree 里，列视图不会再懒加载，
+      // 之后祖先自身的 tree-change 又会因“未加载”被跳过，只能整页刷新才看得到新文件。
+      const isLoaded = (p: string) => loadedRef.current.has(p) || inflightRef.current.has(p)
       let reloadPath = affectedPath
-      let shouldReload = loadedRef.current.has(affectedPath)
+      let shouldReload = isLoaded(affectedPath)
       if (!shouldReload) {
         let cur = affectedPath
-        while (true) {
-          if (!cur) {
-            if (loadedRef.current.has('')) {
-              reloadPath = ''
-              shouldReload = true
-            }
-            break
-          }
+        while (cur) {
           const i = cur.lastIndexOf('/')
           cur = i === -1 ? '' : cur.slice(0, i)
-          if (loadedRef.current.has(cur)) {
+          if (isLoaded(cur)) {
             reloadPath = cur
             shouldReload = true
             break
           }
         }
-      }
-      let cur = affectedPath
-      while (true) {
-        loadedRef.current.delete(cur)
-        if (!cur) break
-        const i = cur.lastIndexOf('/')
-        cur = i === -1 ? '' : cur.slice(0, i)
       }
       if (!shouldReload) {
         clientPerfLog('refresh:skip-unloaded', { path: affectedPath || '(root)' })
