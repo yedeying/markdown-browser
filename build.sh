@@ -55,12 +55,12 @@ echo "  ✓ vmd:latest 镜像已构建"
 # Step 4: 重启容器
 echo ""
 echo "[4/4] 重启 Docker 容器..."
-docker-compose down --remove-orphans 2>/dev/null || true
-docker-compose up -d
+docker compose down --remove-orphans 2>/dev/null || true
+docker compose up -d
 
 echo ""
 echo "════════════════════════════════════════"
 echo "  ✓ 部署完成！"
-echo "  访问: http://localhost:8193"
+echo "  访问: http://localhost:8197"
 echo "════════════════════════════════════════"
 echo ""

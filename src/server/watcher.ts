@@ -1,5 +1,5 @@
-import { watch } from 'fs'
-import { dirname } from 'path'
+import { watch, readdirSync } from 'fs'
+import { dirname, join } from 'path'
 import type { WatchEvent } from '../types.js'
 
 type SSEWriter = (data: string) => void
@@ -64,6 +64,87 @@ export function shouldIgnoreWatchPath(filename: string): boolean {
     if (normalized === prefix.replace(/\/$/, '') || normalized.startsWith(prefix)) return true
   }
   return normalized.split('/').some((seg) => WATCH_NOISE_SEGMENTS.has(seg))
+}
+
+/**
+ * 递归 watch 时必须剪掉的目录。
+ *
+ * 背景：`fs.watch(dir, { recursive: true })` 会为树里每个目标占资源 ——
+ * bun 1.3.11 下每个文件/目录各占一个 fd，一个 50 万文件的挂载点（如 NAS 相册
+ * 缩略图缓存）足以把 nofile 打满，进程随之卡死。这里在注册前剪枝：
+ * node_modules / 各类缓存目录 / 相册缩略图索引一律不监听（它们也不该触发
+ * tree-change 广播，WATCH_NOISE_SEGMENTS 已按同样思路过滤事件）。
+ */
+const WATCH_SKIP_DIRS = new Set([
+  ...WATCH_NOISE_SEGMENTS,
+  'dist', 'build', '.next', '.turbo',
+  '@thumbnail', '@exif', '@media_cache', '@version_explorer_cache',
+  '@search', '@tmp', '@appstore', '@ugvault', '@upload', '@FileManager',
+  'lost+found',
+])
+
+/** 递归 watch 的最大深度（再深的目录不订阅，避免巨型树吃光 fd） */
+const MAX_WATCH_DEPTH = 8
+
+interface TreeWatch {
+  close: () => void
+}
+
+/**
+ * 逐层注册非递归 watch 代替 `recursive: true`：
+ * 可以跳过巨型/噪声目录，并按深度上限截断。
+ */
+function watchTree(root: string, onFile: (relPath: string) => void): TreeWatch {
+  const watchers: Array<ReturnType<typeof watch>> = []
+  let closed = false
+
+  const emit = (relDir: string, filename: string | Buffer | null) => {
+    const name = typeof filename === 'string' ? filename : filename?.toString()
+    if (!name) {
+      if (relDir) onFile(relDir)
+      return
+    }
+    onFile(relDir ? `${relDir}/${name}` : name)
+  }
+
+  const walk = (dir: string, relDir: string, depth: number) => {
+    if (closed) return
+    try {
+      const w = watch(dir, { recursive: false }, (_eventType, filename) => emit(relDir, filename))
+      w.on('error', () => { /* ignore symlink / 权限问题 */ })
+      watchers.push(w)
+    } catch {
+      return
+    }
+    if (depth >= MAX_WATCH_DEPTH) return
+    let entries: Array<{ name: string; isDir: boolean }>
+    try {
+      entries = readdirSync(dir, { withFileTypes: true }).map((d) => ({
+        name: d.name,
+        isDir: d.isDirectory(),
+      }))
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (!e.isDir) continue
+      // 点目录（.git/.cache/.npm…）与缓存目录一律不深入
+      if (e.name.startsWith('.') || WATCH_SKIP_DIRS.has(e.name)) continue
+      walk(join(dir, e.name), relDir ? `${relDir}/${e.name}` : e.name, depth + 1)
+    }
+  }
+
+  walk(root, '', 0)
+
+  return {
+    close() {
+      closed = true
+      for (const w of watchers) {
+        try { w.close() } catch { /* ignore */ }
+      }
+      watchers.length = 0
+    },
+  }
 }
 
 export function createWatcher(target: string): FileWatcher {
@@ -148,12 +229,11 @@ export function createDirWatcher(basePath: string): FileWatcher {
     pending.set(normalized, { isMarkdown, timer })
   }
 
-  const watcher = watch(basePath, { recursive: true }, (_eventType, filename) => {
-    if (!filename) return
+  // 逐层 watch（非 recursive:true），跳过 node_modules / 相册缩略图等巨型目录，
+  // 否则 50 万文件的挂载点会把进程 fd 打满（bun 1.3.11 的 recursive watch 每目标 1 fd）
+  const watcher = watchTree(basePath, (filename) => {
     schedule(filename)
   })
-
-  watcher.on('error', () => { /* ignore symlink / 权限问题 */ })
 
   const pingInterval = setInterval(() => {
     broadcast({ type: 'ping' })

@@ -14,6 +14,8 @@ services:
       # 容器内通过 .vmd-config.json 选择工作区内的子目录作为"挂载点"
       # 兼容旧变量 VMD_WORKDIR
       - ${VMD_WORKSPACE:-${VMD_WORKDIR:-/home/private}}:/workspace
+      # /volume2 → 容器 /workspace/volume2，让 vmd 也能浏览 /volume2（2026-08-19 May 添加）
+      - /volume2:/workspace/volume2
     environment:
       DOCKER_CONTAINER: "true"
       TZ: Asia/Shanghai

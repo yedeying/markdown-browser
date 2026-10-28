@@ -2,6 +2,7 @@ import type { Context, Next } from 'hono'
 import type { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import type { AuthConfig } from '../types.js'
+import { createHmac, timingSafeEqual as nodeTimingSafeEqual } from 'node:crypto'
 
 // ============================================================
 // 常量
@@ -37,7 +38,6 @@ function isRateLimited(ip: string): boolean {
   const entry = rateLimitMap.get(ip)
   if (!entry) return false
   if (entry.lockedUntil > 0 && Date.now() < entry.lockedUntil) return true
-  // 锁定已过期，清除
   if (entry.lockedUntil > 0) rateLimitMap.delete(ip)
   return false
 }
@@ -75,63 +75,48 @@ export function generateSigningKey(): Uint8Array {
 }
 
 // ============================================================
-// Cookie 签名与验证
+// Cookie 签名与验证（使用 Node.js crypto 同步 API，避免 Bun crypto.subtle 在 server handler 中卡死）
 // ============================================================
-
-async function getCryptoKey(key: Uint8Array): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    'raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']
-  )
-}
 
 function toBase64url(buf: ArrayBuffer): string {
   return btoa(String.fromCharCode(...new Uint8Array(buf)))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-async function signPayload(payload: string, key: Uint8Array): Promise<string> {
-  const cryptoKey = await getCryptoKey(key)
-  const sig = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(payload))
-  return toBase64url(sig)
+function hmacSign(key: Uint8Array, data: string): string {
+  return toBase64url(createHmac('sha256', Buffer.from(key)).update(data).digest())
 }
 
 /**
  * 时序安全字符串比较（防止时序攻击）
  */
-function timingSafeEqual(a: string, b: string): boolean {
-  const enc = new TextEncoder()
-  const bufA = enc.encode(a)
-  const bufB = enc.encode(b)
-  if (bufA.length !== bufB.length) {
-    // 执行虚假比较避免泄露长度差异的时序信息
-    crypto.timingSafeEqual(bufA, bufA)
-    return false
-  }
-  return crypto.timingSafeEqual(bufA, bufB)
+function timingSafeEqualStr(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  return nodeTimingSafeEqual(new TextEncoder().encode(a), new TextEncoder().encode(b))
 }
 
 /**
  * 生成 Signed Cookie 值
  * 格式：<base64url(payload)>.<hmac-sha256>
  */
-async function createSessionToken(config: AuthConfig): Promise<string> {
+function createSessionToken(config: AuthConfig): string {
   const payload = toBase64url(new TextEncoder().encode(JSON.stringify({ ts: Date.now() })))
-  const sig = await signPayload(payload, config.signingKey)
+  const sig = hmacSign(config.signingKey, payload)
   return `${payload}.${sig}`
 }
 
 /**
  * 验证 Signed Cookie：签名正确 + 未过期
  */
-async function verifySessionToken(token: string, config: AuthConfig): Promise<boolean> {
+function verifySessionToken(token: string, config: AuthConfig): boolean {
   const dotIdx = token.lastIndexOf('.')
   if (dotIdx === -1) return false
 
   const payload = token.slice(0, dotIdx)
   const sig = token.slice(dotIdx + 1)
 
-  const expectedSig = await signPayload(payload, config.signingKey)
-  if (!timingSafeEqual(sig, expectedSig)) return false
+  const expectedSig = hmacSign(config.signingKey, payload)
+  if (!timingSafeEqualStr(sig, expectedSig)) return false
 
   try {
     const json = JSON.parse(
@@ -178,7 +163,7 @@ export function createAuthMiddleware(config: AuthConfig) {
     }
 
     const token = getCookie(c, COOKIE_NAME)
-    if (token && await verifySessionToken(token, config)) {
+    if (token && verifySessionToken(token, config)) {
       return next()
     }
 
@@ -240,7 +225,6 @@ export function createAuthRoutes(app: Hono, config: AuthConfig) {
     if (inputBuf.length === correctBuf.length) {
       isValid = crypto.timingSafeEqual(inputBuf, correctBuf)
     } else {
-      // 执行虚假比较，避免长度差异泄露时序信息
       crypto.timingSafeEqual(correctBuf, correctBuf)
     }
 
@@ -251,7 +235,7 @@ export function createAuthRoutes(app: Hono, config: AuthConfig) {
     }
 
     clearFailures(ip)
-    const token = await createSessionToken(config)
+    const token = createSessionToken(config)
     setCookie(c, COOKIE_NAME, token, {
       httpOnly: true,
       sameSite: 'Strict',
