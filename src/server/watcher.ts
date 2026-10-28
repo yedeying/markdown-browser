@@ -81,10 +81,18 @@ const WATCH_SKIP_DIRS = new Set([
   '@thumbnail', '@exif', '@media_cache', '@version_explorer_cache',
   '@search', '@tmp', '@appstore', '@ugvault', '@upload', '@FileManager',
   'lost+found',
+  // NAS 数据盘巨目录：相册/媒体/下载/容器数据等，只读浏览不实时编辑，
+  // 递归 watch 会把进程 fd 打满（bun 1.3.11 每 watch 目标 ~2 fd）
+  'Media', 'Photos', 'books', 'music', '@comic', '@video',
+  'Download', 'Downloads', '迅雷下载', 'smb', 'mnt', 'Mount',
+  '@home', '@kvm', 'HA', 'docker', 'postgres', 'redis',
 ])
 
 /** 递归 watch 的最大深度（再深的目录不订阅，避免巨型树吃光 fd） */
-const MAX_WATCH_DEPTH = 8
+const MAX_WATCH_DEPTH = 6
+
+/** 全局 watch 目录数上限（防止漏网的巨型目录把 fd 打满） */
+const MAX_WATCH_DIRS = 15000
 
 interface TreeWatch {
   close: () => void
@@ -97,6 +105,7 @@ interface TreeWatch {
 function watchTree(root: string, onFile: (relPath: string) => void): TreeWatch {
   const watchers: Array<ReturnType<typeof watch>> = []
   let closed = false
+  let watchedDirs = 0
 
   const emit = (relDir: string, filename: string | Buffer | null) => {
     const name = typeof filename === 'string' ? filename : filename?.toString()
@@ -108,11 +117,12 @@ function watchTree(root: string, onFile: (relPath: string) => void): TreeWatch {
   }
 
   const walk = (dir: string, relDir: string, depth: number) => {
-    if (closed) return
+    if (closed || watchedDirs >= MAX_WATCH_DIRS) return
     try {
       const w = watch(dir, { recursive: false }, (_eventType, filename) => emit(relDir, filename))
       w.on('error', () => { /* ignore symlink / 权限问题 */ })
       watchers.push(w)
+      watchedDirs++
     } catch {
       return
     }
