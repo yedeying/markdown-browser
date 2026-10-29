@@ -323,6 +323,8 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
 
     if (hasLazyParams) {
       const depth = depthParam ? Math.max(0, Math.min(10, parseInt(depthParam) || 0)) : 1
+      // 按需 watch：客户端展开/列出的目录（含缓存命中）注册监听 + 祖先链
+      watcher.ensureWatched(relPath)
       const tree = buildTree(scopeFor(showHidden), targetDir, basePath, relPath, depth, showHidden)
       perfLogTimed('GET /api/files', nowMs() - t0, {
         path: relPath || '(root)',
@@ -335,6 +337,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
     }
 
     // 旧行为兼容：默认返回根目录（深度 3，避免超大树一次性返回）
+    watcher.ensureWatched('')
     const tree = buildTree(scopeFor(showHidden), basePath, basePath, '', 3, showHidden)
     perfLogTimed('GET /api/files', nowMs() - t0, {
       path: '(root)',
@@ -366,9 +369,13 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       }
       const st = statSync(target)
       if (st.isDirectory()) {
+        // 深链展开目录 → 注册按需 watch
+        watcher.ensureWatched(relPath)
         return c.json({ type: 'folder', path: relPath, name: basename(relPath) })
       }
       if (st.isFile()) {
+        // 深链打开文件 → 监听其所在目录（外部改动可推送 reload）
+        watcher.ensureWatched(parentRel(relPath))
         return c.json({
           type: 'file',
           path: relPath,
@@ -415,6 +422,8 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         kind: 'file',
         bytes: buf.length,
       })
+      // 编辑器打开的文件 → 监听所在目录，外部改动实时推送 reload
+      watcher.ensureWatched(parentRel(decoded))
       return c.text(decodeTextBuffer(buf))
     } catch (e) {
       perfLogTimed('GET /api/file', nowMs() - t0, {
@@ -804,6 +813,17 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
         })
       })
     })
+  })
+
+  // POST /api/watch/release — 显式释放按需 watch（前端收起列/折叠树时可调用）
+  app.post('/api/watch/release', async (c) => {
+    try {
+      const { path } = await c.req.json() as { path?: string }
+      watcher.releasePath(path ?? '')
+      return c.json({ ok: true })
+    } catch {
+      return c.json({ ok: false, error: 'invalid body' }, 400)
+    }
   })
 
   // 静态文件服务

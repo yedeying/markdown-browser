@@ -1,5 +1,6 @@
-import { watch, readdirSync } from 'fs'
-import { dirname, join } from 'path'
+import { watch } from 'fs'
+import { dirname, join, relative } from 'path'
+import { realpathSync } from 'fs'
 import type { WatchEvent } from '../types.js'
 
 type SSEWriter = (data: string) => void
@@ -15,13 +16,25 @@ export interface FileWatcher {
    * 不依赖 OS watcher，避免删改后缓存/SSE 漏更新。
    */
   notifyTreeChange: (affectedPath: string) => void
+  /**
+   * 按需 watch：确保 relPath（挂载点相对路径，'' = 根）及其祖先链被监听。
+   * 由 /api/files（展开/列目录）、/api/file（编辑器打开）、/api/stat 触发。
+   */
+  ensureWatched: (relPath: string) => void
+  /** 显式释放对 relPath 及其不再被其他活跃路径覆盖的祖先的监听 */
+  releasePath: (relPath: string) => void
+  /** 当前活跃（已 watch）目录数，供诊断 */
+  activeCount: () => number
 }
 
 const DEBOUNCE_MS = 200
 
+/** 活跃叶路径上限：超过后淘汰最久未触达的路径（LRU） */
+const MAX_ACTIVE_PATHS = 512
+
 /**
  * 家目录作 root 时，这些路径会疯狂写入（浏览器缓存等）。
- * recursive watch 命中后若广播 tree-change，客户端会刷屏请求 /api/files。
+ * watch 命中后若广播 tree-change，客户端会刷屏请求 /api/files。
  */
 const WATCH_NOISE_PREFIXES = [
   'Library/',
@@ -64,97 +77,6 @@ export function shouldIgnoreWatchPath(filename: string): boolean {
     if (normalized === prefix.replace(/\/$/, '') || normalized.startsWith(prefix)) return true
   }
   return normalized.split('/').some((seg) => WATCH_NOISE_SEGMENTS.has(seg))
-}
-
-/**
- * 递归 watch 时必须剪掉的目录。
- *
- * 背景：`fs.watch(dir, { recursive: true })` 会为树里每个目标占资源 ——
- * bun 1.3.11 下每个文件/目录各占一个 fd，一个 50 万文件的挂载点（如 NAS 相册
- * 缩略图缓存）足以把 nofile 打满，进程随之卡死。这里在注册前剪枝：
- * node_modules / 各类缓存目录 / 相册缩略图索引一律不监听（它们也不该触发
- * tree-change 广播，WATCH_NOISE_SEGMENTS 已按同样思路过滤事件）。
- */
-const WATCH_SKIP_DIRS = new Set([
-  ...WATCH_NOISE_SEGMENTS,
-  'dist', 'build', '.next', '.turbo',
-  '@thumbnail', '@exif', '@media_cache', '@version_explorer_cache',
-  '@search', '@tmp', '@appstore', '@ugvault', '@upload', '@FileManager',
-  'lost+found',
-  // NAS 数据盘巨目录：相册/媒体/下载/容器数据等，只读浏览不实时编辑，
-  // 递归 watch 会把进程 fd 打满（bun 1.3.11 每 watch 目标 ~2 fd）
-  'Media', 'Photos', 'books', 'music', '@comic', '@video',
-  'Download', 'Downloads', '迅雷下载', 'smb', 'mnt', 'Mount',
-  '@home', '@kvm', 'HA', 'docker', 'postgres', 'redis',
-])
-
-/** 递归 watch 的最大深度（再深的目录不订阅，避免巨型树吃光 fd） */
-const MAX_WATCH_DEPTH = 6
-
-/** 全局 watch 目录数上限（防止漏网的巨型目录把 fd 打满） */
-const MAX_WATCH_DIRS = 15000
-
-interface TreeWatch {
-  close: () => void
-}
-
-/**
- * 逐层注册非递归 watch 代替 `recursive: true`：
- * 可以跳过巨型/噪声目录，并按深度上限截断。
- */
-function watchTree(root: string, onFile: (relPath: string) => void): TreeWatch {
-  const watchers: Array<ReturnType<typeof watch>> = []
-  let closed = false
-  let watchedDirs = 0
-
-  const emit = (relDir: string, filename: string | Buffer | null) => {
-    const name = typeof filename === 'string' ? filename : filename?.toString()
-    if (!name) {
-      if (relDir) onFile(relDir)
-      return
-    }
-    onFile(relDir ? `${relDir}/${name}` : name)
-  }
-
-  const walk = (dir: string, relDir: string, depth: number) => {
-    if (closed || watchedDirs >= MAX_WATCH_DIRS) return
-    try {
-      const w = watch(dir, { recursive: false }, (_eventType, filename) => emit(relDir, filename))
-      w.on('error', () => { /* ignore symlink / 权限问题 */ })
-      watchers.push(w)
-      watchedDirs++
-    } catch {
-      return
-    }
-    if (depth >= MAX_WATCH_DEPTH) return
-    let entries: Array<{ name: string; isDir: boolean }>
-    try {
-      entries = readdirSync(dir, { withFileTypes: true }).map((d) => ({
-        name: d.name,
-        isDir: d.isDirectory(),
-      }))
-    } catch {
-      return
-    }
-    for (const e of entries) {
-      if (!e.isDir) continue
-      // 点目录（.git/.cache/.npm…）与缓存目录一律不深入
-      if (e.name.startsWith('.') || WATCH_SKIP_DIRS.has(e.name)) continue
-      walk(join(dir, e.name), relDir ? `${relDir}/${e.name}` : e.name, depth + 1)
-    }
-  }
-
-  walk(root, '', 0)
-
-  return {
-    close() {
-      closed = true
-      for (const w of watchers) {
-        try { w.close() } catch { /* ignore */ }
-      }
-      watchers.length = 0
-    },
-  }
 }
 
 export function createWatcher(target: string): FileWatcher {
@@ -201,12 +123,29 @@ export function createWatcher(target: string): FileWatcher {
     notifyTreeChange() {
       /* 单文件模式无目录树 */
     },
+    ensureWatched() { /* 单文件模式无目录树 */ },
+    releasePath() { /* 单文件模式无目录树 */ },
+    activeCount() { return 0 },
   }
 }
 
+/**
+ * 目录模式 watcher —— 按需监听。
+ *
+ * 不做启动期全量 recursive watch：挂载点可能包含 50 万文件的 NAS 数据盘，
+ * 任何「按目标计费」的实现（bun 1.3.11 每目标 ~2 fd、inotify 每目录一个
+ * watch）都会把进程 fd 打满。改为：只有客户端实际展开/列出的目录（以及
+ * 编辑器打开的文件所在目录）才注册 watch，路径的祖先链一并覆盖；超过
+ * LRU 上限淘汰最久未触达的路径；SSE 连接全部断开（页面关闭）时清空。
+ */
 export function createDirWatcher(basePath: string): FileWatcher {
   const clients = new Set<SSEWriter>()
   const listeners = new Set<(e: WatchEvent) => void>()
+  // 活跃叶路径（挂载点相对路径，'' = 根）→ 最近触达时间。Map 迭代序 = 使用序（LRU）
+  const activePaths = new Map<string, number>()
+  // 实际 watch 的目录（祖先闭包）→ FSWatcher
+  const watchers = new Map<string, ReturnType<typeof watch>>()
+  let sseCount = 0
 
   function broadcast(event: WatchEvent) {
     const payload = `data: ${JSON.stringify(event)}\n\n`
@@ -239,24 +178,106 @@ export function createDirWatcher(basePath: string): FileWatcher {
     pending.set(normalized, { isMarkdown, timer })
   }
 
-  // 逐层 watch（非 recursive:true），跳过 node_modules / 相册缩略图等巨型目录，
-  // 否则 50 万文件的挂载点会把进程 fd 打满（bun 1.3.11 的 recursive watch 每目标 1 fd）
-  const watcher = watchTree(basePath, (filename) => {
-    schedule(filename)
-  })
+  const normalizeRel = (p: string) => p.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+
+  /** 需要 watch 的目录集合 = 所有活跃叶路径的祖先闭包 */
+  function reconcile() {
+    const need = new Set<string>()
+    for (const p of activePaths.keys()) {
+      let cur = p
+      while (true) {
+        need.add(cur)
+        if (!cur) break
+        const i = cur.lastIndexOf('/')
+        cur = i === -1 ? '' : cur.slice(0, i)
+      }
+    }
+    // 新增
+    for (const rel of need) {
+      const abs = rel ? join(basePath, rel) : basePath
+      if (watchers.has(abs)) continue
+      let w: ReturnType<typeof watch>
+      try {
+        w = watch(abs, { recursive: false }, (_eventType, filename) => {
+          const name = typeof filename === 'string' ? filename : filename?.toString() ?? ''
+          schedule(rel ? `${rel}/${name}` : name)
+        })
+      } catch {
+        continue
+      }
+      w.on('error', () => { /* ignore symlink / 权限问题 */ })
+      watchers.set(abs, w)
+    }
+    // 移除不再被覆盖的
+    for (const [abs, w] of watchers) {
+      const rel = abs === basePath ? '' : relative(basePath, abs)
+      if (need.has(rel)) continue
+      try { w.close() } catch { /* ignore */ }
+      watchers.delete(abs)
+    }
+  }
+
+  /** 路径越界防护：解析后必须仍在 basePath 内 */
+  function assertInside(relPath: string): boolean {
+    const abs = relPath ? join(basePath, relPath) : basePath
+    try {
+      const realBase = realpathSync(basePath)
+      const realAbs = realpathSync(abs)
+      return realAbs === realBase || realAbs.startsWith(realBase + '/')
+    } catch {
+      return false
+    }
+  }
+
+  function touch(p: string) {
+    if (activePaths.has(p)) activePaths.delete(p)
+    activePaths.set(p, Date.now())
+  }
+
+  function ensureWatched(relPath: string) {
+    const norm = normalizeRel(relPath)
+    if (!assertInside(norm)) return
+    touch(norm)
+    // LRU：超出上限淘汰最久未触达
+    while (activePaths.size > MAX_ACTIVE_PATHS) {
+      const oldest = activePaths.keys().next().value
+      if (oldest === undefined) break
+      activePaths.delete(oldest)
+    }
+    reconcile()
+  }
+
+  function releasePath(relPath: string) {
+    const norm = normalizeRel(relPath)
+    activePaths.delete(norm)
+    reconcile()
+  }
+
+  function clearActive() {
+    activePaths.clear()
+    reconcile()
+  }
 
   const pingInterval = setInterval(() => {
     broadcast({ type: 'ping' })
   }, 30_000)
 
   return {
-    addClient(writer) { clients.add(writer) },
-    removeClient(writer) { clients.delete(writer) },
+    addClient(writer) {
+      clients.add(writer)
+      sseCount++
+    },
+    removeClient(writer) {
+      clients.delete(writer)
+      sseCount = Math.max(0, sseCount - 1)
+      // 最后一个页面断开（关闭/刷新）→ 没有消费方，释放全部监听
+      if (sseCount === 0) clearActive()
+    },
     close() {
       for (const { timer } of pending.values()) clearTimeout(timer)
       pending.clear()
       clearInterval(pingInterval)
-      watcher.close()
+      clearActive()
       clients.clear()
       listeners.clear()
     },
@@ -268,5 +289,8 @@ export function createDirWatcher(basePath: string): FileWatcher {
       const normalized = affectedPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
       broadcast({ type: 'tree-change', affectedPath: normalized })
     },
+    ensureWatched,
+    releasePath,
+    activeCount() { return watchers.size },
   }
 }
