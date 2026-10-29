@@ -2,7 +2,7 @@
 # 跳过容器内编译，解决 Docker 构建 OOM 问题
 # 注意：bun 版本必须固定为 1.3.11——bun 1.3.14 在本机环境
 # （机械盘 + overlay + 大挂载目录）启动会卡死（D state 磁盘 I/O）
-FROM oven/bun:1.3.11-slim
+FROM oven/bun:1.3.14-slim
 
 WORKDIR /app
 
