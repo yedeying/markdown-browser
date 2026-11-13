@@ -12,6 +12,7 @@ import { markdown } from '@codemirror/lang-markdown'
 import { javascript } from '@codemirror/lang-javascript'
 import { css } from '@codemirror/lang-css'
 import { html } from '@codemirror/lang-html'
+import { vue } from '@codemirror/lang-vue'
 import { StreamLanguage } from '@codemirror/language'
 import { shell } from '@codemirror/legacy-modes/mode/shell'
 import { yaml } from '@codemirror/legacy-modes/mode/yaml'
@@ -47,6 +48,7 @@ export const EDITOR_LANGUAGES = [
   'typescript',
   'css',
   'html',
+  'vue',
   'json',
   'shell',
   'yaml',
@@ -86,6 +88,7 @@ export function getLangExtension(language?: string): Extension {
     case 'typescript': return javascript({ typescript: true })
     case 'css':        return css()
     case 'html':       return html()
+    case 'vue':        return vue()
     case 'json':       return javascript()  // JSON 用 JS 高亮够用
     case 'shell':      return StreamLanguage.define(shell)
     case 'yaml':       return StreamLanguage.define(yaml)

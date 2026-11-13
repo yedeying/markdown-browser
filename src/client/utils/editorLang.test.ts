@@ -12,6 +12,7 @@ const SAMPLES: Record<string, string> = {
   typescript: 'const a: number = 1\nfunction f(): number { return a }\n',
   css: '.a { color: red; }\n.b { margin: 0; }\n',
   html: '<div class="a">hi</div>\n<span>x</span>\n',
+  vue: '<template>\n  <div :class="cls" @click="go">{{ msg }}</div>\n</template>\n<script setup lang="ts">\nconst msg: string = "hi"\n</script>\n<style scoped>\n.a { color: red; }\n</style>\n',
   json: '{\n  "a": 1\n}\n',
   shell: '#!/bin/sh\necho hi\n',
   yaml: 'a: 1\nb:\n  - c\n',
@@ -48,13 +49,32 @@ const SAMPLES: Record<string, string> = {
 /** 构造 state 并强制解析全文；语言配错时这里会抛 */
 function parseWith(language: string | undefined, doc: string) {
   const state = EditorState.create({ doc, extensions: [getLangExtension(language)] })
-  ensureSyntaxTree(state, doc.length, 5000)
+  return ensureSyntaxTree(state, doc.length, 5000)
 }
 
 test.each(EDITOR_LANGUAGES)('%s highlighting parses without throwing', (language) => {
   const doc = SAMPLES[language]
   expect(doc).toBeString()
   expect(() => parseWith(language, doc)).not.toThrow()
+})
+
+// 光"不抛错"不够：若 @codemirror/language 被加载了两份（例如 node_modules 里残留
+// pnpm 的符号链接），语言扩展注册到另一份实例的 facet 上，ensureSyntaxTree 会静默
+// 返回 null，编辑器表现为完全没有高亮。这里要求真正产出覆盖全文的语法树。
+test.each(EDITOR_LANGUAGES.filter((l) => l !== 'plaintext'))('%s produces a complete syntax tree', (language) => {
+  const doc = SAMPLES[language]
+  const tree = parseWith(language, doc)
+  expect(tree).not.toBeNull()
+  expect(tree!.length).toBe(doc.length)
+})
+
+test('vue parses template bindings, interpolation and <script lang="ts">', () => {
+  const tree = parseWith('vue', SAMPLES.vue)!
+  const names = new Set<string>()
+  tree.iterate({ enter: (n) => { names.add(n.name) } })
+  expect(names).toContain('Interpolation')        // {{ msg }}
+  expect(names).toContain('ScriptAttributeValue') // :class / @click 的 JS 表达式
+  expect(names).toContain('TypeAnnotation')       // <script lang="ts"> 按 TS 解析
 })
 
 test('an undefined language falls back to markdown and still parses', () => {

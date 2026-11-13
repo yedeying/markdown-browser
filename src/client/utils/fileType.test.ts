@@ -86,6 +86,8 @@ test('C/C++ and common aliases map to editor highlighters', () => {
   expect(getFileType('main.c')).toBe('code')
   expect(getFileType('main.cc')).toBe('code')
   expect(getFileType('main.cpp')).toBe('code')
+  expect(getEditorLang('App.vue')).toBe('vue')
+  expect(getEditorLang('Index.svelte')).toBe('html')
   expect(getEditorLang('main.c')).toBe('c')
   expect(getEditorLang('main.h')).toBe('c')
   expect(getEditorLang('main.cpp')).toBe('cpp')
