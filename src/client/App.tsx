@@ -374,11 +374,11 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
         setSelectedNode({ name: stat.name, type: 'folder', path })
         window.history.replaceState({ path, isFolder: true }, '', buildUrl(path))
       } else {
-        await ensurePathLoaded(path, false)
-        if (gen !== navGenRef.current) return
+        // 文件直链：立即拉取正文并渲染，不等待多级祖先目录树串行加载完毕
         setSelectedNode({ name: stat.name, type: 'file', path })
         selectFile(path)
         window.history.replaceState({ path, isFolder: false }, '', buildUrl(path))
+        void ensurePathLoaded(path, false)
       }
     })()
   }, [tree.length > 0 ? 'loaded' : 'empty', showHidden])

@@ -97,6 +97,14 @@ export function assetUrl(
   return url.includes('?') ? `${url}&${q}` : `${url}?${q}`
 }
 
+/** 生成文件夹静态站点 URL（兼容多挂载 /m/<alias> 前缀，按段编码目录与入口文件名） */
+export function siteUrl(dir: string, entry = 'index.html'): string {
+  const encodeSegs = (p: string) =>
+    p.replace(/\\/g, '/').split('/').filter(Boolean).map(encodeURIComponent).join('/')
+  const parts = [encodeSegs(dir), encodeSegs(entry)].filter(Boolean).join('/')
+  return `${getMountPrefix()}/site/${parts}`
+}
+
 function isHeicPath(path: string): boolean {
   const base = path.split('/').pop() || path
   const i = base.lastIndexOf('.')

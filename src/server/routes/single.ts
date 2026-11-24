@@ -174,15 +174,20 @@ export function createSingleRouter(filePath: string, distPath: string, authConfi
 
   // GET /api/watch - SSE 文件变更监听
   app.get('/api/watch', (c) => {
+    c.header('Content-Type', 'text/event-stream')
+    c.header('Cache-Control', 'no-cache')
+    c.header('Connection', 'keep-alive')
+    c.header('X-Accel-Buffering', 'no')
     return stream(c, async (s) => {
       const writer = (data: string) => s.write(data)
       watcher.addClient(writer)
-      c.header('Content-Type', 'text/event-stream')
-      c.header('Cache-Control', 'no-cache')
-      c.header('Connection', 'keep-alive')
       await s.write(`data: {"type":"ping"}\n\n`)
+      const heartbeat = setInterval(() => {
+        void s.write(': keepalive\n\n').catch(() => {})
+      }, 25000)
       await new Promise<void>((resolve) => {
         s.onAbort(() => {
+          clearInterval(heartbeat)
           watcher.removeClient(writer)
           resolve()
         })

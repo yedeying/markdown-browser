@@ -43,6 +43,37 @@ import {
 } from '../download-zip.js'
 import { renderDirIndexHtml } from '../runtime-html.js'
 
+/** 静态站点托管路由（GET /site/*）允许的 MIME 白名单 */
+const SITE_MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+  '.wasm': 'application/wasm',
+}
+
 const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.DS_Store', '.vmd-upload'])
 
 // 服务端托管文件（.vmd-config.json 等）决定启动根目录和分享令牌，
@@ -580,6 +611,71 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
     return c.json(results)
   })
 
+  // GET /site/* —— 将含 index.html 的子目录作为静态站点托管，供文件夹「网页」视图 iframe 嵌入
+  // 与 /api/asset 的区别：保留 HTML/CSS/JS 原样与完整 MIME，并支持目录索引
+  app.get('/site/*', async (c) => {
+    const rawRest = c.req.path.replace(/^\/site\/?/, '')
+    let relPath: string
+    try {
+      relPath = decodeURIComponent(rawRest)
+    } catch {
+      return c.text('Bad Request', 400)
+    }
+
+    if (hasReservedSegment(relPath)) {
+      return c.text('Not found', 404)
+    }
+
+    try {
+      const realBase = realpathSync(basePath)
+      let target = join(basePath, relPath)
+
+      // 目录索引：/site/x/y 或 /site/x/y/ → x/y/index.html
+      const withSlash = relPath === '' || relPath.endsWith('/')
+      if (withSlash || (existsSync(target) && statSync(target).isDirectory())) {
+        target = join(target, 'index.html')
+      }
+
+      if (!existsSync(target) || !statSync(target).isFile()) {
+        return c.text('Not found', 404)
+      }
+
+      const realTarget = realpathSync(target)
+      if (realTarget !== realBase && !realTarget.startsWith(realBase + sep)) {
+        return c.text('Forbidden', 403)
+      }
+
+      const ext = extname(realTarget).toLowerCase()
+      const type = SITE_MIME[ext]
+      if (!type) {
+        return c.text('Unsupported type', 415)
+      }
+
+      const stat = statSync(realTarget)
+      c.header('Content-Type', type)
+      // HTML 不缓存，其余静态资源短缓存
+      c.header('Cache-Control', ext === '.html' || ext === '.htm'
+        ? 'no-cache'
+        : 'public, max-age=300')
+      // 允许同源 iframe 嵌入
+      c.header('X-Frame-Options', 'SAMEORIGIN')
+      if (stat.size > 8 * 1024 * 1024) {
+        return c.body(stream(c, async (s) => {
+          const file = Bun.file(realTarget)
+          const reader = file.stream().getReader()
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            await s.write(value)
+          }
+        }))
+      }
+      return c.body(readFileSync(realTarget))
+    } catch {
+      return c.text('Not found', 404)
+    }
+  })
+
   // GET /api/asset/* - 提供 markdown 所在目录的相对资源（图片、文件等）
   app.get('/api/asset/*', async (c) => {
     const relPath = c.req.path.replace('/api/asset/', '')
@@ -797,17 +893,24 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
 
   // GET /api/watch - SSE 文件变更监听
   app.get('/api/watch', (c) => {
+    c.header('Content-Type', 'text/event-stream')
+    c.header('Cache-Control', 'no-cache')
+    c.header('Connection', 'keep-alive')
+    // 关闭 Nginx / Traefik 等反向代理响应缓冲，避免长连接中断触发 ERR_INCOMPLETE_CHUNKED_ENCODING
+    c.header('X-Accel-Buffering', 'no')
     return stream(c, async (s) => {
       const writer = (data: string) => s.write(data)
       watcher.addClient(writer)
-      c.header('Content-Type', 'text/event-stream')
-      c.header('Cache-Control', 'no-cache')
-      c.header('Connection', 'keep-alive')
       // 初始连接确认
       await s.write(`data: {"type":"ping"}\n\n`)
+      // 定期注释心跳保活，防止反代空闲超时强断 chunked 流
+      const heartbeat = setInterval(() => {
+        void s.write(': keepalive\n\n').catch(() => {})
+      }, 25000)
       // 等待连接关闭
       await new Promise<void>((resolve) => {
         s.onAbort(() => {
+          clearInterval(heartbeat)
           watcher.removeClient(writer)
           resolve()
         })
