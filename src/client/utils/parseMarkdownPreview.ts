@@ -47,6 +47,7 @@ import makefile from 'highlight.js/lib/languages/makefile'
 import powershell from 'highlight.js/lib/languages/powershell'
 import plaintext from 'highlight.js/lib/languages/plaintext'
 import { assetUrl } from './fsApi.js'
+import { extractFrontmatter, renderFrontmatterHtml } from './frontmatter.js'
 
 hljs.registerLanguage('javascript', javascript)
 hljs.registerLanguage('js', javascript)
@@ -227,7 +228,10 @@ function buildRenderer(currentFilePath?: string): { renderer: Partial<Renderer>;
 
 export function parseMarkdownPreview(markdown: string, filePath?: string): string {
   Object.keys(headingCount).forEach(k => delete headingCount[k])
+  const fm = extractFrontmatter(markdown)
+  const fmHtml = fm ? renderFrontmatterHtml(fm.entries) : ''
+  const body = fm ? fm.body : markdown
   const { renderer } = buildRenderer(filePath)
   const instance = new Marked({ renderer, gfm: true, breaks: true })
-  return instance.parse(markdown) as string
+  return fmHtml + (instance.parse(body) as string)
 }

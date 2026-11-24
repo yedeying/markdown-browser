@@ -53,8 +53,8 @@ const MarkdownPreview: FunctionalComponent<Props> = ({ markdown, contentRef, cla
       throwOnError: false,
     })
 
-    // 表格排序
-    containerRef.current.querySelectorAll('table').forEach((table) => {
+    // 表格排序（跳过顶部 frontmatter 元数据表）
+    containerRef.current.querySelectorAll('table:not(.md-frontmatter)').forEach((table) => {
       table.querySelectorAll('th').forEach((th, i) => {
         (th as HTMLElement).onclick = () => {
           const tbody = table.querySelector('tbody') || table

@@ -133,6 +133,70 @@
   background: var(--hover);
 }
 
+/* Frontmatter 元数据表：无边框两列键值布局，紧贴文档顶部 */
+.md-frontmatter-wrap {
+  margin: 0 0 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.markdown-body table.md-frontmatter {
+  display: table;
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+}
+
+.markdown-body table.md-frontmatter tr:hover {
+  background: transparent;
+}
+
+.markdown-body table.md-frontmatter td {
+  border: none;
+  padding: 5px 0;
+  vertical-align: top;
+  line-height: 1.65;
+  font-size: 0.94em;
+}
+
+.markdown-body table.md-frontmatter td.md-fm-key {
+  width: 1%;
+  min-width: 112px;
+  max-width: 220px;
+  padding-right: 28px;
+  color: var(--text-muted);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.markdown-body table.md-frontmatter td.md-fm-val {
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.md-fm-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.md-fm-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 0.86em;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  color: var(--ink);
+}
+
+@media (max-width: 760px) {
+  .markdown-body table.md-frontmatter td.md-fm-key {
+    min-width: 84px;
+    padding-right: 16px;
+  }
+}
+
 .markdown-body blockquote {
   margin: 16px 0;
   padding: 0 1em;
