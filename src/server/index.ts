@@ -11,6 +11,7 @@ import { CONFIG_FILENAME } from './reserved-files.js'
 import { treeCache } from './tree-cache.js'
 import { stripVmdRuntimeScripts } from './runtime-html.js'
 import { resolveMasonryRecurseDepth } from './masonry-config.js'
+import { registerPluginRoutes } from './plugins.js'
 
 async function findAvailablePort(startPort: number, host = '0.0.0.0'): Promise<number> {
   const maxPort = Math.max(startPort + 100, 9000)
@@ -97,18 +98,18 @@ export async function startServer(config: ServerConfig) {
   // 先接走，所以套一层父 app：先处理管理接口，其余请求原样转交。
   // 单文件模式没有挂载语义，不注册。
   let fetchHandler = router.app.fetch
+  const parent = new Hono()
+  registerPluginRoutes(parent, config.pluginsDir)
   if (config.mode === 'dir') {
-    const dirRouter = router
-    const parent = new Hono()
     createAdminRoutes(parent, {
       mode: 'dir',
       // 配置可能不在被服务的目录里（根目录来自配置选中的挂载点时），写回必须用 configDir
       configDir: config.configDir ?? config.basePath!,
       basePath: config.basePath!,
     }, authConfig)
-    parent.all('*', (c) => dirRouter.app.fetch(c.req.raw))
-    fetchHandler = parent.fetch
   }
+  parent.all('*', (c) => router.app.fetch(c.req.raw))
+  fetchHandler = parent.fetch
 
   const server = Bun.serve({
     port,
@@ -214,6 +215,9 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
     })
   })
 
+  // 外部插件清单与静态资产（根级托管，各挂载点共享）
+  registerPluginRoutes(app, config.pluginsDir)
+
   // 挂载点管理 API（复用访问密码鉴权；无密码模式下公开）
   createAdminRoutes(app, { mode: 'multi', mountManager }, authConfig)
 
@@ -226,6 +230,8 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
     return (
       p.startsWith('/api/') ||
       p === '/api' ||
+      p.startsWith('/site/') ||          // 文件夹静态站点托管（iframe 网页视图）
+      p === '/site' ||
       p.startsWith('/assets/') ||       // 静态资源（其实走主 app 也能出）
       p.startsWith('/share/')            // 分享子路径（由子 app share store 处理）
     )

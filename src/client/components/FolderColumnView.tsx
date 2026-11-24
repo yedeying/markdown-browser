@@ -1,20 +1,17 @@
-import { useState, useEffect, useRef } from 'preact/hooks'
+import { useState, useEffect, useRef, useMemo } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import type { FileNode } from '../../types.js'
-import { getFileType, getEditorLang, isJsonlPath } from '../utils/fileType.js'
+import { getFileType, getEditorLang } from '../utils/fileType.js'
 import { useLongPress } from '../hooks/useLongPress.js'
-import MarkdownPreview from './MarkdownPreview.js'
 import Editor from './Editor.js'
-import StChatPreview from './StChatPreview.js'
-import JsonlLinePreview from './JsonlLinePreview.js'
 import { apiFetch, displayAssetUrl } from '../utils/fsApi.js'
 import { filterVisible, isHiddenPath } from '../utils/hiddenFiles.js'
 import { sortNodes } from '../utils/sortNodes.js'
 import type { SortField, SortOrder } from '../utils/prefs.js'
-import { getPref } from '../utils/prefs.js'
 import { getNodeIconName } from '../utils/nodeIcon.js'
 import Icon from './ui/Icon.js'
-import { parseStJsonl } from '../utils/stJsonl.js'
+import { pluginRegistry, usePluginsVersion } from '../plugins/registry.js'
+import { registerBuiltinPlugins } from '../plugins/builtin/index.js'
 import {
   getNavFocus,
   isOverlayBlocking,
@@ -30,6 +27,7 @@ import {
 import { useDelayedFlag } from '../hooks/useDelayedFlag.js'
 import { findNodeByPath, syncColumnStackFromTree, collapseColumnStackOnHideHidden } from '../utils/columnStack.js'
 
+registerBuiltinPlugins()
 
 /** 列预览区按行滚动；滚得动返回 true，已到顶/底返回 false */
 function scrollColPreviewByLine(dir: 'up' | 'down'): boolean {
@@ -39,6 +37,7 @@ function scrollColPreviewByLine(dir: 'up' | 'down'): boolean {
   const preferred = [
     panel.querySelector('.col-preview-markdown'),
     panel.querySelector('.col-preview-jsonl'),
+    panel.querySelector('.col-preview-plugin'),
     panel.querySelector('.col-preview-code .cm-scroller'),
     panel.querySelector('.col-preview-image'),
     panel.querySelector('.col-preview-text'),
@@ -708,6 +707,15 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   }, [columnStack, selectedInCol, showHidden, sortField, sortOrder, previewFocus])
 
 
+  const pluginsVersion = usePluginsVersion()
+
+  // 列视图统一按插件注册表解析（compact=true 供专用插件裁剪解析成本）
+  const resolvedPreview = useMemo(() => {
+    const p = preview
+    if (!p || p.content === null) return null
+    return pluginRegistry.resolveFile(p.node.path, p.content, { compact: true })
+  }, [preview?.node.path, preview?.content, pluginsVersion])
+
   const renderPreviewContent = (p: PreviewState) => {
     const ft = getFileType(p.node.name)
 
@@ -732,30 +740,15 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       return <ColPreviewImage key={p.node.path} path={p.node.path} name={p.node.name} />
     }
 
-    // .jsonl：与主预览一致，ST 通过则聊天气泡，否则逐行 JSONL
-    if (isJsonlPath(p.node.name) && p.content !== null) {
-      const parsed = parseStJsonl(p.content)
-      const preferSt = getPref('jsonlPreviewMode') === 'st'
+    if (resolvedPreview?.plugin.renderColumnPreview && p.content !== null) {
       return (
-        <div class="col-preview-jsonl" data-testid="col-preview-jsonl">
-          {parsed.ok && preferSt ? (
-            <StChatPreview
-              fileName={p.node.name}
-              messages={parsed.messages}
-              characterName={parsed.characterName}
-              userName={parsed.userName}
-            />
-          ) : (
-            <JsonlLinePreview content={p.content} />
-          )}
-        </div>
-      )
-    }
-
-    if (ft === 'markdown' && p.content !== null) {
-      return (
-        <div class="col-preview-markdown">
-          <MarkdownPreview markdown={p.content} filePath={p.node.path} />
+        <div class="col-preview-plugin">
+          {resolvedPreview.plugin.renderColumnPreview({
+            node: p.node,
+            content: p.content,
+            parsed: resolvedPreview.parsed,
+            onOpenFile: onFileSelect,
+          })}
         </div>
       )
     }

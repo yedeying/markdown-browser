@@ -23,6 +23,44 @@ import {
 } from '../utils/prefs.js'
 import type { AdminSettings, StartupMode } from '../../types.js'
 import Icon from './ui/Icon.js'
+import { pluginRegistry, usePluginsVersion } from '../plugins/registry.js'
+import { usePluginPref } from '../plugins/prefs.js'
+import type { PluginSettingDef } from '../plugins/types.js'
+
+/** 单个插件声明式设置项渲染器 */
+const PluginSettingControl: FunctionalComponent<{ pluginId: string; setting: PluginSettingDef }> = ({ pluginId, setting }) => {
+  const allowed = setting.options?.map((o) => o.value)
+  const [val, setVal] = usePluginPref<string | boolean>(pluginId, setting.key, setting.defaultValue, allowed)
+
+  if (setting.type === 'toggle') {
+    return (
+      <label class="settings-row settings-toggle">
+        <span class="settings-label">{setting.label}</span>
+        <input
+          type="checkbox"
+          data-testid={`settings-plugin-${pluginId}-${setting.key}`}
+          checked={Boolean(val)}
+          onChange={(e) => setVal(e.currentTarget.checked)}
+        />
+      </label>
+    )
+  }
+
+  return (
+    <label class="settings-row">
+      <span class="settings-label">{setting.label}</span>
+      <select
+        data-testid={`settings-plugin-${pluginId}-${setting.key}`}
+        value={String(val)}
+        onChange={(e) => setVal(e.currentTarget.value)}
+      >
+        {(setting.options || []).map(({ value, label }) => (
+          <option value={value} key={value}>{label}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
 
 interface Props {
   onClose: () => void
@@ -61,6 +99,8 @@ const SettingsDialog: FunctionalComponent<Props> = ({ onClose, currentMountAlias
   const [sort, setSort] = usePref('sort')
   const [showHidden, setShowHidden] = usePref('showHidden')
   const [editorFontSize, setEditorFontSize] = usePref('editorFontSize')
+  usePluginsVersion()
+  const pluginsWithSettings = pluginRegistry.getPluginsWithSettings()
   const [confirmReset, setConfirmReset] = useState(false)
   const settingsDialogRef = useRef<HTMLElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -251,6 +291,15 @@ const SettingsDialog: FunctionalComponent<Props> = ({ onClose, currentMountAlias
               </select>
             </label>
           </fieldset>
+
+          {pluginsWithSettings.map((plugin) => (
+            <fieldset class="settings-group" key={plugin.id}>
+              <legend>{plugin.name}</legend>
+              {(plugin.settings || []).map((setting) => (
+                <PluginSettingControl key={setting.key} pluginId={plugin.id} setting={setting} />
+              ))}
+            </fieldset>
+          ))}
 
           <fieldset class="settings-group">
             <legend>文件浏览</legend>

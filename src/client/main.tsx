@@ -2,6 +2,8 @@ import { render } from 'preact'
 import App from './App.js'
 import { applyAppearancePrefs } from './utils/appearance.js'
 import { getPref, subscribePref, type PrefKey } from './utils/prefs.js'
+import { registerBuiltinPlugins } from './plugins/builtin/index.js'
+import { loadExternalPlugins } from './plugins/loader.js'
 import './styles/index.css'
 import './styles/markdown.css'
 import './styles/print.css'
@@ -61,4 +63,8 @@ const observer = new MutationObserver(() => {
 })
 observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
 
-render(<App />, document.getElementById('app')!)
+// 注册内置文件/文件夹插件，并加载服务端挂载的外部运行时插件
+registerBuiltinPlugins()
+void loadExternalPlugins().finally(() => {
+  render(<App />, document.getElementById('app')!)
+})

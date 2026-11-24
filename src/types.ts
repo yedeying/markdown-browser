@@ -86,8 +86,19 @@ export interface ServerConfig {
   port: number
   host: string
   distPath: string
+  /** 外部插件目录（环境变量 VMD_PLUGINS_DIR 或 --plugins） */
+  pluginsDir?: string
   password?: string
   sessionMaxAge?: number        // Cookie 有效期（秒），默认 7 天
+}
+
+export interface ExternalPluginManifest {
+  id: string
+  name: string
+  version?: string
+  dir: string
+  entryUrl: string
+  styleUrls: string[]
 }
 
 export interface AuthConfig {

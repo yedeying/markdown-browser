@@ -2,14 +2,8 @@ import { useRef, useState, useEffect, useCallback, useMemo } from 'preact/hooks'
 import type { FunctionalComponent, ComponentChildren } from 'preact'
 import MarkdownPreview from './MarkdownPreview.js'
 import Editor, { type EditorHandle } from './Editor.js'
-import ImageViewer from './ImageViewer.js'
-import VideoViewer from './VideoViewer.js'
-import TableOfContents from './TableOfContents.js'
 import FolderView, { type ClipboardState } from './FolderView.js'
-import StChatPreview from './StChatPreview.js'
-import JsonlLinePreview from './JsonlLinePreview.js'
-import { getFileType, getEditorLang, isBinaryContent, isJsonlPath } from '../utils/fileType.js'
-import { parseStJsonl } from '../utils/stJsonl.js'
+import { getFileType, getEditorLang, isBinaryContent } from '../utils/fileType.js'
 import type { FileNode } from '../../types.js'
 import ShareDialog from './ShareDialog.js'
 import { getSharePrefix } from '../utils/fsApi.js'
@@ -20,9 +14,61 @@ import EmptyState from './ui/EmptyState.js'
 import ExternalUpdateBanner from './ui/ExternalUpdateBanner.js'
 import { showToast } from './ui/Toast.js'
 import { getScroll, setScroll } from '../utils/scrollMemory.js'
-import { usePref } from '../hooks/usePref.js'
 import { useDelayedFlag } from '../hooks/useDelayedFlag.js'
 import { mediaPlaylistForPath } from '../utils/galleryMedia.js'
+import { pluginRegistry, usePluginsVersion } from '../plugins/registry.js'
+import { registerBuiltinPlugins } from '../plugins/builtin/index.js'
+import { usePluginPref } from '../plugins/prefs.js'
+import { hasPendingPluginJump, takePluginJump } from '../plugins/jumpStore.js'
+import type { PluginSettingDef } from '../plugins/types.js'
+
+registerBuiltinPlugins()
+
+/** 工具栏内嵌插件设置控件（inToolbar: true 时自动出现在顶栏） */
+const PluginToolbarSelect: FunctionalComponent<{
+  pluginId: string
+  setting: PluginSettingDef
+}> = ({ pluginId, setting }) => {
+  const allowed = setting.options?.map((o) => o.value)
+  const [val, setVal] = usePluginPref<string>(pluginId, setting.key, String(setting.defaultValue), allowed)
+  return (
+    <select
+      class="plugin-toolbar-select"
+      data-testid={`plugin-setting-${pluginId}-${setting.key}`}
+      aria-label={setting.label}
+      value={val}
+      onChange={(e) => setVal((e.currentTarget as HTMLSelectElement).value)}
+    >
+      {(setting.options || []).map(({ value, label }) => (
+        <option value={value} key={value}>{label}</option>
+      ))}
+    </select>
+  )
+}
+
+/** 移动端更多菜单内的插件设置项 */
+const PluginDropdownSetting: FunctionalComponent<{
+  pluginId: string
+  setting: PluginSettingDef
+  onDone: () => void
+}> = ({ pluginId, setting, onDone }) => {
+  const allowed = setting.options?.map((o) => o.value)
+  const [val, setVal] = usePluginPref<string>(pluginId, setting.key, String(setting.defaultValue), allowed)
+  return (
+    <>
+      <div class="header-dropdown-label">{setting.label}</div>
+      {(setting.options || []).map(({ value, label }) => (
+        <button
+          class={`header-dropdown-item${val === value ? ' active' : ''}`}
+          key={value}
+          onClick={() => { setVal(value); onDone() }}
+        >
+          {label}
+        </button>
+      ))}
+    </>
+  )
+}
 
 /** 在 tree 中按 path 查找 FileNode */
 function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
@@ -111,10 +157,9 @@ const ContentArea: FunctionalComponent<Props> = ({
   showHidden = false,
 }) => {
   const isShareMode = shareMode || !!getSharePrefix()
+  const pluginsVersion = usePluginsVersion()
   const fileType = filePath ? getFileType(filePath) : 'markdown'
-  const isMarkdown = fileType === 'markdown'
   const isEditable = fileType === 'markdown' || fileType === 'code' || fileType === 'text'
-  const isJsonl = isJsonlPath(filePath)
   const contentReady = contentReadyProp ?? (!loading && content !== null)
   const mediaPlaylist = useMemo(() => {
     if (!filePath || (fileType !== 'image' && fileType !== 'video')) return []
@@ -130,20 +175,32 @@ const ContentArea: FunctionalComponent<Props> = ({
     onNavigate?.(path)
   }, [tree, onSelectNode, onNavigate])
 
-  // .jsonl 的 ST 识别结果：仅在内容就位时解析一次，供预览分支与「对话 | JSONL」
-  // 切换按钮共用（后者只在识别通过时才显示，见设计 §3.1）。
-  const jsonlParsed = useMemo(
-    () => (isJsonl && contentReady && content ? parseStJsonl(content) : null),
-    [isJsonl, contentReady, content],
+  // 按插件注册表解析当前文件插件（高优先级专用插件优先，sniff 返回 null 自动回落）
+  const resolvedFile = useMemo(() => {
+    if (!filePath) return null
+    return pluginRegistry.resolveFile(filePath, contentReady ? content : null)
+  }, [filePath, content, contentReady, pluginsVersion])
+  const activePlugin = resolvedFile?.plugin ?? null
+  const activePluginId = activePlugin?.id ?? '__none__'
+  const pluginModes = activePlugin?.modes ?? []
+  const defaultPluginMode = activePlugin?.defaultMode ?? pluginModes[0]?.id ?? 'preview'
+  const allowedPluginModes = useMemo(() => pluginModes.map((m) => m.id), [activePluginId])
+  const [storedPluginMode, setStoredPluginMode] = usePluginPref<string>(
+    activePluginId,
+    'mode',
+    defaultPluginMode,
+    allowedPluginModes.length > 0 ? allowedPluginModes : undefined,
   )
-  const jsonlOk = jsonlParsed?.ok === true
-  const [jsonlPreviewMode, setJsonlPreviewMode] = usePref('jsonlPreviewMode')
-  // 非 ST 文件即使偏好记的是 'st' 也固定回落到逐行 JSONL（设计 §3.1）
-  const effectiveJsonlMode: 'st' | 'jsonl' = jsonlOk && jsonlPreviewMode === 'st' ? 'st' : 'jsonl'
+  const activePluginMode = allowedPluginModes.length > 0
+    ? (allowedPluginModes.includes(storedPluginMode) ? storedPluginMode : defaultPluginMode)
+    : defaultPluginMode
 
-  // 默认视图由文件类型同步决定，避免切到 md/jsonl 时先闪一帧 code-only（raw）
+  const isSplitEditable = !!activePlugin?.supportsSplitEdit
+  const hasCustomPreview = !!activePlugin?.renderMain && !activePlugin.editorOnly
+
+  // 默认视图由命中插件同步决定，避免切换时闪烁
   const defaultViewMode: ViewMode =
-    (isMarkdown || isJsonl) ? 'preview' : (isEditable ? 'code-only' : 'preview')
+    hasCustomPreview ? 'preview' : (isEditable ? 'code-only' : 'preview')
   const [viewModeOverride, setViewModeOverride] = useState<{ path: string; mode: ViewMode } | null>(null)
   const viewMode: ViewMode =
     filePath && viewModeOverride?.path === filePath
@@ -356,6 +413,11 @@ const ContentArea: FunctionalComponent<Props> = ({
     }
     // 内容尚未到达，等下一次 content 变化
     if (!contentReady) return
+    // 列视图插件带 jumpState 跳转：让位给下面的插件定位 effect，避免被旧像素位置覆盖
+    if (hasPendingPluginJump(pendingPath)) {
+      restoreScrollForRef.current = null
+      return
+    }
     restoreScrollForRef.current = null
     const target = getScroll(pendingPath)
     if (!target) return
@@ -367,6 +429,25 @@ const ContentArea: FunctionalComponent<Props> = ({
       requestAnimationFrame(apply)
     })
   }, [content, contentReady, filePath])
+
+  // 消费列视图插件写入的 jump payload 并交给插件完成定位
+  useEffect(() => {
+    if (!filePath || !contentReady || viewMode !== 'preview' || !activePlugin?.onConsumeJump) return
+    const payload = takePluginJump(activePlugin.id, filePath)
+    if (payload === null) return
+    let frames = 0
+    let rafId = 0
+    const locate = () => {
+      const container = contentBodyRef.current
+      if (container && activePlugin.onConsumeJump?.({ path: filePath, payload, container })) {
+        return
+      }
+      if (++frames > 40) return
+      rafId = requestAnimationFrame(locate)
+    }
+    rafId = requestAnimationFrame(locate)
+    return () => cancelAnimationFrame(rafId)
+  }, [filePath, contentReady, viewMode, activePlugin, activePluginMode, selectedNode])
 
   // 预览模式下滚动位置持久化（防抖）。
   // 卸载/切文件时 flush 一次，避免最后 200ms 内的滚动被丢掉。
@@ -538,14 +619,34 @@ const ContentArea: FunctionalComponent<Props> = ({
   const folderChildrenReady = !isFolderView || selectedNode!.children != null
   const displayName = isFolderView ? selectedNode!.name : fileName
 
+  // 文件夹插件解析（如含 index.html 的目录命中 builtin.site-folder）
+  const folderPlugin = useMemo(
+    () => (isFolderView ? pluginRegistry.resolveFolder(selectedNode ?? null) : null),
+    [isFolderView, selectedNode, pluginsVersion],
+  )
+  const folderPluginId = folderPlugin?.id ?? '__folder_none__'
+  const folderModes = folderPlugin?.modes ?? []
+  const folderDefaultMode = folderPlugin?.defaultMode ?? folderModes[0]?.id ?? 'folder'
+  const allowedFolderModes = useMemo(() => folderModes.map((m) => m.id), [folderPluginId])
+  const [storedFolderMode, setStoredFolderMode] = usePluginPref<string>(
+    folderPluginId,
+    'mode',
+    folderDefaultMode,
+    allowedFolderModes.length > 0 ? allowedFolderModes : undefined,
+  )
+  const activeFolderMode = allowedFolderModes.length > 0
+    ? (allowedFolderModes.includes(storedFolderMode) ? storedFolderMode : folderDefaultMode)
+    : folderDefaultMode
+  const folderPluginCustomActive = !!folderPlugin?.renderFolder && activeFolderMode !== 'folder'
+
   // 骨架延迟半秒：快速加载时不闪一下占位
   const folderLoadPending = isFolderView && !folderChildrenReady && !folderLoadError
   const showFolderSkeleton = useDelayedFlag(folderLoadPending, 500)
+  const requiresTextContent = filePath ? pluginRegistry.requiresContentForPath(filePath) : true
   const fileLoadPending =
     !!filePath &&
     !isFolderView &&
-    fileType !== 'image' &&
-    fileType !== 'video' &&
+    requiresTextContent &&
     (loading || !contentReady)
   const showFileSkeleton = useDelayedFlag(fileLoadPending, 500)
 
@@ -601,6 +702,10 @@ const ContentArea: FunctionalComponent<Props> = ({
         // 延迟半秒再出骨架，避免刚出就上屏导致闪烁
         return showFolderSkeleton ? <Skeleton variant="folder" /> : null
       }
+      // 文件夹插件自定义视图（如静态站点 iframe 预览）
+      if (folderPluginCustomActive && folderPlugin?.renderFolder) {
+        return folderPlugin.renderFolder({ node: selectedNode, mode: activeFolderMode })
+      }
       return (
         <FolderView
           node={selectedNode}
@@ -628,24 +733,22 @@ const ContentArea: FunctionalComponent<Props> = ({
       )
     }
 
-    // 树/深链选中的图片/视频：在内容区展示，不用全屏 Lightbox（保留侧栏可继续点下一项）
-    if (fileType === 'image') {
-      return (
-        <ImageViewer
-          filePath={filePath}
-          playlist={mediaPlaylist}
-          onNavigate={handleMediaNavigate}
-        />
-      )
-    }
-    if (fileType === 'video') {
-      return (
-        <VideoViewer
-          filePath={filePath}
-          playlist={mediaPlaylist}
-          onNavigate={handleMediaNavigate}
-        />
-      )
+    // 媒体类等不依赖文本内容的插件：直接独占主区域渲染（保留全高舞台）
+    if (activePlugin && activePlugin.requiresContent === false && activePlugin.renderMain) {
+      return activePlugin.renderMain({
+        filePath,
+        fileName: fileName || filePath,
+        content: '',
+        parsed: resolvedFile?.parsed ?? null,
+        mode: activePluginMode,
+        theme,
+        node: selectedNode ?? null,
+        contentBodyRef,
+        previewContentRef,
+        onSelectNode,
+        mediaPlaylist,
+        onMediaNavigate: handleMediaNavigate,
+      })
     }
 
     // filePath 有值但内容尚未对应该路径：延迟半秒再出骨架；更快则空白，绝不渲染旧文件 raw
@@ -710,8 +813,17 @@ const ContentArea: FunctionalComponent<Props> = ({
       )
     }
 
-    // Markdown / JSONL 预览模式
+    // 插件预览模式（Markdown / JSONL / HTML / 任意外部扩展插件）
     if (viewMode === 'preview') {
+      const tocNode = activePlugin?.renderToc && contentReady && content !== null
+        ? activePlugin.renderToc({
+            filePath,
+            parsed: resolvedFile?.parsed ?? null,
+            mode: activePluginMode,
+            scrollContainerRef: contentBodyRef,
+            previewContentRef,
+          })
+        : null
       return (
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           <div
@@ -719,37 +831,22 @@ const ContentArea: FunctionalComponent<Props> = ({
             class="content-body"
             style={{ flex: 1 }}
           >
-            {/* 空 md：content======='' 仍是已选中文件，勿当成「未选择」；空 jsonl 由 JsonlLinePreview 自带空态 */}
-            {contentReady && content !== null && !isJsonl && (
-              content === '' ? (
-                <EmptyState
-                  icon={<Icon name="file-text" size={40} aria-hidden="true" />}
-                  title="空文件"
-                  description="点击「编辑」开始写作"
-                />
-              ) : (
-                <MarkdownPreview
-                  markdown={content}
-                  contentRef={previewContentRef}
-                  filePath={filePath}
-                  onCheckboxToggle={onSave ? handleCheckboxToggle : undefined}
-                />
-              )
-            )}
-            {isJsonl && (
-              effectiveJsonlMode === 'st' && jsonlParsed?.ok
-                ? (
-                  <StChatPreview
-                    fileName={fileName}
-                    messages={jsonlParsed.messages}
-                    characterName={jsonlParsed.characterName}
-                    userName={jsonlParsed.userName}
-                  />
-                )
-                : <JsonlLinePreview content={content || ''} />
-            )}
+            {contentReady && content !== null && activePlugin?.renderMain && activePlugin.renderMain({
+              filePath,
+              fileName: fileName || filePath,
+              content,
+              parsed: resolvedFile?.parsed ?? null,
+              mode: activePluginMode,
+              theme,
+              node: selectedNode ?? null,
+              contentBodyRef,
+              previewContentRef,
+              onSave: onSave ? async (next: string) => { await onSave(filePath, next) } : undefined,
+              onCheckboxToggle: onSave ? handleCheckboxToggle : undefined,
+              onSelectNode,
+            })}
           </div>
-          {!isJsonl && <TableOfContents contentRef={previewContentRef} filePath={filePath} />}
+          {tocNode}
         </div>
       )
     }
@@ -819,6 +916,27 @@ const ContentArea: FunctionalComponent<Props> = ({
         </div>
         <div class="header-actions">
           {themeToggle}
+          {folderPlugin && folderModes.length > 0 && (
+            <div class="site-view-toggle" role="group" aria-label={folderPlugin.name}>
+              {folderModes.map((m) => {
+                const isActive = activeFolderMode === m.id
+                const testId = folderPlugin.id === 'builtin.site-folder'
+                  ? `site-view-${m.id}`
+                  : `folder-plugin-mode-${m.id}`
+                return (
+                  <button
+                    key={m.id}
+                    class={`site-view-tab${isActive ? ' active' : ''}`}
+                    data-testid={testId}
+                    aria-pressed={isActive}
+                    onClick={() => setStoredFolderMode(m.id)}
+                  >
+                    {m.label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           {!isShareMode && (
             (isFolderView && selectedNode && selectedNode.path !== undefined)
             || (!isFolderView && !!filePath)
@@ -852,12 +970,12 @@ const ContentArea: FunctionalComponent<Props> = ({
               )}
 
               {/* 非分享模式：保存按钮（有未保存修改时） */}
-              {!isShareMode && isMarkdown && filePath && viewMode === 'edit' && unsaved && onSave && (
+              {!isShareMode && isSplitEditable && filePath && viewMode === 'edit' && unsaved && onSave && (
                 <button class="btn unsaved" onClick={handleSave} disabled={saving}>
                   {saving ? '保存中...' : '保存'}
                 </button>
               )}
-              {!isShareMode && !isMarkdown && isEditable && filePath && onSave && unsaved && (
+              {!isShareMode && !isSplitEditable && isEditable && filePath && onSave && unsaved && (
                 <button class="btn unsaved" onClick={handleSave} disabled={saving}>
                   {saving ? '保存中...' : '保存'}
                 </button>
@@ -875,7 +993,7 @@ const ContentArea: FunctionalComponent<Props> = ({
                   {filePath && (editContent || content) && (
                     <button class="btn" onClick={handleCopyAll} title="复制全文到剪贴板">复制</button>
                   )}
-                  {isMarkdown && filePath && (
+                  {isSplitEditable && filePath && (
                     <>
                       <button
                         class={`btn ${viewMode === 'preview' ? 'active' : ''}`}
@@ -888,34 +1006,38 @@ const ContentArea: FunctionalComponent<Props> = ({
                       >编辑</button>
                     </>
                   )}
-                  {isJsonl && filePath && (
-                    <>
-                      <button
-                        class={`btn ${viewMode === 'preview' ? 'active' : ''}`}
-                        onClick={() => setViewMode('preview')}
-                      >预览</button>
-                      <button
-                        class={`btn ${viewMode === 'code-only' ? 'active' : ''}`}
-                        onClick={() => setViewMode('code-only')}
-                        disabled={!contentReady}
-                      >源码</button>
-                    </>
-                  )}
-                  {/* 「对话 | JSONL」切换：仅 ST 识别通过时出现（设计 §3.1） */}
-                  {isJsonl && filePath && viewMode === 'preview' && jsonlOk && (
-                    <div class="jsonl-mode-toggle" data-testid="jsonl-mode-toggle">
-                      <button
-                        class={`btn ${effectiveJsonlMode === 'st' ? 'active' : ''}`}
-                        data-testid="jsonl-mode-st"
-                        onClick={() => setJsonlPreviewMode('st')}
-                      >对话</button>
-                      <button
-                        class={`btn ${effectiveJsonlMode === 'jsonl' ? 'active' : ''}`}
-                        data-testid="jsonl-mode-jsonl"
-                        onClick={() => setJsonlPreviewMode('jsonl')}
-                      >JSONL</button>
+                  {/* 通用插件模式切换：根据命中插件声明的 modes + supportsSource 自动渲染 */}
+                  {!isSplitEditable && hasCustomPreview && filePath && (pluginModes.length > 0 || activePlugin?.supportsSource) && (
+                    <div class="jsonl-mode-toggle" data-testid="plugin-mode-toggle">
+                      {(pluginModes.length > 0 ? pluginModes : [{ id: 'preview', label: '预览' }]).map((m) => (
+                        <button
+                          key={m.id}
+                          class={`btn ${viewMode === 'preview' && activePluginMode === m.id ? 'active' : ''}`}
+                          data-testid={`plugin-mode-${m.id}`}
+                          onClick={() => {
+                            setViewMode('preview')
+                            if (pluginModes.length > 0) setStoredPluginMode(m.id)
+                          }}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                      {activePlugin?.supportsSource && (
+                        <button
+                          class={`btn ${viewMode === 'code-only' ? 'active' : ''}`}
+                          data-testid="plugin-mode-source"
+                          onClick={() => setViewMode('code-only')}
+                          disabled={!contentReady}
+                        >源码</button>
+                      )}
                     </div>
                   )}
+                  {/* 插件声明的工具栏快捷设置项（如风格下拉） */}
+                  {activePlugin && viewMode === 'preview' && filePath && (activePlugin.settings || [])
+                    .filter((s) => s.inToolbar && s.type === 'select' && (!s.toolbarModes || s.toolbarModes.includes(activePluginMode)))
+                    .map((s) => (
+                      <PluginToolbarSelect key={`${activePlugin.id}:${s.key}`} pluginId={activePlugin.id} setting={s} />
+                    ))}
                 </div>
               )}
 
@@ -951,7 +1073,7 @@ const ContentArea: FunctionalComponent<Props> = ({
                           复制全文
                         </button>
                       )}
-                      {isMarkdown && (
+                      {isSplitEditable && (
                         <>
                           <button
                             class={`header-dropdown-item${viewMode === 'preview' ? ' active' : ''}`}
@@ -964,29 +1086,38 @@ const ContentArea: FunctionalComponent<Props> = ({
                           >编辑模式</button>
                         </>
                       )}
-                      {isJsonl && (
+                      {!isSplitEditable && hasCustomPreview && (pluginModes.length > 0 || activePlugin?.supportsSource) && (
                         <>
-                          <button
-                            class={`header-dropdown-item${viewMode === 'preview' ? ' active' : ''}`}
-                            onClick={() => { setViewMode('preview'); setMoreMenuOpen(false) }}
-                          >预览模式</button>
-                          <button
-                            class={`header-dropdown-item${viewMode === 'code-only' ? ' active' : ''}`}
-                            onClick={() => { setViewMode('code-only'); setMoreMenuOpen(false) }}
-                            disabled={!contentReady}
-                          >源码模式</button>
-                          {viewMode === 'preview' && jsonlOk && (
-                            <>
-                              <button
-                                class={`header-dropdown-item${effectiveJsonlMode === 'st' ? ' active' : ''}`}
-                                onClick={() => { setJsonlPreviewMode('st'); setMoreMenuOpen(false) }}
-                              >对话视图</button>
-                              <button
-                                class={`header-dropdown-item${effectiveJsonlMode === 'jsonl' ? ' active' : ''}`}
-                                onClick={() => { setJsonlPreviewMode('jsonl'); setMoreMenuOpen(false) }}
-                              >JSONL 视图</button>
-                            </>
+                          {(pluginModes.length > 0 ? pluginModes : [{ id: 'preview', label: '预览' }]).map((m) => (
+                            <button
+                              key={m.id}
+                              class={`header-dropdown-item${viewMode === 'preview' && activePluginMode === m.id ? ' active' : ''}`}
+                              onClick={() => {
+                                setViewMode('preview')
+                                if (pluginModes.length > 0) setStoredPluginMode(m.id)
+                                setMoreMenuOpen(false)
+                              }}
+                            >
+                              {m.label}视图
+                            </button>
+                          ))}
+                          {activePlugin?.supportsSource && (
+                            <button
+                              class={`header-dropdown-item${viewMode === 'code-only' ? ' active' : ''}`}
+                              disabled={!contentReady}
+                              onClick={() => { setViewMode('code-only'); setMoreMenuOpen(false) }}
+                            >源码编辑</button>
                           )}
+                          {viewMode === 'preview' && (activePlugin?.settings || [])
+                            .filter((s) => s.inToolbar && s.type === 'select' && (!s.toolbarModes || s.toolbarModes.includes(activePluginMode)))
+                            .map((s) => (
+                              <PluginDropdownSetting
+                                key={`${activePlugin!.id}:${s.key}`}
+                                pluginId={activePlugin!.id}
+                                setting={s}
+                                onDone={() => setMoreMenuOpen(false)}
+                              />
+                            ))}
                         </>
                       )}
                     </div>

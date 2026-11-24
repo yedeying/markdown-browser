@@ -1,8 +1,11 @@
 import type { FileNode } from '../../types.js'
 import type { IconName } from '../components/ui/Icon.js'
 import { getFileType } from './fileType.js'
+import { pluginRegistry } from '../plugins/registry.js'
 
 export function getFileIconName(name: string): IconName {
+  const pluginIcon = pluginRegistry.getIconForFile(name)
+  if (pluginIcon) return pluginIcon
   switch (getFileType(name)) {
     case 'markdown': return 'file-text'
     case 'image':    return 'file-image'

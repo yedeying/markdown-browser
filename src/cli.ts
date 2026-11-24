@@ -22,6 +22,7 @@ Markdown Browser
   -P, --password <pw>                   访问密码（也可用 VMD_PASSWORD 环境变量）
   --workspace <dir>                     工作区根目录（多挂载模式）
   --mount <alias>:<name>:<subpath>      追加挂载点（可多次使用），仅 --workspace 模式有效
+  --plugins <dir>                       外部插件目录（也可用 VMD_PLUGINS_DIR 环境变量）
 
 示例:
   vmd README.md
@@ -37,6 +38,7 @@ interface ParsedArgs {
   port: number
   host: string
   password?: string
+  pluginsDir?: string
 }
 
 function parseArgs(argv: string[]): ParsedArgs | null {
@@ -51,6 +53,7 @@ function parseArgs(argv: string[]): ParsedArgs | null {
   let host = '0.0.0.0'
   let pathArg: string | undefined
   let workspace: string | undefined
+  let pluginsDir: string | undefined = process.env.VMD_PLUGINS_DIR?.trim() || undefined
   const mounts: MountConfig[] = []
 
   let password: string | undefined = process.env.VMD_PASSWORD !== undefined
@@ -70,6 +73,8 @@ function parseArgs(argv: string[]): ParsedArgs | null {
       args[++i]
     } else if (a === '--workspace') {
       workspace = args[++i]
+    } else if (a === '--plugins') {
+      pluginsDir = args[++i]
     } else if (a === '--mount') {
       // 格式：alias:name:path  （name 可省略，冒号仍需保留：alias::path）
       const spec = args[++i] ?? ''
@@ -104,7 +109,7 @@ function parseArgs(argv: string[]): ParsedArgs | null {
     process.exit(1)
   }
 
-  return { path: pathArg, workspace, mounts, port, host, password }
+  return { path: pathArg, workspace, mounts, port, host, password, pluginsDir }
 }
 
 function warn(messages: string[]) {
@@ -117,8 +122,16 @@ async function main() {
   const parsed = parseArgs(process.argv)
   if (!parsed) return
 
-  const { path: inputPath, workspace, mounts, port, host, password } = parsed
+  const { path: inputPath, workspace, mounts, port, host, password, pluginsDir: rawPluginsDir } = parsed
   const distPath = resolve(__dirname, 'client')
+  const resolvePluginsDir = (fallbackRoot?: string): string | undefined => {
+    if (rawPluginsDir) return resolve(rawPluginsDir)
+    if (fallbackRoot) {
+      const candidate = resolve(fallbackRoot, '.vmd-plugins')
+      if (existsSync(candidate) && statSync(candidate).isDirectory()) return candidate
+    }
+    return undefined
+  }
 
   if (!existsSync(distPath)) {
     console.error(`\x1b[31m错误: 构建产物不存在 (${distPath})\x1b[0m`)
@@ -153,6 +166,7 @@ async function main() {
         port,
         host,
         distPath,
+        pluginsDir: resolvePluginsDir(wsAbs),
         password,
       })
       return
@@ -167,6 +181,7 @@ async function main() {
       port,
       host,
       distPath,
+      pluginsDir: resolvePluginsDir(wsAbs),
       password,
     })
     return
@@ -197,6 +212,7 @@ async function main() {
         port,
         host,
         distPath,
+        pluginsDir: resolvePluginsDir(resolved.workspace),
         password,
       })
       return
@@ -215,6 +231,7 @@ async function main() {
       port,
       host,
       distPath,
+      pluginsDir: resolvePluginsDir(basePath),
       password,
     })
   } else if (stat.isFile()) {
@@ -230,6 +247,7 @@ async function main() {
       port,
       host,
       distPath,
+      pluginsDir: resolvePluginsDir(),
       password,
     })
   } else {

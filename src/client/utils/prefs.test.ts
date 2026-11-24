@@ -61,7 +61,6 @@ const ALL_KEYS: PrefKey[] = [
   'showHidden',
   'editorFontSize',
   'sidebarWidth',
-  'jsonlPreviewMode',
 ]
 
 test('getPref returns typed defaults when storage is empty', () => {
@@ -81,7 +80,6 @@ test('getPref returns typed defaults when storage is empty', () => {
   expect(getPref('showHidden')).toBe(false)
   expect(getPref('editorFontSize')).toBe(14)
   expect(getPref('sidebarWidth')).toBe(SIDEBAR_WIDTH_DEFAULT)
-  expect(getPref('jsonlPreviewMode')).toBe('st')
 })
 
 test('getPref validates stored values and falls back to defaults', () => {
@@ -99,7 +97,6 @@ test('getPref validates stored values and falls back to defaults', () => {
   localStorage.setItem('vmd_show_hidden', 'yes')
   localStorage.setItem('vmd_editor_font_size', '20')
   localStorage.setItem('vmd_sidebar_width', '-5')
-  localStorage.setItem('vmd_jsonl_preview_mode', 'bogus')
 
   expect(getPref('theme')).toBe('dark')
   expect(getPref('accent')).toBe('orange')
@@ -115,7 +112,6 @@ test('getPref validates stored values and falls back to defaults', () => {
   expect(getPref('showHidden')).toBe(false)
   expect(getPref('editorFontSize')).toBe(14)
   expect(getPref('sidebarWidth')).toBe(SIDEBAR_WIDTH_DEFAULT)
-  expect(getPref('jsonlPreviewMode')).toBe('st')
 })
 
 test('setPref persists values readable by getPref', () => {
@@ -136,7 +132,6 @@ test('setPref persists values readable by getPref', () => {
   setPref('showHidden', true)
   setPref('editorFontSize', 15)
   setPref('sidebarWidth', 320)
-  setPref('jsonlPreviewMode', 'jsonl')
 
   expect(getPref('theme')).toBe('system')
   expect(getPref('accent')).toBe('blue')
@@ -155,7 +150,6 @@ test('setPref persists values readable by getPref', () => {
   expect(getPref('showHidden')).toBe(true)
   expect(getPref('editorFontSize')).toBe(15)
   expect(getPref('sidebarWidth')).toBe(320)
-  expect(getPref('jsonlPreviewMode')).toBe('jsonl')
 })
 
 test('subscribePref notifies listeners after successful writes for the same key', () => {

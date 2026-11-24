@@ -203,6 +203,7 @@ export function isEditable(path: string): boolean {
 }
 
 /** 是否为 .jsonl 文件（集中判断，供 ContentArea 等处按扩展名路由到 ST/逐行预览）。 */
+/** 是否为 .jsonl 文件（供内置 JSONL 插件及路径工具复用） */
 export function isJsonlPath(path: string | null | undefined): boolean {
   return !!path && getExtension(path) === '.jsonl'
 }
