@@ -245,7 +245,10 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
     if (!rendered) return null
     return new Response(rendered, {
       status: 200,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
     })
   }
 
@@ -314,6 +317,7 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
     })
     if (rendered) {
       c.header('Content-Type', 'text/html; charset=utf-8')
+      c.header('Cache-Control', 'no-store')
       return c.body(rendered)
     }
     return c.text('Not found', 404)

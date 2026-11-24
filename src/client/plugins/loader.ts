@@ -23,7 +23,7 @@ export async function loadExternalPlugins(): Promise<void> {
   const sdk = installPluginSdk()
   let manifests: ExternalPluginManifest[] = []
   try {
-    const res = await fetch('/api/plugins')
+    const res = await fetch('/api/plugins', { cache: 'no-store' })
     if (!res.ok) return
     const data = await res.json() as { plugins?: ExternalPluginManifest[] }
     if (Array.isArray(data.plugins)) manifests = data.plugins
