@@ -52,19 +52,28 @@ export function listExternalPlugins(pluginsDir?: string): ExternalPluginManifest
 
       if (!id || !isSafeRelAsset(entry)) continue
       const entryFile = join(pluginRoot, entry)
-      if (!existsSync(entryFile) || !statSync(entryFile).isFile()) continue
+      if (!existsSync(entryFile)) continue
+      const entryStat = statSync(entryFile)
+      if (!entryStat.isFile()) continue
 
       const encDir = encodeURIComponent(dir)
       const encodeRel = (p: string) => p.split('/').map(encodeURIComponent).join('/')
+      const versionTag = (filePath: string, preStat?: ReturnType<typeof statSync>) => {
+        const st = preStat ?? statSync(filePath)
+        return Math.floor(st.mtimeMs)
+      }
       out.push({
         id,
         name,
         version,
         dir,
-        entryUrl: `/plugins/${encDir}/${encodeRel(entry)}`,
+        entryUrl: `/plugins/${encDir}/${encodeRel(entry)}?v=${versionTag(entryFile, entryStat)}`,
         styleUrls: styles
-          .filter((s) => existsSync(join(pluginRoot, s)))
-          .map((s) => `/plugins/${encDir}/${encodeRel(s)}`),
+          .filter((s) => {
+            const p = join(pluginRoot, s)
+            return existsSync(p) && statSync(p).isFile()
+          })
+          .map((s) => `/plugins/${encDir}/${encodeRel(s)}?v=${versionTag(join(pluginRoot, s))}`),
       })
     } catch {
       // 跳过损坏的 manifest，不影响其它插件和主程序启动
@@ -76,6 +85,7 @@ export function listExternalPlugins(pluginsDir?: string): ExternalPluginManifest
 /** 注册外部插件清单 API（GET /api/plugins）与插件静态文件托管（GET /plugins/:dir/*）。 */
 export function registerPluginRoutes(app: Hono, pluginsDir?: string): void {
   app.get('/api/plugins', (c) => {
+    c.header('Cache-Control', 'no-store')
     return c.json({ plugins: listExternalPlugins(pluginsDir) })
   })
 
@@ -127,7 +137,7 @@ export function registerPluginRoutes(app: Hono, pluginsDir?: string): void {
       if (!type) return c.text('Unsupported type', 415)
 
       c.header('Content-Type', type)
-      c.header('Cache-Control', 'no-cache')
+      c.header('Cache-Control', 'no-store')
       return c.body(readFileSync(realTarget))
     } catch {
       return c.text('Not found', 404)

@@ -41,14 +41,15 @@ afterAll(() => {
 test('listExternalPlugins returns valid plugins and skips malformed ones', () => {
   const list = listExternalPlugins(dir)
   expect(list.length).toBe(1)
-  expect(list[0]).toEqual({
+  expect(list[0]).toMatchObject({
     id: 'ext.csv-viewer',
     name: 'CSV Viewer',
     version: '1.0.0',
     dir: 'csv-viewer',
-    entryUrl: '/plugins/csv-viewer/index.js',
-    styleUrls: ['/plugins/csv-viewer/style.css'],
   })
+  expect(list[0].entryUrl).toMatch(/^\/plugins\/csv-viewer\/index\.js\?v=\d+$/)
+  expect(list[0].styleUrls).toHaveLength(1)
+  expect(list[0].styleUrls[0]).toMatch(/^\/plugins\/csv-viewer\/style\.css\?v=\d+$/)
   expect(listExternalPlugins(undefined)).toEqual([])
   expect(listExternalPlugins(join(dir, 'nonexistent'))).toEqual([])
 })
@@ -56,12 +57,14 @@ test('listExternalPlugins returns valid plugins and skips malformed ones', () =>
 test('GET /api/plugins and /plugins/:dir/* serve assets with correct MIME', async () => {
   const listRes = await app.request('/api/plugins')
   expect(listRes.status).toBe(200)
+  expect(listRes.headers.get('cache-control')).toBe('no-store')
   const json = await listRes.json() as { plugins: unknown[] }
   expect(json.plugins.length).toBe(1)
 
   const jsRes = await app.request('/plugins/csv-viewer/index.js')
   expect(jsRes.status).toBe(200)
   expect(jsRes.headers.get('content-type')).toContain('text/javascript')
+  expect(jsRes.headers.get('cache-control')).toBe('no-store')
   expect(await jsRes.text()).toContain('ext.csv-viewer')
 
   const cssRes = await app.request('/plugins/csv-viewer/style.css')
