@@ -1,373 +1,337 @@
-# vmd - Markdown Preview Tool
-
-> 一个现代化的 Markdown 预览工具，支持目录浏览、实时编辑、多视图模式和 Docker 部署。
-
-## 🎯 功能特性
-
-### 核心功能
-- **📁 目录模式**：浏览文件树、搜索 Markdown 文件、预览和编辑
-- **📄 单文件模式**：预览单个 Markdown 文件，支持 SSE 热更新
-- **🎨 主题切换**：亮色/暗色主题，偏好自动保存
-- **✏️ 在线编辑**：集成 CodeMirror 6 编辑器，支持 Prettier 自动格式化（Markdown）
-- **🔍 全文搜索**：支持文件名搜索和 grep 全文搜索
-
-### 预览渲染
-- **Markdown 渲染**：使用 marked + highlight.js，支持代码高亮（35+ 语言）
-- **数学公式**：KaTeX 实时渲染
-- **图表支持**：Mermaid 11（流程图、时序图、甘特图等）
-- **代码块**：支持行号、语言标记和复制按钮
-
-### 多媒体支持
-- **代码文件**：完整屏幕编辑器（js、ts、py、json 等）
-- **图片**：ImageViewer 组件，支持预览和缩略图
-- **视频**：VideoViewer 组件，原生播放器
-
-### 文件夹视图（类 Finder 风格）
-- **三种视图模式**：列表 / 网格 / 列视图
-- **网格卡片**：S/M/L 三种尺寸，支持图片缩略图
-- **列视图**：多栏导航，点击文件夹展开新列
-- **面包屑导航**：快速跳转父目录
-- **视图偏好**：自动保存到 localStorage
-
-## 🚀 快速开始
-
-### 前置要求
-- **Bun** v1.0+（自动管理 npm 依赖，比 Node.js 更快）
-- **Docker**（可选，用于容器部署）
-
-### 本地开发
-
-#### 1. 安装依赖
-```bash
-# Bun 自动安装依赖
-~/.bun/bin/bun install
-```
-
-#### 2. 开发模式
-```bash
-# 启动前端开发服务器（Vite）
-~/.bun/bin/bun run dev
-```
-
-打开 `http://localhost:5173`
-
-#### 3. 生产构建
-```bash
-# 一键完整构建（前端 + 后端）
-~/.bun/bin/bun run build
-
-# 或分别构建
-~/.bun/bin/bun run build:client  # Vite 前端构建 → dist/client/
-~/.bun/bin/bun run build:server  # 后端 CLI 构建 → dist/cli.js
-```
-
-#### 4. 运行服务
-
-**目录模式**（浏览整个目录树）：
-```bash
-./vmd ~/docs          # 默认端口 8888
-./vmd ~/docs 9000     # 指定端口
-```
-
-**单文件模式**（预览单个文件）：
-```bash
-./vmd ~/notes/my-doc.md
-```
-
-访问 `http://localhost:8888`
-
-### Docker 部署
-
-详见 [DOCKER.md](./DOCKER.md) 获取完整部署指南。发布版镜像：`ghcr.io/yedeying/markdown-browser`（打 `v*` tag 后 CI 自动推送）。
-
-**快速开始**：
-```bash
-# 一键构建并运行（需要 docker 和 docker-compose）
-./docker-run.sh ~/docs
-```
-
-## 📋 项目结构
-
-```
-markdown-preview/
-├── src/
-│   ├── cli.ts                      # CLI 入口 + 参数解析
-│   ├── client/                     # 前端（Preact + TypeScript）
-│   │   ├── main.tsx               # 入口
-│   │   ├── App.tsx                # 根组件（路由逻辑）
-│   │   ├── components/            # 20+ UI 组件
-│   │   ├── hooks/                 # 6 个自定义 Hooks
-│   │   ├── utils/                 # 工具函数
-│   │   └── styles/                # 全局 + Markdown 样式
-│   └── server/                    # 后端（Bun + Hono）
-│       ├── index.ts               # 服务器启动
-│       ├── watcher.ts             # 文件监听 + SSE
-│       └── routes/                # API 路由
-├── dist/                          # 编译产物
-├── tests/
-│   ├── e2e/                       # Playwright E2E 测试
-│   └── fixtures/                  # 测试数据
-├── index.html                     # 前端入口 HTML
-├── vite.config.ts                 # Vite 配置
-├── playwright.config.ts           # E2E 测试配置
-├── vmd                            # 可执行脚本（入口）
-├── docker-compose.yml             # Docker Compose
-├── build.sh                       # 构建脚本
-├── docker-run.sh                  # Docker 快速启动
-└── package.json                   # 项目配置
-```
-
-## 🛠️ 技术栈
-
-| 层 | 技术 | 版本 |
-|-----|------|------|
-| **运行时** | Bun | 1.0+ |
-| **前端框架** | Preact | 10 |
-| **编辑器** | CodeMirror | 6 |
-| **服务器** | Hono | 4 |
-| **Markdown** | marked | 11 |
-| **代码高亮** | highlight.js | common |
-| **数学公式** | KaTeX | 0.16 |
-| **图表** | Mermaid | 11 |
-| **格式化** | Prettier | 3 |
-| **构建工具** | Vite | 5 |
-| **测试** | Playwright | 1.40+ |
-| **语言** | TypeScript | 5 |
-
-## 💻 API 接口
-
-### 目录模式
-
-**获取目录结构**
-```http
-GET /api/files?path=<directory>
-```
-
-**搜索文件**
-```http
-GET /api/search?q=<keyword>&path=<directory>
-```
-
-**获取文件内容**
-```http
-GET /api/file?path=<file_path>
-```
-
-**保存文件**
-```http
-POST /api/file
-Content-Type: application/json
-
-{
-  "path": "<file_path>",
-  "content": "<file_content>"
-}
-```
-
-**SSE 文件变动监听**
-```http
-GET /api/watch?path=<file_path>
-```
-
-### 单文件模式
-
-**获取文件内容**
-```http
-GET /api/content
-```
-
-**保存文件**
-```http
-POST /api/save
-Content-Type: application/json
-
-{
-  "content": "<file_content>"
-}
-```
-
-**SSE 文件变动推送**
-```http
-GET /api/watch
-```
-
-### 资源接口
-
-**获取资源缩略图**
-```http
-GET /api/asset?path=<asset_path>
-```
-
-## 📝 开发指南
-
-### 构建流程
-
-1. **前端构建**（Vite）
-   - 入口：`src/client/main.tsx`
-   - 输出：`dist/client/`
-   - 配置：`vite.config.ts`（使用 `@preact/preset-vite`）
-
-2. **后端构建**（Bun）
-   - 入口：`src/cli.ts`
-   - 输出：`dist/cli.js`
-   - 目标：`target: 'bun'`
-
-3. **运行**
-   - 执行 `./vmd` 脚本（Bash）
-   - 自动探测 bun 路径
-   - 启动 `dist/cli.js`
-
-### 关键组件
-
-#### App.tsx
-根组件，负责路由判断（目录 vs 单文件）和全局状态管理
-
-#### FolderView.tsx
-文件夹视图容器，管理视图模式切换（列表/网格/列）
-
-#### MarkdownPreview.tsx
-Markdown 渲染组件，使用 marked + highlight.js + KaTeX + Mermaid
-
-#### Editor.tsx
-CodeMirror 6 编辑器，支持 Prettier 格式化
-
-#### ContentArea.tsx
-中间内容区域，根据文件类型渲染不同组件（预览/编辑/图片/视频等）
-
-### 主题系统
-
-使用 CSS 变量 + localStorage 实现：
-- 存储键：`vmd_theme`（light / dark）
-- CSS 变量：`--primary-bg`、`--text-color` 等
-- 自动切换：根据系统偏好（`prefers-color-scheme`）
-
-### 状态管理
-
-采用 Preact Hooks 管理局部状态：
-- `useTheme`：主题管理
-- `useFileTree`：文件树逻辑
-- `useFileContent`：文件加载缓存
-- `useSearch`：搜索过滤
-- `useSSE`：Server-Sent Events 连接
-- `useLongPress`：移动端长按
-
-## 🧪 测试
-
-### 单元测试
-```bash
-bun test          # 或 bun run test；仅 src/（见 bunfig.toml）
-```
-
-### E2E 测试
-```bash
-bun run test:e2e  # Playwright；webServer 会自行 build 并起 fixtures 服务
-```
-
-CI（GitHub Actions）里 **unit+build** 与 **e2e** 两个 job 并行、互不依赖。
-
-测试套件位于 `tests/e2e/`；测试数据位于 `tests/fixtures/docs/`。
-
-## 🐳 Docker 部署
-
-### 快速开始
-```bash
-./docker-run.sh ~/docs          # 默认 8888 端口
-./docker-run.sh ~/docs 9000     # 指定端口
-```
-
-正式发布镜像由 `v*` tag 触发推到 GHCR（`ghcr.io/yedeying/markdown-browser`），见 [DOCKER.md](./DOCKER.md)。
-
-### 完整指南
-详见 [DOCKER.md](./DOCKER.md)
-
-关键特性：
-- **多阶段构建**：编译阶段 + 运行阶段，最终镜像 ~400-500MB
-- **健康检查**：自动健康检查
-- **环境变量**：支持 TZ（时区）等配置
-- **挂载模式**：支持只读 (`:ro`) 和可写模式
-- **日志管理**：自动日志轮转
-
-## 📖 常见用途
-
-### 个人文档库
-```bash
-./vmd ~/Documents/notes
-```
-
-### 项目文档预览
-```bash
-./vmd ~/my-project/docs
-```
-
-### 博客本地预览
-```bash
-./vmd ./content
-```
-
-### Docker 容器内运行
-```bash
-docker run -p 8888:8888 -v ~/docs:/markdown:ro vmd:latest
-```
-
-## ⚙️ 配置
-
-### 启动参数
-```bash
-./vmd [directory] [port]
-
-# 示例
-./vmd ~/docs              # 目录模式，端口 8888
-./vmd ~/file.md          # 单文件模式
-./vmd ~/docs 9000        # 目录模式，端口 9000
-```
-
-### 环境变量
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `TZ` | UTC | 时区（Docker 中有效） |
-
-### 前端偏好（localStorage）
-| 键 | 说明 |
-|----|------|
-| `vmd_theme` | 主题（light/dark） |
-| `vmd_folder_view_mode` | 文件夹视图模式 |
-| `vmd_grid_card_size` | 网格卡片尺寸（S/M/L） |
-
-## 🐛 故障排查
-
-### Bun 路径问题
-如果 `./vmd` 找不到 bun：
-```bash
-# 手动指定 bun 路径
-/path/to/bun dist/cli.js ~/docs
-```
-
-### 编辑后文件不保存
-检查文件权限和磁盘空间
-
-### Docker 容器无法访问
-查看日志：
-```bash
-docker logs vmd-server
-```
-
-### 端口被占用
-使用其他端口：
-```bash
-./vmd ~/docs 9000
-```
-
-详见 [DOCKER.md - 故障排查](./DOCKER.md#故障排查)
-
-## 📄 许可证
-
-MIT
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 PR！
+<div align="center">
+
+# vmd · Markdown Browser
+
+**A fast, self-hosted Markdown & media browser with live editing, Finder-style views, real-time sync, and an extensible plugin system.**
+
+<p>
+  <strong>English</strong> ·
+  <a href="./README.zh-CN.md">简体中文</a> ·
+  <a href="./README.ja.md">日本語</a>
+</p>
+
+<p>
+  <a href="https://github.com/yedeying/markdown-browser/releases">
+    <img src="https://img.shields.io/github/v/release/yedeying/markdown-browser?style=flat-square&logo=github" alt="Release" />
+  </a>
+  <a href="https://github.com/yedeying/markdown-browser/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/yedeying/markdown-browser/ci.yml?branch=main&style=flat-square&label=CI&logo=githubactions" alt="CI" />
+  </a>
+  <a href="https://github.com/yedeying/markdown-browser/actions/workflows/release.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/yedeying/markdown-browser/release.yml?style=flat-square&label=Release&logo=docker" alt="Release Build" />
+  </a>
+  <a href="https://github.com/yedeying/markdown-browser/pkgs/container/markdown-browser">
+    <img src="https://img.shields.io/badge/ghcr.io-markdown--browser-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker Image" />
+  </a>
+  <a href="https://github.com/yedeying/markdown-browser/stargazers">
+    <img src="https://img.shields.io/github/stars/yedeying/markdown-browser?style=flat-square&logo=github" alt="GitHub Stars" />
+  </a>
+  <img src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square" alt="License MIT" />
+</p>
+
+<p>
+  <img src="https://img.shields.io/badge/Bun-1.0+-fbf0df?style=flat-square&logo=bun&logoColor=000" alt="Bun" />
+  <img src="https://img.shields.io/badge/Preact-10-673ab8?style=flat-square&logo=preact&logoColor=fff" alt="Preact" />
+  <img src="https://img.shields.io/badge/Hono-4-e36002?style=flat-square&logo=hono&logoColor=fff" alt="Hono" />
+  <img src="https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript&logoColor=fff" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/CodeMirror-6-d30707?style=flat-square&logo=codemirror&logoColor=fff" alt="CodeMirror 6" />
+  <img src="https://img.shields.io/badge/Playwright-E2E-2ead33?style=flat-square&logo=playwright&logoColor=fff" alt="Playwright" />
+</p>
+
+<p>
+  <a href="#-features">Features</a> ·
+  <a href="#-quick-start">Quick Start</a> ·
+  <a href="#-docker-deployment">Docker</a> ·
+  <a href="#-plugin-system">Plugins</a> ·
+  <a href="#-keyboard-shortcuts">Shortcuts</a> ·
+  <a href="#-api-reference">API</a> ·
+  <a href="#-development">Development</a>
+</p>
+
+</div>
 
 ---
 
-**最后更新**：2026 年 3 月  
-**项目版本**：2.0.0
+## ✨ Features
+
+### 📝 Markdown & Rich Document Reading
+- **Full GFM & Rich Extensions**: Powered by `marked`, `highlight.js` (35+ languages), **KaTeX** math (`$...$` / `$$...$$`), and **Mermaid 11** diagrams.
+- **Structured Reading Aids**: Automatic YAML Frontmatter metadata table, collapsible heading sections, floating Table of Contents (TOC), sortable Markdown tables, interactive task checkboxes, and print-friendly styling.
+- **Inline Image Lightbox**: Click any image inside a Markdown document to open a full-screen Lightbox fitted to the viewport with zoom, fit, 90° rotation, download, copy path, keyboard navigation, 3-zone tap switching (left / center / right), and mobile gesture isolation.
+
+### ✏️ Live Editing & Code Viewing
+- **CodeMirror 6 Editor**: Split-screen live preview for Markdown and full-screen editing for 35+ code languages (with automatic basename & shebang detection).
+- **One-Click Formatting**: Integrated **Prettier 3** formatting for Markdown.
+- **Safe External Sync**: Detects on-disk changes via SSE and shows a non-destructive update banner when unsaved local edits exist.
+
+### 🖼️ Built-in Multi-Format Previewers
+| Format | Built-in Plugin | Capabilities |
+| :--- | :--- | :--- |
+| **Markdown** (`.md`, `.markdown`) | `builtin.markdown` | Rich preview, split live edit, TOC, heading folds, inline image Lightbox |
+| **PDF** (`.pdf`) | `builtin.pdf` | Full-height embedded viewer, open in new tab, download, Finder column preview |
+| **Images** (`.png`, `.jpg`, `.webp`, `.gif`, `.svg`, `.heic`/`.heif`, ...) | `builtin.image` | Zoom, fit, quarter-turn rotation, `Ctrl/Cmd`+wheel zoom, HEIC transcoding, Lightbox |
+| **Videos** (`.mp4`, `.webm`, `.mov`, `.ogg`, `.avi`) | `builtin.video` | HTTP `Range` streaming, poster thumbnail extraction |
+| **HTML & Static Sites** (`.html`, folders with `index.html`) | `builtin.html`, `builtin.site-folder` | Isolated preview & `/site/` static folder serving |
+| **JSONL / Code / Text** (`.jsonl`, `.ts`, `.py`, `.json`, `.txt`, ...) | `builtin.jsonl`, `builtin.code`, `builtin.plaintext` | Structured JSONL viewer, syntax-highlighted editor, UTF-8/UTF-16/GBK decoding |
+
+### 📂 Finder-Style File & Folder Management
+- **4 Folder Views**:
+  - **List View** — dense sortable table with metadata.
+  - **Grid View** — S / M / L cards with media thumbnails.
+  - **Column View** — macOS Finder-style Miller columns that automatically hide older ancestor columns to the left so the preview pane always keeps generous reading space, with consistent `←`/`→` keyboard navigation.
+  - **Masonry Gallery** — recursive image & video waterfall gallery with lazy thumbnails and full-screen Lightbox.
+- **File Operations**: Create file/folder, rename, copy/cut/paste across folders, drag-and-drop upload (files & nested folders), single-file or multi-selection ZIP download, hidden files toggle, and breadcrumb navigation.
+- **Fast Search**: Instant filename search and server-side content `grep` search.
+
+### ⚡ Real-Time Sync, Workspaces & Sharing
+- **On-Demand File Watching**: Visible-directory explicit watch sync over SSE (`/api/watch` + `/api/watch/sync`), 15s disconnect grace period, and `mtimeMs` incremental refresh on reconnect or tab focus — no expensive full-disk scans.
+- **Fast Deep-Link Loading**: Direct file URLs load content, metadata, external plugins, and ancestor tree levels concurrently.
+- **3 Operating Modes**: Single-file preview, single-directory browser, and `--workspace` multi-mount mode (`/m/<alias>/...`) with a built-in `/admin` panel.
+- **Share Links & Auth**: Generate read-only share links (`/share/<token>`) for any file or folder, and optionally protect the instance with `-P` / `VMD_PASSWORD`.
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- **[Bun](https://bun.sh/)** `v1.0+` (used as both runtime and bundler)
+- **Docker** (optional, for containerized deployment)
+
+### Run from Source
+
+```bash
+git clone https://github.com/yedeying/markdown-browser.git
+cd markdown-browser
+
+# Install dependencies and build client + server
+bun install
+bun run build
+
+# Directory mode (default port 8888)
+./vmd ~/docs
+
+# Single-file mode
+./vmd ~/notes/README.md
+
+# Custom port & password
+./vmd ~/docs --port 9000 --password secret
+
+# Multi-mount workspace mode
+./vmd --workspace /workspace \
+  --mount docs:Docs:docs \
+  --mount notes:Notes:personal-notes
+```
+
+Open `http://localhost:8888` in your browser.
+
+---
+
+## 🐳 Docker Deployment
+
+Prebuilt multi-arch images are published to GitHub Container Registry on every `v*` release:
+
+```
+ghcr.io/yedeying/markdown-browser:latest
+```
+
+### Quick Run
+
+```bash
+docker run -d \
+  --name vmd-server \
+  -p 8888:8888 \
+  -v /path/to/your/docs:/workspace \
+  -e TZ=Asia/Shanghai \
+  ghcr.io/yedeying/markdown-browser:latest
+```
+
+### Docker Compose
+
+```yaml
+services:
+  vmd:
+    image: ghcr.io/yedeying/markdown-browser:latest
+    container_name: vmd-server
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./workspace:/workspace
+      # Optional: mount external runtime plugins
+      # - ./plugins:/plugins:ro
+    environment:
+      TZ: UTC
+      # VMD_PASSWORD: "change-me"
+      # VMD_PLUGINS_DIR: "/plugins"
+      # VMD_IMAGE_TRANSFORM: "0"
+      # VMD_MASONRY_RECURSE_DEPTH: "3"
+```
+
+See [DOCKER.md](./DOCKER.md) for advanced deployment, reverse proxy, and troubleshooting guides.
+
+---
+
+## ⚙️ CLI Options & Environment Variables
+
+### CLI Flags
+
+| Flag | Default | Description |
+| :--- | :--- | :--- |
+| `<path>` | — | Target file (single-file mode) or directory (directory mode) |
+| `-p, --port <n>` | `8888` | HTTP listen port |
+| `--host <host>` | `0.0.0.0` | Bind address |
+| `-P, --password <pw>` | — | Enable password login (overrides `VMD_PASSWORD`) |
+| `--workspace <dir>` | — | Enable multi-mount workspace mode (`<workspace>/.vmd-config.json`) |
+| `--mount <alias>:<name>:<subpath>` | — | Register a mount point under `--workspace` (repeatable) |
+| `--plugins <dir>` | `<root>/.vmd-plugins` | Directory containing external runtime plugins |
+| `-h, --help` | — | Show CLI help |
+
+### Environment Variables
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `VMD_PASSWORD` | — | Access password for the web UI and API |
+| `VMD_PLUGINS_DIR` | — | Path to external runtime plugins directory |
+| `VMD_IMAGE_TRANSFORM` | `0` (Docker) / `1` (local) | Enable/disable optional on-the-fly image resizing/transcoding (HEIC always transcodes) |
+| `VMD_MASONRY_RECURSE_DEPTH` | `3` | Maximum recursion depth for Masonry gallery view |
+| `TZ` | `UTC` | Container timezone |
+
+---
+
+## 🧩 Plugin System
+
+`vmd` supports zero-rebuild external runtime plugins. Place each plugin in its own subdirectory under `--plugins <dir>` (or `<workspace>/.vmd-plugins`):
+
+```
+.vmd-plugins/
+└── my-custom-viewer/
+    ├── plugin.json
+    ├── index.js
+    └── style.css
+```
+
+**`plugin.json`**:
+```json
+{
+  "id": "ext.my-custom-viewer",
+  "name": "My Custom Viewer",
+  "entry": "index.js",
+  "styles": ["style.css"]
+}
+```
+
+**`index.js`** (native ESM, receives the runtime `sdk` with Preact `h`, `hooks`, and utilities):
+```js
+export default function createPlugin(sdk) {
+  const { h } = sdk
+  return {
+    id: 'ext.my-custom-viewer',
+    name: 'My Custom Viewer',
+    priority: 100,
+    target: 'file',
+    matchPath: ({ ext }) => ext === '.log',
+    sniffAndParse: ({ content }) => content.startsWith('CUSTOM:') ? { raw: content } : null,
+    renderMain: ({ parsed }) => h('pre', { class: 'my-viewer' }, parsed.raw),
+  }
+}
+```
+
+Plugins are discovered via `GET /api/plugins`, served with cache-busting `?v=<mtime>` query strings, and hot-loaded without blocking initial page render.
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Context | Key | Action |
+| :--- | :--- | :--- |
+| **Sidebar / Folder Views** | `↑` / `↓` or `k` / `j` | Move cursor up / down |
+| **Sidebar / Column View** | `→` / `l` or `Enter` | Enter folder / focus preview / open file |
+| **Sidebar / Column View** | `←` / `h` | Step back to parent column or return focus to sidebar |
+| **Column Preview Focus** | `↑` / `↓` | Scroll preview content |
+| **Image Lightbox** | `←` / `→` or `h` / `l` | Previous / next media |
+| **Image Lightbox** | `Esc` | Close Lightbox |
+| **Image Lightbox** | `Ctrl` / `Cmd` + Scroll | Zoom in / out |
+| **Image Lightbox (Touch / Click)** | Left / Center / Right 1/3 | Previous / Toggle toolbar / Next |
+
+---
+
+## 🔌 API Reference
+
+> In multi-mount mode, prefix endpoints with `/m/<alias>` (e.g. `/m/docs/api/files`).
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/files?path=<dir>&depth=1&showHidden=0` | List directory children (lazy 1-level) |
+| `GET` | `/api/stat?path=<path>` | Stat a relative file or directory path |
+| `GET` | `/api/file/<path>` | Read text file content (auto-decodes UTF-8/UTF-16/GBK) |
+| `POST` | `/api/save/<path>` | Save text file content (rejects binary extensions) |
+| `GET` | `/api/asset/<path>[?w=&fmt=&poster=1]` | Serve static asset, transcoded thumbnail, or video poster (Range supported) |
+| `GET` | `/api/search?q=<kw>&type=name\|content` | Search by filename or file content |
+| `GET` | `/api/download/<path>` | Download a single file as attachment |
+| `POST` | `/api/download/zip` | Download multiple files/folders as a ZIP archive |
+| `POST` | `/api/upload` | Upload files or folder structures |
+| `GET` | `/api/watch?clientId=<id>` | SSE stream for `tree-change` and `reload` events |
+| `POST` | `/api/watch/sync` | Sync client's currently visible directories to server watcher |
+| `POST` | `/api/files/check-mtime` | Batch-check directory `mtimeMs` for incremental catch-up |
+| `GET` | `/api/plugins` | Discover external runtime plugins |
+| `GET` | `/site/<dir>/<entry>` | Serve static HTML folder directly |
+
+---
+
+## 🏗️ Architecture & Project Structure
+
+```
+markdown-browser/
+├── src/
+│   ├── cli.ts                    # CLI entry point & argument parser
+│   ├── types.ts                  # Shared TypeScript interfaces
+│   ├── client/                   # Frontend (Preact 10 + TypeScript + Vite)
+│   │   ├── main.tsx              # App boot & appearance/plugin initialization
+│   │   ├── App.tsx               # Routing (single / dir / multi-mount) & deep-link loader
+│   │   ├── components/           # Sidebar, ContentArea, Folder*View, Editor, MediaLightbox, PdfViewer...
+│   │   ├── hooks/                # useFileTree, useFileContent, useSSE, useSearch, useTheme...
+│   │   ├── plugins/              # PluginRegistry, runtime loader, SDK, and builtin/* plugins
+│   │   ├── utils/                # Markdown parser, fileType, columnStack, keyboardNav, fsApi...
+│   │   └── styles/               # Modular CSS (themes, layout, components, markdown, print)
+│   └── server/                   # Backend (Bun + Hono 4)
+│       ├── index.ts              # Server bootstrap & middleware
+│       ├── watcher.ts            # On-demand directory watcher & SSE broadcaster
+│       ├── mount-manager.ts      # Multi-mount config persistence
+│       ├── image-transform.ts    # Sharp + HEIC image transcoding
+│       ├── plugins.ts            # External plugin discovery & asset serving
+│       ├── share.ts              # Share token management & read-only routes
+│       └── routes/               # dir, single, admin, auth routes
+├── tests/
+│   ├── e2e/                      # Playwright end-to-end test suite
+│   └── fixtures/                 # Test fixture workspace
+├── Dockerfile                    # Multi-stage production image
+└── .github/workflows/            # CI (unit + build + E2E) & Release (GHCR publish)
+```
+
+---
+
+## 🧪 Development & Testing
+
+```bash
+# Start Vite dev server
+bun run dev
+
+# Run unit tests (450+ tests via bun:test)
+bun test
+
+# Run Playwright E2E tests
+bun run test:e2e
+
+# Production build (client -> dist/client/, server -> dist/cli.js)
+bun run build
+```
+
+---
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome! Feel free to open an [Issue](https://github.com/yedeying/markdown-browser/issues) or submit a Pull Request.
+
+## 📄 License
+
+Distributed under the [MIT License](https://opensource.org/licenses/MIT).
