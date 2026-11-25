@@ -106,3 +106,46 @@ test('tree-change while the first load of that dir is in flight refetches it', a
   await act(async () => { await firstLoad; await refreshDone })
   expect(childNames('a/b')).toEqual(['one.md', 'two.md'])
 })
+
+test('checkAndRefreshDirs records baseline mtime then only refetches changed directories', async () => {
+  let mtimes: Record<string, number> = { '': 1000, a: 2000 }
+  let filesRequests: string[] = []
+  const baseFetch = globalThis.fetch
+  globalThis.fetch = (async (input: string, init?: RequestInit) => {
+    if (input.includes('/api/files/check-mtime')) {
+      const body = JSON.parse(String(init?.body || '{}')) as { dirs: Array<{ path: string; mtimeMs?: number }> }
+      const changed: string[] = []
+      for (const d of body.dirs) {
+        if (typeof d.mtimeMs === 'number' && d.mtimeMs !== mtimes[d.path]) {
+          changed.push(d.path)
+        }
+      }
+      return new Response(JSON.stringify({ changed, mtimes }), { status: 200 })
+    }
+    const p = new URL(input, 'http://x').searchParams.get('path') ?? ''
+    filesRequests.push(p)
+    return baseFetch(input, init)
+  }) as typeof fetch
+
+  await act(async () => { render(h(Harness, {}), container) })
+  await flush()
+  await act(async () => { await api.loadChildren('a') })
+  filesRequests = []
+
+  // 首次校验：仅记录基线 mtime，不触发多余 /api/files
+  await act(async () => {
+    const changed = await api.checkAndRefreshDirs(['', 'a'])
+    expect(changed).toEqual([])
+  })
+  expect(filesRequests).toEqual([])
+
+  // 仅目录 a 发生变更：只重拉 a，不重拉根
+  disk.a = [...disk.a, file('a/fresh.md')]
+  mtimes = { '': 1000, a: 3000 }
+  await act(async () => {
+    const changed = await api.checkAndRefreshDirs(['', 'a'])
+    expect(changed).toEqual(['a'])
+  })
+  expect(filesRequests).toEqual(['a'])
+  expect(childNames('a')).toEqual(['b', 'fresh.md'])
+})

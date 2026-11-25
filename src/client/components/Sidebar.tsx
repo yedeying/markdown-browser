@@ -16,6 +16,8 @@ interface Props {
   onSelect: (node: FileNode) => void
   /** 文件夹展开时触发（用于懒加载 children） */
   onExpandFolder?: (path: string) => void
+  /** 侧栏当前已展开目录集合变化时回调（供可视目录 watch 同步） */
+  onExpandedFoldersChange?: (paths: string[]) => void
   query: string
   onQueryChange: (q: string) => void
   searchType: SearchType
@@ -39,6 +41,7 @@ const Sidebar: FunctionalComponent<Props> = ({
   currentPath,
   onSelect,
   onExpandFolder,
+  onExpandedFoldersChange,
   query,
   onQueryChange,
   searchType,
@@ -166,6 +169,7 @@ const Sidebar: FunctionalComponent<Props> = ({
               currentPath={currentPath}
               onSelect={handleSelect}
               onExpand={onExpandFolder}
+              onExpandedChange={onExpandedFoldersChange}
               searchResults={visibleSearchResults && query ? visibleSearchResults : null}
               mobileMode={!!open}
             />

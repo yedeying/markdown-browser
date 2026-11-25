@@ -115,3 +115,57 @@ test('out-of-bounds paths are ignored', () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('syncWatched maintains multi-client union and survives disconnect within grace period', async () => {
+  const root = makeTree()
+  const w = createDirWatcher(root, { graceMs: 80 })
+  const writer1 = () => {}
+  const writer2 = () => {}
+  try {
+    w.addClient(writer1, 'c1')
+    w.syncWatched('c1', ['a/b'])
+    expect(w.activeCount()).toBe(3) // '', 'a', 'a/b'
+
+    w.addClient(writer2, 'c2')
+    w.syncWatched('c2', ['a/c'])
+    expect(w.activeCount()).toBe(4) // '', 'a', 'a/b', 'a/c'
+
+    // c1 断开后在宽限期内重连：监听不丢失
+    w.removeClient(writer1, 'c1')
+    await new Promise((r) => setTimeout(r, 25))
+    expect(w.activeCount()).toBe(4)
+    w.addClient(writer1, 'c1')
+    await new Promise((r) => setTimeout(r, 90))
+    expect(w.activeCount()).toBe(4)
+
+    // c1 真正离开超过宽限期：只释放 a/b，保留 c2 的 '', 'a', 'a/c'
+    w.removeClient(writer1, 'c1')
+    await new Promise((r) => setTimeout(r, 120))
+    expect(w.activeCount()).toBe(3)
+
+    // c2 也离开超过宽限期：全部释放
+    w.removeClient(writer2, 'c2')
+    await new Promise((r) => setTimeout(r, 120))
+    expect(w.activeCount()).toBe(0)
+  } finally {
+    w.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('non-markdown files in watched dir fire reload with exact path', async () => {
+  const root = makeTree()
+  const w = createDirWatcher(root)
+  const events: WatchEvent[] = []
+  w.onEvent((e) => events.push(e))
+  try {
+    w.syncWatched('c1', ['a/b'])
+    writeFileSync(join(root, 'a', 'b', 'chat.txt'), 'hello')
+    await new Promise((r) => setTimeout(r, 450))
+    const reload = events.find((e) => e.type === 'reload' && e.path === 'a/b/chat.txt')
+    expect(reload).toBeDefined()
+  } finally {
+    w.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+})

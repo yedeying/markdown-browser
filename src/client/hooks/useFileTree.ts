@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks'
 import type { FileNode } from '../../types.js'
-import { apiFetch, withHidden } from '../utils/fsApi.js'
+import { apiFetch, withHidden, checkDirsMtime } from '../utils/fsApi.js'
 import { clientPerfLog, clientPerfTimed } from '../utils/perfLog.js'
 import { patchChildren } from '../utils/treePatch.js'
 
@@ -24,6 +24,8 @@ export function useFileTree(showHidden = false) {
   const inflightRef = useRef<Map<string, Promise<void>>>(new Map())
   /** 每路径世代：晚到的响应不得写回 tree（含与 refresh 并行） */
   const fetchGenRef = useRef<Map<string, number>>(new Map())
+  /** 已校验目录的最近一次 mtimeMs（供断线重连 / 切回前台增量补刷） */
+  const dirMtimeRef = useRef<Map<string, number>>(new Map())
 
   /** 拉取指定路径下一层 */
   const fetchLevel = useCallback(async (path: string): Promise<FileNode[]> => {
@@ -170,5 +172,28 @@ export function useFileTree(showHidden = false) {
     }
   }, [loadChildren])
 
-  return { tree, loading, error, childErrors, refresh, loadChildren, ensurePathLoaded }
+  /**
+   * 轻量批量校验可视目录的 mtimeMs，仅重拉实际发生变更的目录。
+   * 首次检查仅记录基线 mtimeMs，不触发多余的 /api/files。
+   */
+  const checkAndRefreshDirs = useCallback(async (paths: string[]): Promise<string[]> => {
+    const unique = [...new Set(paths)]
+    const loadedDirs = unique.filter((p) => loadedRef.current.has(p) || inflightRef.current.has(p))
+    if (loadedDirs.length === 0) return []
+    const payload = loadedDirs.map((p) => ({
+      path: p,
+      mtimeMs: dirMtimeRef.current.get(p),
+    }))
+    const res = await checkDirsMtime(payload)
+    if (!res) return []
+    for (const [p, m] of Object.entries(res.mtimes)) {
+      dirMtimeRef.current.set(p, m)
+    }
+    if (res.changed.length > 0) {
+      await Promise.all(res.changed.map((p) => refresh(p)))
+    }
+    return res.changed
+  }, [refresh])
+
+  return { tree, loading, error, childErrors, refresh, loadChildren, ensurePathLoaded, checkAndRefreshDirs }
 }

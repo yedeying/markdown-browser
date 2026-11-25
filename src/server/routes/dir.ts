@@ -189,16 +189,22 @@ function listDir(dir: string, base: string, showHidden: boolean): FileNode[] {
 }
 
 /**
- * 懒加载单层列表（带缓存）
+ * 懒加载单层列表（带 mtimeMs 校验的 LRU 缓存）
+ * 每次命中前做单次 O(1) statSync(dir).mtimeMs，防止断线漏 watch 时返回脏缓存。
  */
 function listDirCached(scope: string, dir: string, base: string, relPath: string, showHidden: boolean): FileNode[] {
-  const cached = treeCache.get(scope, relPath)
+  let dirMtimeMs: number | undefined
+  try {
+    dirMtimeMs = statSync(dir).mtimeMs
+  } catch { /* ignore */ }
+
+  const cached = treeCache.get(scope, relPath, dirMtimeMs)
   if (cached) {
     perfLog('listDir:cache-hit', { relPath: relPath || '(root)', nodes: cached.length })
     return cached
   }
   const nodes = listDir(dir, base, showHidden)
-  treeCache.set(scope, relPath, nodes)
+  treeCache.set(scope, relPath, nodes, dirMtimeMs)
   return nodes
 }
 
@@ -893,6 +899,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
 
   // GET /api/watch - SSE 文件变更监听
   app.get('/api/watch', (c) => {
+    const clientId = (c.req.query('clientId') || '').trim() || undefined
     c.header('Content-Type', 'text/event-stream')
     c.header('Cache-Control', 'no-cache')
     c.header('Connection', 'keep-alive')
@@ -900,7 +907,7 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
     c.header('X-Accel-Buffering', 'no')
     return stream(c, async (s) => {
       const writer = (data: string) => s.write(data)
-      watcher.addClient(writer)
+      watcher.addClient(writer, clientId)
       // 初始连接确认
       await s.write(`data: {"type":"ping"}\n\n`)
       // 定期注释心跳保活，防止反代空闲超时强断 chunked 流
@@ -911,14 +918,31 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       await new Promise<void>((resolve) => {
         s.onAbort(() => {
           clearInterval(heartbeat)
-          watcher.removeClient(writer)
+          watcher.removeClient(writer, clientId)
           resolve()
         })
       })
     })
   })
 
-  // POST /api/watch/release — 显式释放按需 watch（前端收起列/折叠树时可调用）
+  // POST /api/watch/sync — 客户端显式同步当前可视目录集合（服务端取所有活跃客户端并集）
+  app.post('/api/watch/sync', async (c) => {
+    try {
+      const body = await c.req.json() as { clientId?: string; paths?: unknown }
+      const clientId = typeof body.clientId === 'string' && body.clientId.trim()
+        ? body.clientId.trim()
+        : '__default__'
+      const paths = Array.isArray(body.paths)
+        ? body.paths.filter((p): p is string => typeof p === 'string')
+        : []
+      watcher.syncWatched(clientId, paths)
+      return c.json({ ok: true, activeCount: watcher.activeCount() })
+    } catch {
+      return c.json({ ok: false, error: 'invalid body' }, 400)
+    }
+  })
+
+  // POST /api/watch/release — 显式释放按需 watch（兼容保留）
   app.post('/api/watch/release', async (c) => {
     try {
       const { path } = await c.req.json() as { path?: string }
@@ -926,6 +950,48 @@ export function createDirRouter(basePath: string, distPath: string, authConfig: 
       return c.json({ ok: true })
     } catch {
       return c.json({ ok: false, error: 'invalid body' }, 400)
+    }
+  })
+
+  // POST /api/files/check-mtime — 轻量批量校验可视目录 mtimeMs（只做 stat，不做 readdir）
+  app.post('/api/files/check-mtime', async (c) => {
+    try {
+      const body = await c.req.json() as { dirs?: Array<{ path?: string; mtimeMs?: number }> }
+      const dirs = Array.isArray(body.dirs) ? body.dirs.slice(0, 64) : []
+      const realBase = realpathSync(basePath)
+      const changed: string[] = []
+      const mtimes: Record<string, number> = {}
+
+      for (const item of dirs) {
+        if (!item || typeof item.path !== 'string') continue
+        const norm = normalizeRel(item.path)
+        const target = norm ? join(basePath, norm) : basePath
+        try {
+          const realTarget = realpathSync(target)
+          if (realTarget !== realBase && !realTarget.startsWith(realBase + sep)) continue
+          const st = statSync(realTarget)
+          if (!st.isDirectory()) {
+            changed.push(norm)
+            continue
+          }
+          const mtimeMs = Math.floor(st.mtimeMs)
+          mtimes[norm] = mtimeMs
+          if (typeof item.mtimeMs === 'number' && item.mtimeMs !== mtimeMs) {
+            changed.push(norm)
+            treeCache.invalidatePath(cacheScope, norm)
+            treeCache.invalidatePath(hiddenCacheScope, norm)
+          }
+        } catch {
+          // 目录已删除/不可达：通知前端刷新父目录
+          changed.push(norm)
+          treeCache.invalidatePath(cacheScope, norm)
+          treeCache.invalidatePath(hiddenCacheScope, norm)
+        }
+      }
+
+      return c.json({ changed, mtimes })
+    } catch {
+      return c.json({ error: 'invalid body' }, 400)
     }
   })
 

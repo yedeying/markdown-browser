@@ -118,6 +118,6 @@ export interface ShareToken {
 export type WatchEventType = 'reload' | 'tree-change' | 'ping'
 
 export type WatchEvent =
-  | { type: 'reload'; mtime: number }
+  | { type: 'reload'; mtime: number; path?: string }
   | { type: 'tree-change'; affectedPath?: string }
   | { type: 'ping' }

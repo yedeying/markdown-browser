@@ -1,19 +1,33 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { WatchEvent } from '../../types.js'
 
-export function useSSE(url: string, onEvent: (event: WatchEvent) => void) {
+export function useSSE(
+  url: string,
+  onEvent: (event: WatchEvent) => void,
+  onReconnect?: () => void,
+) {
   const [connected, setConnected] = useState(false)
   const onEventRef = useRef(onEvent)
   onEventRef.current = onEvent
+  const onReconnectRef = useRef(onReconnect)
+  onReconnectRef.current = onReconnect
 
   useEffect(() => {
     let es: EventSource
     let retryTimer: ReturnType<typeof setTimeout>
+    let hasConnectedOnce = false
 
     function connect() {
       es = new EventSource(url)
 
-      es.onopen = () => setConnected(true)
+      es.onopen = () => {
+        setConnected(true)
+        if (hasConnectedOnce) {
+          onReconnectRef.current?.()
+        } else {
+          hasConnectedOnce = true
+        }
+      }
 
       es.onmessage = (e) => {
         try {

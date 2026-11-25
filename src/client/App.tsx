@@ -1,5 +1,5 @@
 import type { FunctionalComponent } from 'preact'
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useTheme } from './hooks/useTheme.js'
 import { useFileTree } from './hooks/useFileTree.js'
 import { useFileContent } from './hooks/useFileContent.js'
@@ -14,7 +14,7 @@ import MountLanding from './components/MountLanding.js'
 import AdminPanel from './components/AdminPanel.js'
 import MountSelector from './components/MountSelector.js'
 import SettingsDialog from './components/SettingsDialog.js'
-import { watchUrl, fetchPathStat } from './utils/fsApi.js'
+import { watchUrl, fetchPathStat, syncWatchedDirs } from './utils/fsApi.js'
 import { revealHiddenForPath, isHiddenPath } from './utils/hiddenFiles.js'
 import { getShowHidden, setShowHidden, subscribePref } from './utils/prefs.js'
 import type { FileNode, WatchEvent } from '../types.js'
@@ -206,9 +206,16 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     setShowHidden(!showHidden)
   }, [showHidden])
 
-  const { tree, loading: treeLoading, childErrors, refresh, loadChildren, ensurePathLoaded } = useFileTree(showHidden)
+  const { tree, loading: treeLoading, childErrors, refresh, loadChildren, ensurePathLoaded, checkAndRefreshDirs } = useFileTree(showHidden)
   const { content, loadedPath, loading, error, currentPath, loadFile, selectFile, saveFile, setContentForPath } = useFileContent()
   const { query, setQuery, searchType, setSearchType, results, loading: searchLoading } = useSearch(tree, showHidden)
+
+  // 每个标签页固定一个 clientId，用于 SSE 会话绑定与可视目录显式 watch 同步
+  const watchClientId = useMemo(() => {
+    const rand = Math.random().toString(36).slice(2, 10)
+    return `c_${Date.now().toString(36)}_${rand}`
+  }, [])
+  const [expandedFolders, setExpandedFolders] = useState<string[]>([])
 
   // selectedNode 记录当前选中项（可以是文件夹或文件）
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
@@ -223,16 +230,84 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   // 导航历史状态（用于手势判断）
   const [hasNavHistory, setHasNavHistory] = useState(false)
 
+  // 当前界面真正可视/活跃的目录集合（根目录 + 侧栏已展开目录 + 当前选中目录/当前文件父目录）
+  const visibleWatchDirs = useMemo(() => {
+    const set = new Set<string>([''])
+    for (const p of expandedFolders) set.add(p)
+    if (selectedNode?.type === 'folder') {
+      set.add(selectedNode.path)
+    } else if (selectedNode?.type === 'file' && selectedNode.path) {
+      const idx = selectedNode.path.lastIndexOf('/')
+      set.add(idx === -1 ? '' : selectedNode.path.slice(0, idx))
+    }
+    if (currentPath) {
+      const idx = currentPath.lastIndexOf('/')
+      set.add(idx === -1 ? '' : currentPath.slice(0, idx))
+    }
+    return [...set]
+  }, [expandedFolders, selectedNode, currentPath])
+
+  const visibleWatchDirsRef = useRef<string[]>(visibleWatchDirs)
+  visibleWatchDirsRef.current = visibleWatchDirs
+  const currentPathRef = useRef<string | null>(currentPath)
+  currentPathRef.current = currentPath
+
   const handleSSEEvent = useCallback((event: WatchEvent) => {
     if (event.type === 'tree-change') {
       refresh(event.affectedPath)
     } else if (event.type === 'reload' && currentPath) {
-      // 是否静默重载还是提示冲突由 ContentArea 根据 unsaved/viewMode 决定
-      window.dispatchEvent(new CustomEvent('vmd:file-reload', { detail: { path: currentPath } }))
+      // 精准匹配：携带 path 时仅在命中当前打开文件才重载，避免无关文件变更触发刷新
+      if (!event.path || event.path === currentPath) {
+        window.dispatchEvent(new CustomEvent('vmd:file-reload', { detail: { path: currentPath } }))
+      }
     }
-  }, [currentPath, loadFile, refresh])
+  }, [currentPath, refresh])
 
-  const watchConnected = useSSE(watchUrl(), handleSSEEvent)
+  const handleSSEReconnect = useCallback(() => {
+    const dirs = visibleWatchDirsRef.current
+    void syncWatchedDirs(watchClientId, dirs)
+    void checkAndRefreshDirs(dirs)
+    if (currentPathRef.current) {
+      window.dispatchEvent(new CustomEvent('vmd:file-reload', { detail: { path: currentPathRef.current } }))
+    }
+  }, [watchClientId, checkAndRefreshDirs])
+
+  const watchConnected = useSSE(watchUrl(watchClientId), handleSSEEvent, handleSSEReconnect)
+
+  // 可视目录集合变化或 SSE 初次连上时：防抖同步服务端 watch + 记录 mtime 基线
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void syncWatchedDirs(watchClientId, visibleWatchDirs)
+      void checkAndRefreshDirs(visibleWatchDirs)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [watchClientId, visibleWatchDirs, watchConnected, checkAndRefreshDirs])
+
+  // 页面从后台切回前台（含手机切应用/锁屏恢复）：补同步 watch 并按 mtime 增量补刷离线变更
+  const lastVisCheckRef = useRef(0)
+  useEffect(() => {
+    const onVisChange = () => {
+      if (document.visibilityState !== 'visible') return
+      const now = Date.now()
+      if (now - lastVisCheckRef.current < 2000) return
+      lastVisCheckRef.current = now
+      const dirs = visibleWatchDirsRef.current
+      void syncWatchedDirs(watchClientId, dirs)
+      void checkAndRefreshDirs(dirs)
+    }
+    document.addEventListener('visibilitychange', onVisChange)
+    return () => document.removeEventListener('visibilitychange', onVisChange)
+  }, [watchClientId, checkAndRefreshDirs])
+
+  // SSE 断开且页面处于前台时的轻量降级兜底：每 15s 对可视目录做一次 O(1) stat 校验，恢复即停
+  useEffect(() => {
+    if (watchConnected) return
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void checkAndRefreshDirs(visibleWatchDirsRef.current)
+    }, 15_000)
+    return () => clearInterval(timer)
+  }, [watchConnected, checkAndRefreshDirs])
 
   const dirName = window.__VMD_DIR_NAME__ || 'Markdown Browser'
   const deepLinkDoneRef = useRef(false)
@@ -441,6 +516,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
           currentPath={selectedNode?.path ?? null}
           onSelect={handleSelect}
           onExpandFolder={(path) => loadChildren(path)}
+          onExpandedFoldersChange={setExpandedFolders}
           query={query}
           onQueryChange={setQuery}
           searchType={searchType}

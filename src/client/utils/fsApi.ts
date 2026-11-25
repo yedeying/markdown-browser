@@ -155,9 +155,41 @@ export function downloadUrl(path: string): string {
 }
 
 /** 生成 SSE watch URL */
-export function watchUrl(): string {
+export function watchUrl(clientId?: string): string {
   const prefix = getMountPrefix()
-  return `${prefix}/api/watch`
+  return clientId
+    ? `${prefix}/api/watch?clientId=${encodeURIComponent(clientId)}`
+    : `${prefix}/api/watch`
+}
+
+/** 显式同步当前客户端可视目录集合到服务端 watcher */
+export async function syncWatchedDirs(clientId: string, paths: string[]): Promise<void> {
+  if (getSharePrefix()) return
+  try {
+    await apiFetch('/api/watch/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId, paths }),
+    })
+  } catch { /* ignore network errors */ }
+}
+
+/** 轻量批量校验可视目录 mtimeMs（服务端仅 stat 不 readdir） */
+export async function checkDirsMtime(
+  dirs: Array<{ path: string; mtimeMs?: number }>,
+): Promise<{ changed: string[]; mtimes: Record<string, number> } | null> {
+  if (getSharePrefix() || dirs.length === 0) return null
+  try {
+    const res = await apiFetch('/api/files/check-mtime', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dirs }),
+    })
+    if (!res.ok) return null
+    return await res.json() as { changed: string[]; mtimes: Record<string, number> }
+  } catch {
+    return null
+  }
 }
 
 export type PathStat =

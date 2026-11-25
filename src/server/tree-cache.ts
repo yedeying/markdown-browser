@@ -11,6 +11,8 @@ import type { FileNode } from '../types.js'
 interface Entry {
   nodes: FileNode[]
   expiresAt: number
+  /** 目录本身的 mtimeMs；命中前做 O(1) stat 校验，防止漏事件导致脏缓存 */
+  dirMtimeMs?: number
 }
 
 export class TreeCache {
@@ -27,11 +29,19 @@ export class TreeCache {
     return `${scope}:${relPath}`
   }
 
-  get(scope: string, relPath: string): FileNode[] | null {
+  get(scope: string, relPath: string, currentMtimeMs?: number): FileNode[] | null {
     const k = this.key(scope, relPath)
     const entry = this.map.get(k)
     if (!entry) return null
     if (Date.now() > entry.expiresAt) {
+      this.map.delete(k)
+      return null
+    }
+    if (
+      currentMtimeMs !== undefined &&
+      entry.dirMtimeMs !== undefined &&
+      entry.dirMtimeMs !== currentMtimeMs
+    ) {
       this.map.delete(k)
       return null
     }
@@ -41,10 +51,10 @@ export class TreeCache {
     return entry.nodes
   }
 
-  set(scope: string, relPath: string, nodes: FileNode[]) {
+  set(scope: string, relPath: string, nodes: FileNode[], dirMtimeMs?: number) {
     const k = this.key(scope, relPath)
     if (this.map.has(k)) this.map.delete(k)
-    this.map.set(k, { nodes, expiresAt: Date.now() + this.ttlMs })
+    this.map.set(k, { nodes, expiresAt: Date.now() + this.ttlMs, dirMtimeMs })
     // 超限时淘汰最旧
     while (this.map.size > this.maxEntries) {
       const first = this.map.keys().next().value

@@ -48,6 +48,8 @@ interface FileTreeProps {
   onSelect: (node: FileNode) => void
   /** 文件夹展开时触发（懒加载 children） */
   onExpand?: (path: string) => void
+  /** 展开目录集合变更时回调（仅根实例触发，供可视目录 watch 同步） */
+  onExpandedChange?: (paths: string[]) => void
   level?: number
   searchResults?: SearchResult[] | null
   mobileMode?: boolean
@@ -79,6 +81,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
   currentPath,
   onSelect,
   onExpand,
+  onExpandedChange,
   level = 0,
   searchResults,
   mobileMode = false,
@@ -138,6 +141,14 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(({
     saveExpanded(next)
     setExpandedLocal(new Set(next))
   }, [])
+
+  // 根实例向父级同步当前已展开的目录集合（供可视目录 watch 同步）
+  const onExpandedChangeRef = useRef(onExpandedChange)
+  onExpandedChangeRef.current = onExpandedChange
+  useEffect(() => {
+    if (level !== 0) return
+    onExpandedChangeRef.current?.([...expanded])
+  }, [level, expanded])
 
   const toggleFolder = useCallback((node: FileNode) => {
     if (onToggleFolderProp) {
