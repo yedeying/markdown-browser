@@ -138,21 +138,28 @@ export function useFileTree(showHidden = false) {
       return
     }
     const gen = bumpGen('')
-    try {
-      setLoading(true)
-      const root = await fetchLevel('')
-      if (fetchGenRef.current.get('') !== gen) return
-      // 全量根刷新：不保留旧子树（showHidden 切换等）
-      setTree(root)
-      loadedRef.current = new Set([''])
-      setChildErrors({})
-      setError(null)
-    } catch (e) {
-      if (fetchGenRef.current.get('') !== gen) return
-      setError(String(e))
-    } finally {
-      if (fetchGenRef.current.get('') === gen) setLoading(false)
-    }
+    const rootPromise = (async () => {
+      try {
+        setLoading(true)
+        const root = await fetchLevel('')
+        if (fetchGenRef.current.get('') !== gen) return
+        // 全量根刷新：不保留旧子树（showHidden 切换等）
+        setTree(root)
+        loadedRef.current = new Set([''])
+        setChildErrors({})
+        setError(null)
+      } catch (e) {
+        if (fetchGenRef.current.get('') !== gen) return
+        setError(String(e))
+      } finally {
+        if (fetchGenRef.current.get('') === gen) setLoading(false)
+        if (inflightRef.current.get('') === rootPromise) {
+          inflightRef.current.delete('')
+        }
+      }
+    })()
+    inflightRef.current.set('', rootPromise)
+    await rootPromise
   }, [fetchLevel, loadChildren])
 
   useEffect(() => {
@@ -160,17 +167,66 @@ export function useFileTree(showHidden = false) {
   }, [showHidden])
 
   /**
-   * 深链：按层加载祖先目录，使 path 出现在 tree 中。
+   * 深链：并发拉取所有尚未加载的祖先目录并按自顶向下顺序合并到 tree。
    * includeSelf=true 时再加载 path 自身（文件夹视图需要 children）。
    */
   const ensurePathLoaded = useCallback(async (fullPath: string, includeSelf: boolean) => {
     const parts = fullPath.split('/').filter(Boolean)
-    await loadChildren('')
     const last = includeSelf ? parts.length : Math.max(0, parts.length - 1)
+    const dirs: string[] = ['']
     for (let i = 0; i < last; i++) {
-      await loadChildren(parts.slice(0, i + 1).join('/'))
+      dirs.push(parts.slice(0, i + 1).join('/'))
     }
-  }, [loadChildren])
+
+    const missing = dirs.filter((d) => !loadedRef.current.has(d))
+    if (missing.length === 0) return
+
+    const fetched = new Map<string, FileNode[]>()
+    const gens = new Map<string, number>()
+
+    await Promise.all(
+      missing.map(async (dir) => {
+        const existing = inflightRef.current.get(dir)
+        if (existing) {
+          await existing
+          return
+        }
+        const gen = bumpGen(dir)
+        gens.set(dir, gen)
+        const p = (async () => {
+          try {
+            const children = await fetchLevel(dir)
+            if (fetchGenRef.current.get(dir) === gen) {
+              fetched.set(dir, children)
+            }
+          } catch (e) {
+            if (fetchGenRef.current.get(dir) === gen) {
+              setChildErrors((prev) => ({ ...prev, [dir]: String(e) }))
+            }
+          } finally {
+            if (inflightRef.current.get(dir) === p) {
+              inflightRef.current.delete(dir)
+            }
+          }
+        })()
+        inflightRef.current.set(dir, p)
+        await p
+      }),
+    )
+
+    if (fetched.size === 0) return
+    setTree((prev) => {
+      let next = prev
+      for (const dir of dirs) {
+        const children = fetched.get(dir)
+        if (!children) continue
+        if (fetchGenRef.current.get(dir) !== gens.get(dir)) continue
+        next = patchChildren(next, dir, children)
+        loadedRef.current.add(dir)
+      }
+      return next
+    })
+  }, [fetchLevel])
 
   /**
    * 轻量批量校验可视目录的 mtimeMs，仅重拉实际发生变更的目录。

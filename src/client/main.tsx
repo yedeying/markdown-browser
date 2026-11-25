@@ -63,8 +63,7 @@ const observer = new MutationObserver(() => {
 })
 observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
 
-// 注册内置文件/文件夹插件，并加载服务端挂载的外部运行时插件
+// 注册内置文件/文件夹插件；外部插件并行加载，不阻塞首屏与直链渲染（加载完通过 pluginsVersion 自动刷新）
 registerBuiltinPlugins()
-void loadExternalPlugins().finally(() => {
-  render(<App />, document.getElementById('app')!)
-})
+void loadExternalPlugins()
+render(<App />, document.getElementById('app')!)

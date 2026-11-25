@@ -149,3 +149,36 @@ test('checkAndRefreshDirs records baseline mtime then only refetches changed dir
   expect(filesRequests).toEqual(['a'])
   expect(childNames('a')).toEqual(['b', 'fresh.md'])
 })
+
+test('ensurePathLoaded fetches all missing ancestor levels in parallel and merges top-down', async () => {
+  const started: string[] = []
+  const resolvers: Record<string, () => void> = {}
+  const baseFetch = globalThis.fetch
+  globalThis.fetch = (async (input: string, init?: RequestInit) => {
+    const p = new URL(input, 'http://x').searchParams.get('path') ?? ''
+    if (p === 'a' || p === 'a/b') {
+      started.push(p)
+      await new Promise<void>((r) => { resolvers[p] = r })
+    }
+    return baseFetch(input, init)
+  }) as typeof fetch
+
+  await act(async () => { render(h(Harness, {}), container) })
+  await flush()
+
+  let done!: Promise<void>
+  await act(async () => { done = api.ensurePathLoaded('a/b/one.md', false) })
+  await flush()
+
+  // Both ancestor levels should be in flight concurrently
+  expect(started.sort()).toEqual(['a', 'a/b'])
+
+  // Resolve child before parent to prove top-down merge still attaches a/b under a
+  resolvers['a/b']()
+  await flush()
+  resolvers.a()
+  await act(async () => { await done })
+
+  expect(childNames('a')).toEqual(['b'])
+  expect(childNames('a/b')).toEqual(['one.md'])
+})

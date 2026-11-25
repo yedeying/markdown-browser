@@ -46,6 +46,14 @@ function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
   return null
 }
 
+/** URL 路径是否看起来像文件（末段含扩展名且不以 / 结尾），用于直链乐观并行拉取 */
+function looksLikeFilePath(path: string): boolean {
+  if (!path || path.endsWith('/')) return false
+  const base = path.split('/').pop() || ''
+  const dot = base.lastIndexOf('.')
+  return dot > 0 && dot < base.length - 1
+}
+
 /** 根据 tree 构造虚拟根节点（path=''，children=tree） */
 function makeRootNode(tree: FileNode[], dirName: string): FileNode {
   return { name: dirName, type: 'folder', path: '', children: tree }
@@ -401,9 +409,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     }
   }, [handleSwipeBack, handleSwipeForward])
 
-  // 页面初始加载：从 URL pathname 恢复文件或文件夹
+  // 页面初始加载：立即从 URL pathname 恢复文件或文件夹（不等待根目录树加载完毕）
   useEffect(() => {
-    if (tree.length === 0) return
     if (deepLinkDoneRef.current) return
 
     const path = stripPrefix(window.location.pathname)
@@ -432,13 +439,25 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
         return
       }
 
+      // 乐观并行：带扩展名的 URL 立即启动文件正文/媒体加载，与 /api/stat 和目录树并行执行
+      const optimisticFile = looksLikeFilePath(path)
+      if (optimisticFile) {
+        const baseName = path.split('/').pop() || path
+        clientPerfLog('deepLink:optimistic-file', { path })
+        setSelectedNode({ name: baseName, type: 'file', path })
+        selectFile(path)
+        window.history.replaceState({ path, isFolder: false }, '', buildUrl(path))
+      }
+
       const stat = await fetchPathStat(path)
       if (gen !== navGenRef.current) return
       if (!stat) {
         clientPerfLog('deepLink:stat-miss', { path })
-        setSelectedNode({ name: path.split('/').pop() || path, type: 'file', path })
-        selectFile(path)
-        window.history.replaceState({ path, isFolder: false }, '', buildUrl(path))
+        if (!optimisticFile) {
+          setSelectedNode({ name: path.split('/').pop() || path, type: 'file', path })
+          selectFile(path)
+          window.history.replaceState({ path, isFolder: false }, '', buildUrl(path))
+        }
         return
       }
 
@@ -449,14 +468,15 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
         setSelectedNode({ name: stat.name, type: 'folder', path })
         window.history.replaceState({ path, isFolder: true }, '', buildUrl(path))
       } else {
-        // 文件直链：立即拉取正文并渲染，不等待多级祖先目录树串行加载完毕
-        setSelectedNode({ name: stat.name, type: 'file', path })
-        selectFile(path)
-        window.history.replaceState({ path, isFolder: false }, '', buildUrl(path))
+        if (!optimisticFile) {
+          setSelectedNode({ name: stat.name, type: 'file', path })
+          selectFile(path)
+          window.history.replaceState({ path, isFolder: false }, '', buildUrl(path))
+        }
         void ensurePathLoaded(path, false)
       }
     })()
-  }, [tree.length > 0 ? 'loaded' : 'empty', showHidden])
+  }, [showHidden])
 
   // tree 变化时：仅在 URL 对应节点「出现 / 类型变化 / 路径变化」时更新 selectedNode。
   // 同路径不重写——文件夹 children 已在渲染时从 tree 解析；避免延迟 load 触发无意义

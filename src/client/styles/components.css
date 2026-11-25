@@ -914,6 +914,11 @@
   justify-content: center;
   box-sizing: border-box;
   padding: 0;
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .media-lightbox-toolbar {
   position: absolute;
@@ -921,6 +926,13 @@
   left: 0;
   right: 0;
   z-index: 2;
+  touch-action: pan-x;
+  transition: opacity 0.18s ease;
+}
+.media-lightbox-overlay.is-chrome-hidden .media-lightbox-toolbar,
+.media-lightbox-overlay.is-chrome-hidden .media-lightbox-nav {
+  opacity: 0;
+  pointer-events: none;
 }
 .media-lightbox-toolbar .media-toolbar {
   width: 100%;
@@ -1022,6 +1034,9 @@
   max-height: 100%;
   object-fit: contain;
   border-radius: 2px;
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 video.media-lightbox-media {
   width: 100%;
@@ -1046,6 +1061,7 @@ video.media-lightbox-media {
   color: #fff;
   border: none;
   border-radius: 999px;
+  transition: opacity 0.18s ease, background 0.15s ease;
 }
 .media-lightbox-nav:hover {
   background: rgba(255, 255, 255, 0.2);

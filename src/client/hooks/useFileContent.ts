@@ -35,9 +35,9 @@ export function useFileContent() {
     setCurrentPath(path)
     setError(null)
 
-    // 图片/视频等二进制类型不走文本内容拉取
+    // 图片/视频/PDF 等二进制类型不走文本内容拉取
     const ft = getFileType(path)
-    if (ft === 'image' || ft === 'video') {
+    if (ft === 'image' || ft === 'video' || ft === 'pdf') {
       if (gen !== loadGenRef.current) return true
       setContent('')
       setLoadedPath(path)
