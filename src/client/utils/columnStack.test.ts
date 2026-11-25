@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test'
 import type { FileNode } from '../../types.js'
-import { collapseColumnStackOnHideHidden, syncColumnStackFromTree } from './columnStack.ts'
+import {
+  collapseColumnStackOnHideHidden,
+  computeColumnScrollLeft,
+  syncColumnStackFromTree,
+} from './columnStack.ts'
 
 function folder(path: string, children?: FileNode[]): FileNode {
   const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path || 'root'
@@ -78,4 +82,16 @@ test('sync refreshes non-root folder roots by path', () => {
   const next = syncColumnStackFromTree(prev, tree, root)
   expect(next.map((n) => n.path)).toEqual(['notes', 'notes/sub'])
   expect(next[1].children?.[0].path).toBe('notes/sub/a.md')
+})
+
+test('computeColumnScrollLeft hides older ancestor columns to the left while keeping active col visible', () => {
+  // Fits completely
+  expect(computeColumnScrollLeft(200, 400, 440, 400)).toBe(0)
+  // 4 cols (800px) in 440px wrap, active col 3 (600) -> scroll 360 to push cols 0..1 left
+  expect(computeColumnScrollLeft(600, 800, 440, 800)).toBe(360)
+  // Active col 1 (200) with deeper cols open -> clamp so col 1 left edge is not clipped
+  expect(computeColumnScrollLeft(200, 800, 300, 800)).toBe(200)
+  // Stepping back via keyboard Left (stack shrinks to 3 cols -> 600px, then 2 cols -> 400px)
+  expect(computeColumnScrollLeft(400, 600, 440, 600)).toBe(160)
+  expect(computeColumnScrollLeft(200, 400, 440, 400)).toBe(0)
 })

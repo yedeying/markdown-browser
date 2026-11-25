@@ -74,3 +74,16 @@ export function collapseColumnStackOnHideHidden(
   if (stack.length === 1 && stack[0].path === rootNode.path) return stack
   return [rootNode]
 }
+
+/** 计算列容器横向滚动目标：优先将最右列贴近预览区并向左隐藏旧祖先列，同时保证当前活跃列左侧不被裁切 */
+export function computeColumnScrollLeft(
+  activeLeft: number,
+  lastRight: number,
+  clientWidth: number,
+  scrollWidth: number,
+): number {
+  const maxScroll = Math.max(0, scrollWidth - clientWidth)
+  if (maxScroll === 0) return 0
+  const alignRight = Math.max(0, Math.min(maxScroll, lastRight - clientWidth))
+  return Math.max(0, Math.min(alignRight, activeLeft))
+}

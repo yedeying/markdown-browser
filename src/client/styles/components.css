@@ -1099,7 +1099,11 @@ video.media-lightbox-media {
 
 /* Column View */
 .folder-columns-outer { flex: 1; display: flex; overflow: hidden; }
-.folder-columns-wrap { display: flex; overflow-x: auto; overflow-y: hidden; flex-shrink: 0; max-width: 60%; border-right: 1px solid var(--border); }
+.folder-columns-wrap { display: flex; overflow-x: auto; overflow-y: hidden; flex-shrink: 0; max-width: min(65%, 640px); border-right: 1px solid var(--border); }
+/* 预览区有文件时限制左侧列区宽度，旧祖先列向左隐藏，始终保证右侧预览足够宽敞 */
+.folder-columns-outer.has-preview .folder-columns-wrap {
+  max-width: clamp(200px, calc(100% - 560px), min(44%, 440px));
+}
 .folder-column { width: 200px; flex-shrink: 0; border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
 .folder-column-header { padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); background: var(--th-bg); flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
 .folder-column-row { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
@@ -1288,22 +1292,24 @@ video.media-lightbox-media {
 /* 预览面板全屏打开按钮 */
 .col-preview-open-btn {
   flex-shrink: 0;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: none;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  background: transparent;
   cursor: pointer;
-  font-size: 13px;
-  color: var(--accent);
-  border-radius: 4px;
-  opacity: 0.7;
+  color: var(--text-muted);
+  border-radius: 6px;
   padding: 0;
-  transition: background 0.12s, opacity 0.12s;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
 }
-.col-preview-open-btn:hover { background: var(--hover); opacity: 1; }
+.col-preview-open-btn:hover {
+  background: var(--hover);
+  border-color: var(--border);
+  color: var(--accent);
+}
 
 /* ================================
    右键菜单（ContextMenu）

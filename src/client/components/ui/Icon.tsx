@@ -44,6 +44,7 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize,
+  Maximize2,
   RotateCcw,
   ExternalLink,
 } from 'lucide-preact'
@@ -93,6 +94,7 @@ export type IconName =
   | 'zoom-in'
   | 'zoom-out'
   | 'maximize'
+  | 'maximize-2'
   | 'rotate-ccw'
   | 'rotate-cw'
   | 'external-link'
@@ -142,6 +144,7 @@ const ICONS = {
   'zoom-in': ZoomIn,
   'zoom-out': ZoomOut,
   maximize: Maximize,
+  'maximize-2': Maximize2,
   'rotate-ccw': RotateCcw,
   'rotate-cw': RotateCw,
   'external-link': ExternalLink,

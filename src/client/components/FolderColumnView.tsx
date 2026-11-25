@@ -25,7 +25,12 @@ import {
   treeNodeTestId,
 } from '../utils/keyboardNav.js'
 import { useDelayedFlag } from '../hooks/useDelayedFlag.js'
-import { findNodeByPath, syncColumnStackFromTree, collapseColumnStackOnHideHidden } from '../utils/columnStack.js'
+import {
+  findNodeByPath,
+  syncColumnStackFromTree,
+  collapseColumnStackOnHideHidden,
+  computeColumnScrollLeft,
+} from '../utils/columnStack.js'
 
 registerBuiltinPlugins()
 
@@ -434,11 +439,6 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       setPreview(null)
       setPreviewFocus(false)
       previewGenRef.current++
-      setTimeout(() => {
-        if (wrapRef.current) {
-          wrapRef.current.scrollLeft = wrapRef.current.scrollWidth
-        }
-      }, 50)
     } else {
       setSelectedInCol(prev => {
         const next: Record<number, string> = {}
@@ -452,12 +452,6 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       setPreviewFocus(false)
       // 只加载预览，不触发外层跳转
       loadPreview(node)
-      // 滚动到最右（预览列）
-      setTimeout(() => {
-        if (wrapRef.current) {
-          wrapRef.current.scrollLeft = wrapRef.current.scrollWidth
-        }
-      }, 50)
     }
   }
 
@@ -512,12 +506,6 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       setPreviewFocus(false)
     }
 
-    setTimeout(() => {
-      if (wrapRef.current) {
-        wrapRef.current.scrollLeft = wrapRef.current.scrollWidth
-      }
-    }, 50)
-
     if (first) {
       requestAnimationFrame(() => {
         scrollNavTarget(document.querySelector(`[data-path="${CSS.escape(first.path)}"]`))
@@ -543,11 +531,6 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       })
       setPreview(null)
       setPreviewFocus(false)
-      setTimeout(() => {
-        if (wrapRef.current) {
-          wrapRef.current.scrollLeft = wrapRef.current.scrollWidth
-        }
-      }, 50)
       return
     }
 
@@ -778,40 +761,62 @@ const FolderColumnView: FunctionalComponent<Props> = ({
     )
   }
 
+  const activeColIndex = useMemo(() => {
+    const selKeys = Object.keys(selectedInCol).map(Number)
+    if (selKeys.length === 0) return Math.max(0, columnStack.length - 1)
+    return Math.min(Math.max(...selKeys), Math.max(0, columnStack.length - 1))
+  }, [selectedInCol, columnStack.length])
+
+  // 统一同步列容器横向滚动：无论点击、键盘 ←/→ 或打开/关闭预览改变列区宽度，
+  // 始终把旧祖先列向左隐藏，保持当前活跃列与右侧预览区贴合且不裁切活跃列
+  const hasPreview = preview !== null
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      const wrap = wrapRef.current
+      if (!wrap) return
+      const cols = wrap.querySelectorAll<HTMLElement>('[data-testid="folder-column"]')
+      if (cols.length === 0) return
+      const activeEl = cols[Math.min(activeColIndex, cols.length - 1)]
+      const lastEl = cols[cols.length - 1]
+      if (!activeEl || !lastEl) return
+      wrap.scrollLeft = computeColumnScrollLeft(
+        activeEl.offsetLeft,
+        lastEl.offsetLeft + lastEl.offsetWidth,
+        wrap.clientWidth,
+        wrap.scrollWidth,
+      )
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [activeColIndex, columnStack.length, hasPreview])
+
   return (
     <div
-      class="folder-columns-outer"
+      class={`folder-columns-outer${hasPreview ? ' has-preview' : ''}`}
       onPointerDown={() => setNavFocus('folder')}
       onContextMenu={(e) => onBgContextMenu?.(e as MouseEvent)}
     >
-      {/* 左侧：目录列（固定宽度，横向滚动） */}
+      {/* 左侧：目录列（固定宽度，多列时向左隐藏旧列，为右侧预览留足空间） */}
       <div class="folder-columns-wrap" ref={wrapRef}>
-        {(() => {
-          const selKeys = Object.keys(selectedInCol).map(Number)
-          const activeColIndex = selKeys.length === 0
-            ? Math.max(0, columnStack.length - 1)
-            : Math.max(...selKeys)
-          return columnStack.map((folderNode, colIndex) => {
-            const childrenReady = folderNode.children != null
-            const children = childrenReady
-              ? sortNodes(filterVisible(folderNode.children || [], showHidden), sortField, sortOrder)
-              : []
-            return (
-              <ColumnFolderPane
-                key={`${folderNode.path}-${colIndex}`}
-                folderNode={folderNode}
-                colIndex={colIndex}
-                childrenReady={childrenReady}
-                children={children}
-                selectedPath={selectedInCol[colIndex] ?? null}
-                isActiveCol={colIndex === activeColIndex}
-                onRowClick={handleRowClick}
-                onContextMenu={onContextMenu}
-                makeLongPress={makeLongPress}
-              />
-            )
-          })
-        })()}
+        {columnStack.map((folderNode, colIndex) => {
+          const childrenReady = folderNode.children != null
+          const children = childrenReady
+            ? sortNodes(filterVisible(folderNode.children || [], showHidden), sortField, sortOrder)
+            : []
+          return (
+            <ColumnFolderPane
+              key={`${folderNode.path}-${colIndex}`}
+              folderNode={folderNode}
+              colIndex={colIndex}
+              childrenReady={childrenReady}
+              children={children}
+              selectedPath={selectedInCol[colIndex] ?? null}
+              isActiveCol={colIndex === activeColIndex}
+              onRowClick={handleRowClick}
+              onContextMenu={onContextMenu}
+              makeLongPress={makeLongPress}
+            />
+          )
+        })}
       </div>
 
       {/* 右侧：预览区（flex:1 填满剩余空间） */}
@@ -820,11 +825,14 @@ const FolderColumnView: FunctionalComponent<Props> = ({
           <div class="col-preview-panel-header">
             <span class="col-preview-panel-title">{preview.node.name}</span>
             <button
+              type="button"
               class="col-preview-open-btn"
+              data-testid="col-preview-open-full"
+              aria-label="全屏打开"
               title="全屏打开"
               onClick={() => (onOpenFull ?? onFileSelect)(preview.node)}
             >
-              ↗
+              <Icon name="maximize-2" size={14} aria-hidden="true" />
             </button>
           </div>
           {renderPreviewContent(preview)}
