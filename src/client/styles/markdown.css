@@ -225,6 +225,11 @@
   max-width: 100%;
   border-radius: 6px;
   margin: 16px 0;
+  cursor: zoom-in;
+}
+
+.markdown-body a img {
+  cursor: pointer;
 }
 
 .markdown-body p {

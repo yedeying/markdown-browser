@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import type { FileNode } from '../../types.js'
 import { getFileType } from '../utils/fileType.js'
 import { assetUrl, displayAssetUrl } from '../utils/fsApi.js'
-import { downloadSingleFile } from '../utils/download.js'
+import { downloadSingleFile, downloadUrlDirect } from '../utils/download.js'
 import {
   fitScale,
   resetTransform,
@@ -16,47 +16,84 @@ import MediaToolbar from './MediaToolbar.js'
 import Icon from './ui/Icon.js'
 import { showToast } from './ui/Toast.js'
 
+export interface MediaLightboxItem {
+  name: string
+  path: string
+  kind?: 'image' | 'video'
+  /** 直接展示 URL（用于 Markdown 内联图或外部图；缺省时由 path 走 displayAssetUrl/assetUrl） */
+  src?: string
+  /** 工作区相对路径（存在时下载走 /api/download；缺省时直接下载 src） */
+  assetPath?: string
+}
+
 export interface MediaLightboxProps {
-  playlist: FileNode[]
-  startPath: string
+  playlist?: FileNode[]
+  startPath?: string
+  items?: MediaLightboxItem[]
+  startIndex?: number
   onClose: () => void
   /** 关闭时是否允许 Esc（深链接单文件场景可关掉，由外层处理导航） */
   closeOnEscape?: boolean
 }
 
-function indexOfPath(playlist: FileNode[], path: string): number {
-  const i = playlist.findIndex((n) => n.path === path)
+function indexOfPath(entries: MediaLightboxItem[], path?: string): number {
+  if (!path) return 0
+  const i = entries.findIndex((n) => n.path === path)
   return i >= 0 ? i : 0
+}
+
+function clampIndex(i: number, len: number): number {
+  if (len <= 0) return 0
+  return Math.max(0, Math.min(i, len - 1))
 }
 
 const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
   playlist,
   startPath,
+  items,
+  startIndex,
   onClose,
   closeOnEscape = true,
 }) => {
-  const [index, setIndex] = useState(() => indexOfPath(playlist, startPath))
+  const entries = useMemo<MediaLightboxItem[]>(() => {
+    if (items) return items
+    return (playlist ?? []).map((n) => ({
+      name: n.name,
+      path: n.path,
+      kind: getFileType(n.name) === 'video' ? 'video' : 'image',
+      assetPath: n.path,
+    }))
+  }, [items, playlist])
+
+  const initialIndex = () =>
+    typeof startIndex === 'number'
+      ? clampIndex(startIndex, entries.length)
+      : indexOfPath(entries, startPath)
+
+  const [index, setIndex] = useState(initialIndex)
   const touchStartX = useRef<number | null>(null)
 
   useEffect(() => {
-    setIndex(indexOfPath(playlist, startPath))
-    // 仅在打开目标变化时重置；playlist 引用每次父渲染都会变，不能放进 deps
+    setIndex(initialIndex())
+    // 仅在打开目标变化时重置；playlist/items 引用每次父渲染都会变，不能放进 deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startPath])
+  }, [startPath, startIndex])
 
-  const len = playlist.length
-  const current = len > 0 ? playlist[Math.min(index, len - 1)] : null
-  const ft = current ? getFileType(current.name) : null
+  const len = entries.length
+  const current = len > 0 ? entries[Math.min(index, len - 1)] : null
+  const kind: 'image' | 'video' = current?.kind ?? (current && getFileType(current.name) === 'video' ? 'video' : 'image')
   const [scale, setScale] = useState(1)
   const [rotateDeg, setRotateDeg] = useState(0)
   const lenRef = useRef(len)
   lenRef.current = len
 
+  const currentKey = current ? (current.src ?? current.path) : ''
+
   useEffect(() => {
     const transform = resetTransform()
     setScale(transform.scale)
     setRotateDeg(transform.rotateDeg)
-  }, [current?.path])
+  }, [currentKey])
 
   const go = (delta: number) => {
     const n = lenRef.current
@@ -90,12 +127,29 @@ const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
 
   if (!current) return null
 
+  const displaySrc = current.src ?? (kind === 'video' ? assetUrl(current.path) : displayAssetUrl(current.path))
+
+  const handleDownload = () => {
+    if (current.assetPath) {
+      downloadSingleFile(current.assetPath)
+    } else {
+      downloadUrlDirect(displaySrc, current.name)
+    }
+  }
+
   const copyPath = () => {
     navigator.clipboard.writeText(current.path).then(() => {
       showToast('路径已复制', 'success')
     }).catch(() => {
       showToast('复制失败', 'error')
     })
+  }
+
+  const handleWheel = (event: WheelEvent) => {
+    if (kind !== 'image') return
+    if (!event.ctrlKey && !event.metaKey) return
+    event.preventDefault()
+    setScale((value) => event.deltaY < 0 ? zoomIn(value) : zoomOut(value))
   }
 
   return (
@@ -126,10 +180,10 @@ const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
         <MediaToolbar
           name={current.name}
           path={current.path}
-          kind={ft === 'video' ? 'video' : 'image'}
+          kind={kind}
           index={index}
           count={len}
-          onDownload={() => downloadSingleFile(current.path)}
+          onDownload={handleDownload}
           onCopyPath={copyPath}
           onZoomIn={() => setScale(zoomIn)}
           onZoomOut={() => setScale(zoomOut)}
@@ -164,20 +218,24 @@ const MediaLightbox: FunctionalComponent<MediaLightboxProps> = ({
         </>
       )}
 
-      <div class="media-lightbox-stage" onClick={(e) => e.stopPropagation()}>
-        {ft === 'video' ? (
+      <div
+        class="media-lightbox-stage"
+        onClick={(e) => e.stopPropagation()}
+        onWheel={handleWheel}
+      >
+        {kind === 'video' ? (
           <video
-            key={current.path}
+            key={currentKey}
             class="media-lightbox-media"
-            src={assetUrl(current.path)}
+            src={displaySrc}
             controls
             autoplay
           />
         ) : (
           <img
-            key={current.path}
-            class="media-lightbox-media"
-            src={displayAssetUrl(current.path)}
+            key={currentKey}
+            class={`media-lightbox-media${rotateDeg % 180 !== 0 ? ' is-quarter-turn' : ''}`}
+            src={displaySrc}
             alt={current.name}
             style={{
               transform: `rotate(${rotateDeg}deg) scale(${scale})`,

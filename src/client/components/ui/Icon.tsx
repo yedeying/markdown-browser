@@ -45,6 +45,7 @@ import {
   ZoomOut,
   Maximize,
   RotateCcw,
+  ExternalLink,
 } from 'lucide-preact'
 
 export type IconName =
@@ -94,6 +95,7 @@ export type IconName =
   | 'maximize'
   | 'rotate-ccw'
   | 'rotate-cw'
+  | 'external-link'
 
 const ICONS = {
   folder: Folder,
@@ -142,6 +144,7 @@ const ICONS = {
   maximize: Maximize,
   'rotate-ccw': RotateCcw,
   'rotate-cw': RotateCw,
+  'external-link': ExternalLink,
 } as const
 
 interface Props {

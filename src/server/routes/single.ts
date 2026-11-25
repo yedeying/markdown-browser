@@ -60,7 +60,7 @@ export function createSingleRouter(filePath: string, distPath: string, authConfi
   // POST /api/save - 保存文件
   app.post('/api/save', async (c) => {
     const ext = extname(filePath).toLowerCase()
-    const BINARY_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp', '.mp4', '.webm', '.ogg', '.mov', '.avi'])
+    const BINARY_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp', '.mp4', '.webm', '.ogg', '.mov', '.avi', '.pdf'])
     if (BINARY_EXTS.has(ext)) {
       return c.json({ error: 'Binary files cannot be saved' }, 400)
     }

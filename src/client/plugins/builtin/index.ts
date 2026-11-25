@@ -2,6 +2,7 @@ import { pluginRegistry } from '../registry.js'
 import { markdownPlugin } from './markdown.js'
 import { htmlPlugin } from './html.js'
 import { imagePlugin, videoPlugin } from './media.js'
+import { pdfPlugin } from './pdf.js'
 import { jsonlPlugin } from './jsonl.js'
 import { codePlugin, plaintextPlugin } from './code.js'
 import { siteFolderPlugin } from './siteFolder.js'
@@ -16,6 +17,7 @@ export function registerBuiltinPlugins(): void {
   pluginRegistry.register(htmlPlugin)
   pluginRegistry.register(imagePlugin)
   pluginRegistry.register(videoPlugin)
+  pluginRegistry.register(pdfPlugin)
   pluginRegistry.register(jsonlPlugin)
   pluginRegistry.register(codePlugin)
   pluginRegistry.register(plaintextPlugin)

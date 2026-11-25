@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import mermaid from 'mermaid'
 import 'katex/dist/katex.min.css'
@@ -10,6 +10,7 @@ import {
   expandHeadingAncestors,
   findElementByDomId,
 } from '../utils/mdHeadingFold.js'
+import MediaLightbox, { type MediaLightboxItem } from './MediaLightbox.js'
 
 mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' })
 
@@ -21,10 +22,28 @@ interface Props {
   onCheckboxToggle?: (index: number, checked: boolean) => void
 }
 
+function inferImageName(img: HTMLImageElement, pathOrUrl: string): string {
+  const alt = img.getAttribute('alt')?.trim()
+  if (alt) return alt
+  const clean = pathOrUrl.split(/[?#]/)[0] || ''
+  const base = clean.split('/').pop() || ''
+  if (!base) return 'image'
+  try {
+    return decodeURIComponent(base)
+  } catch {
+    return base
+  }
+}
+
 const MarkdownPreview: FunctionalComponent<Props> = ({ markdown, contentRef, className, filePath, onCheckboxToggle }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const filePathRef = useRef(filePath)
   filePathRef.current = filePath
+  const [lightbox, setLightbox] = useState<{ items: MediaLightboxItem[]; startIndex: number } | null>(null)
+
+  useEffect(() => {
+    setLightbox(null)
+  }, [filePath])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -125,6 +144,34 @@ const MarkdownPreview: FunctionalComponent<Props> = ({ markdown, contentRef, cla
         return
       }
 
+      // 图片点击 → 全屏预览（跳过包裹在超链接里的图片）
+      if (target.tagName === 'IMG' && !target.closest('a')) {
+        const clickedImg = target as HTMLImageElement
+        const clickedSrc = clickedImg.getAttribute('src') || clickedImg.src
+        if (clickedSrc) {
+          e.preventDefault()
+          e.stopPropagation()
+          const imgs = Array.from(el.querySelectorAll<HTMLImageElement>('img')).filter(
+            (img) => !img.closest('a') && Boolean(img.getAttribute('src') || img.src),
+          )
+          const items: MediaLightboxItem[] = imgs.map((img) => {
+            const src = img.getAttribute('src') || img.src
+            const assetPath = img.dataset.assetPath || undefined
+            const path = assetPath || src
+            return {
+              name: inferImageName(img, path),
+              path,
+              kind: 'image',
+              src,
+              assetPath,
+            }
+          })
+          const startIndex = Math.max(0, imgs.indexOf(clickedImg))
+          setLightbox({ items, startIndex })
+          return
+        }
+      }
+
       // checkbox 勾选
       {
         let cb: HTMLInputElement | null = null
@@ -158,11 +205,20 @@ const MarkdownPreview: FunctionalComponent<Props> = ({ markdown, contentRef, cla
   }, [onCheckboxToggle])
 
   return (
-    <div
-      ref={containerRef}
-      class={`markdown-body ${className || ''}`}
-      data-testid="markdown-preview"
-    />
+    <>
+      <div
+        ref={containerRef}
+        class={`markdown-body ${className || ''}`}
+        data-testid="markdown-preview"
+      />
+      {lightbox && (
+        <MediaLightbox
+          items={lightbox.items}
+          startIndex={lightbox.startIndex}
+          onClose={() => setLightbox(null)}
+        />
+      )}
+    </>
   )
 }
 

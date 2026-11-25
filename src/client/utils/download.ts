@@ -27,6 +27,18 @@ export function downloadSingleFile(path: string): void {
   a.remove()
 }
 
+/** Direct URL download (for external or inline URLs without workspace path) */
+export function downloadUrlDirect(url: string, filename: string): void {
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename || 'file'
+  a.target = '_blank'
+  a.rel = 'noopener noreferrer'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
+
 function filenameFromDisposition(header: string | null, fallback: string): string {
   if (!header) return fallback
   const star = header.match(/filename\*=UTF-8''([^;]+)/i)

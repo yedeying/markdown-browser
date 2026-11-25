@@ -10,6 +10,7 @@ export function getFileIconName(name: string): IconName {
     case 'markdown': return 'file-text'
     case 'image':    return 'file-image'
     case 'video':    return 'file-video'
+    case 'pdf':      return 'file-text'
     case 'code':     return 'file-code'
     case 'text':     return 'file-text'
     default:         return 'file'

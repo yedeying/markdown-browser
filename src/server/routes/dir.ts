@@ -90,7 +90,7 @@ const IMAGE_EXTS = new Set([
   '.heic', '.heif',
 ])
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.ogg', '.mov', '.avi'])
-const BINARY_EXTS = new Set([...IMAGE_EXTS, ...VIDEO_EXTS])
+const BINARY_EXTS = new Set([...IMAGE_EXTS, ...VIDEO_EXTS, '.pdf'])
 
 const isTranscodableImage = (ext: string) => isTranscodable(ext)
 

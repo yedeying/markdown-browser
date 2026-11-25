@@ -74,3 +74,28 @@ test('video keeps navigation toolbar actions but hides image transform actions',
   expect(container.querySelector('[data-testid="media-lightbox-zoom-in"]')).toBeNull()
   expect(container.querySelector('[data-testid="media-lightbox-rotate-right"]')).toBeNull()
 })
+
+test('items mode renders direct image URLs and toggles is-quarter-turn on 90deg rotation', () => {
+  act(() => render(h(MediaLightbox, {
+    items: [
+      { name: 'Diagram', path: 'docs/diagram.png', src: '/api/asset/docs/diagram.png', assetPath: 'docs/diagram.png', kind: 'image' },
+      { name: 'External', path: 'https://example.com/pic.jpg', src: 'https://example.com/pic.jpg', kind: 'image' },
+    ],
+    startIndex: 0,
+    onClose: () => {},
+  }), container))
+
+  const img = container.querySelector('img') as HTMLImageElement
+  expect(img.getAttribute('src')).toBe('/api/asset/docs/diagram.png')
+  expect(img.classList.contains('is-quarter-turn')).toBe(false)
+
+  click('media-lightbox-rotate-right')
+  expect(img.classList.contains('is-quarter-turn')).toBe(true)
+
+  click('media-lightbox-rotate-right')
+  expect(img.classList.contains('is-quarter-turn')).toBe(false)
+
+  click('media-lightbox-next')
+  const nextImg = container.querySelector('img') as HTMLImageElement
+  expect(nextImg.getAttribute('src')).toBe('https://example.com/pic.jpg')
+})

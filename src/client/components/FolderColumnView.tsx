@@ -312,8 +312,8 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   const loadPreview = async (node: FileNode) => {
     const gen = ++previewGenRef.current
     const ft = getFileType(node.name)
-    // 图片/视频不需要 fetch 内容
-    if (ft === 'image' || ft === 'video' || ft === 'unsupported') {
+    // 图片/视频/PDF 不需要 fetch 文本内容
+    if (ft === 'image' || ft === 'video' || ft === 'pdf' || ft === 'unsupported') {
       if (gen !== previewGenRef.current) return
       setPreview({ node, content: null, loading: false, error: null })
       return
@@ -712,7 +712,7 @@ const FolderColumnView: FunctionalComponent<Props> = ({
   // 列视图统一按插件注册表解析（compact=true 供专用插件裁剪解析成本）
   const resolvedPreview = useMemo(() => {
     const p = preview
-    if (!p || p.content === null) return null
+    if (!p) return null
     return pluginRegistry.resolveFile(p.node.path, p.content, { compact: true })
   }, [preview?.node.path, preview?.content, pluginsVersion])
 
@@ -740,12 +740,12 @@ const FolderColumnView: FunctionalComponent<Props> = ({
       return <ColPreviewImage key={p.node.path} path={p.node.path} name={p.node.name} />
     }
 
-    if (resolvedPreview?.plugin.renderColumnPreview && p.content !== null) {
+    if (resolvedPreview?.plugin.renderColumnPreview && (p.content !== null || resolvedPreview.plugin.requiresContent === false)) {
       return (
         <div class="col-preview-plugin">
           {resolvedPreview.plugin.renderColumnPreview({
             node: p.node,
-            content: p.content,
+            content: p.content ?? '',
             parsed: resolvedPreview.parsed,
             onOpenFile: onFileSelect,
           })}

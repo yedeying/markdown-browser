@@ -192,11 +192,13 @@ function buildRenderer(currentFilePath?: string): { renderer: Partial<Renderer>;
       return `<h${level} id="${id}">${text}</h${level}>`
     },
     image(href: string, title: string | null, text: string) {
-      const src = href.startsWith('.')
-        ? assetUrl(resolveRelativePath(currentFilePath || '', href))
-        : href
+      const resolvedPath = href.startsWith('.')
+        ? resolveRelativePath(currentFilePath || '', href)
+        : null
+      const src = resolvedPath !== null ? assetUrl(resolvedPath) : href
       const titleAttr = title ? ` title="${title}"` : ''
-      return `<img src="${src}" alt="${text}"${titleAttr} />`
+      const assetPathAttr = resolvedPath !== null ? ` data-asset-path="${escapeAttr(resolvedPath)}"` : ''
+      return `<img src="${src}" alt="${text}"${titleAttr}${assetPathAttr} />`
     },
     link(href: string, title: string | null, text: string) {
       if (currentFilePath && (href.endsWith('.md') || href.match(/\.md[?#]/))) {

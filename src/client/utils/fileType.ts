@@ -1,4 +1,4 @@
-export type FileType = 'markdown' | 'code' | 'image' | 'video' | 'text' | 'unsupported'
+export type FileType = 'markdown' | 'code' | 'image' | 'video' | 'pdf' | 'text' | 'unsupported'
 
 const MD_EXTS = new Set(['.md', '.markdown'])
 
@@ -30,6 +30,8 @@ const IMAGE_EXTS = new Set([
 ])
 
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.ogg', '.mov', '.avi'])
+
+const PDF_EXTS = new Set(['.pdf'])
 
 const TEXT_EXTS = new Set(['.txt', '.log', '.csv', '.tsv', '.jsonl'])
 
@@ -132,6 +134,7 @@ export function getFileType(path: string): FileType {
   if (TEXT_EXTS.has(ext))  return 'text'
   if (IMAGE_EXTS.has(ext)) return 'image'
   if (VIDEO_EXTS.has(ext)) return 'video'
+  if (PDF_EXTS.has(ext))   return 'pdf'
   return 'text'
 }
 
@@ -214,8 +217,9 @@ export const ALL_SUPPORTED_EXTS = new Set([
   ...CODE_EXTS,
   ...IMAGE_EXTS,
   ...VIDEO_EXTS,
+  ...PDF_EXTS,
   ...TEXT_EXTS,
 ])
 
 /** 服务端用：不可保存的二进制扩展名 */
-export const BINARY_EXTS = new Set([...IMAGE_EXTS, ...VIDEO_EXTS])
+export const BINARY_EXTS = new Set([...IMAGE_EXTS, ...VIDEO_EXTS, ...PDF_EXTS])
