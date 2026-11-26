@@ -83,6 +83,7 @@ export interface PrefValues {
   showHidden: boolean
   editorFontSize: EditorFontSizePref
   sidebarWidth: number
+  sidebarCollapsed: boolean
 }
 
 export type PrefKey = keyof PrefValues
@@ -105,6 +106,7 @@ const STORAGE_KEYS: Record<PrefKey, string> = {
   showHidden: SHOW_HIDDEN_KEY,
   editorFontSize: 'vmd_editor_font_size',
   sidebarWidth: SIDEBAR_WIDTH_KEY,
+  sidebarCollapsed: 'vmd_sidebar_collapsed',
 }
 
 const THEME_PREFS: ThemePref[] = ['dark', 'light', 'system']
@@ -137,6 +139,7 @@ const DEFAULTS: PrefValues = {
   showHidden: false,
   editorFontSize: 14,
   sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
+  sidebarCollapsed: false,
 }
 
 type PrefListener<K extends PrefKey> = (value: PrefValues[K]) => void
@@ -241,6 +244,8 @@ function parsePref<K extends PrefKey>(key: K, raw: string | null): PrefValues[K]
       const n = Number(raw)
       return (Number.isFinite(n) && n > 0 ? clampSidebarWidth(n) : DEFAULTS.sidebarWidth) as PrefValues[K]
     }
+    case 'sidebarCollapsed':
+      return (raw === '1') as PrefValues[K]
     default:
       return DEFAULTS[key]
   }
@@ -252,6 +257,7 @@ function serializePref<K extends PrefKey>(key: K, value: PrefValues[K]): string 
       return JSON.stringify(value)
     case 'showHidden':
     case 'masonryRecurse':
+    case 'sidebarCollapsed':
       return value ? '1' : '0'
     case 'readingWidth':
     case 'masonryColCount':

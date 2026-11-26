@@ -28,6 +28,8 @@ interface Props {
   // 移动端抽屉
   open?: boolean
   onClose?: () => void
+  /** 桌面端侧边栏收起态 */
+  collapsed?: boolean
   treeLoading?: boolean
   /** 额外的 header 内容（如多挂载切换器） */
   headerExtra?: ComponentChildren
@@ -51,6 +53,7 @@ const Sidebar: FunctionalComponent<Props> = ({
   dirName,
   open,
   onClose,
+  collapsed = false,
   treeLoading,
   headerExtra,
   showHidden,
@@ -62,6 +65,7 @@ const Sidebar: FunctionalComponent<Props> = ({
 
   // ── 宽度拖拽调整（200px–min(50vw, 1200px)），初始值从 localStorage 读取 ──
   const [width, setWidth] = useState<number>(() => getSidebarWidth())
+  const [isResizing, setIsResizing] = useState(false)
   // 拖拽过程中读最新宽度（回调是 memo 过的，闭包里的 width 会过期）
   const widthRef = useRef(width)
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -82,6 +86,7 @@ const Sidebar: FunctionalComponent<Props> = ({
   const handlePointerUp = useCallback(() => {
     if (dragRef.current) setSidebarWidth(widthRef.current)
     dragRef.current = null
+    setIsResizing(false)
     window.removeEventListener('pointermove', handlePointerMove)
     window.removeEventListener('pointerup', handlePointerUp)
   }, [handlePointerMove])
@@ -89,6 +94,7 @@ const Sidebar: FunctionalComponent<Props> = ({
   const handleResizeStart = (e: PointerEvent) => {
     e.preventDefault()
     dragRef.current = { startX: e.clientX, startWidth: widthRef.current }
+    setIsResizing(true)
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
   }
@@ -109,7 +115,12 @@ const Sidebar: FunctionalComponent<Props> = ({
       {open && (
         <div class="sidebar-overlay" onClick={onClose} />
       )}
-      <aside class="sidebar" data-open={String(!!open)} ref={asideRef}>
+      <aside
+        class={`sidebar${isResizing ? ' is-resizing' : ''}`}
+        data-open={String(!!open)}
+        data-collapsed={String(!!collapsed)}
+        ref={asideRef}
+      >
         <div class="sidebar-header">
           {headerExtra && <div style={{ marginBottom: '8px' }}>{headerExtra}</div>}
           <div class="sidebar-title">

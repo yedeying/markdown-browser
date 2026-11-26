@@ -16,7 +16,7 @@ import MountSelector from './components/MountSelector.js'
 import SettingsDialog from './components/SettingsDialog.js'
 import { watchUrl, fetchPathStat, syncWatchedDirs } from './utils/fsApi.js'
 import { revealHiddenForPath, isHiddenPath } from './utils/hiddenFiles.js'
-import { getShowHidden, setShowHidden, subscribePref } from './utils/prefs.js'
+import { getPref, getShowHidden, setPref, setShowHidden, subscribePref } from './utils/prefs.js'
 import type { FileNode, WatchEvent } from '../types.js'
 import type { ClipboardState } from './components/FolderView.js'
 import { clientPerfLog } from './utils/perfLog.js'
@@ -229,6 +229,25 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
   // 移动端 Sidebar 抽屉开关
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // 桌面端左侧目录收起/展开开关（持久化到 localStorage）
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState(() => getPref('sidebarCollapsed'))
+  useEffect(() => subscribePref('sidebarCollapsed', setSidebarCollapsedState), [])
+  const handleToggleDesktopSidebar = useCallback(() => {
+    setPref('sidebarCollapsed', !sidebarCollapsed)
+  }, [sidebarCollapsed])
+
+  // Ctrl/Cmd + \ 快捷键切换桌面端左侧目录
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === '\\') {
+        e.preventDefault()
+        setPref('sidebarCollapsed', !getPref('sidebarCollapsed'))
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   const [settingsOpen, setSettingsOpen] = useState(false)
   // 剪贴板（跨文件夹复制/剪切）
   const [clipboard, setClipboard] = useState<ClipboardState | null>(null)
@@ -546,6 +565,7 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
           dirName={dirName}
           open={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
+          collapsed={sidebarCollapsed}
           treeLoading={treeLoading}
           showHidden={showHidden}
           onToggleShowHidden={handleToggleShowHidden}
@@ -575,6 +595,8 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
             handleSelect(node)
           }}
             onToggleSidebar={() => setSidebarOpen(o => !o)}
+            sidebarCollapsed={sidebarCollapsed}
+            onToggleDesktopSidebar={handleToggleDesktopSidebar}
             themeToggle={<ThemeToggle theme={theme} onToggle={onThemeToggle} />}
             onOpenSettings={() => setSettingsOpen(true)}
           selectedNode={

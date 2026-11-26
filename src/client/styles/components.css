@@ -447,7 +447,7 @@
    ============================ */
 
 .back-to-top {
-  position: fixed;
+  position: absolute;
   bottom: 28px;
   right: 28px;
   width: 40px;
@@ -456,20 +456,37 @@
   color: var(--on-accent);
   border: none;
   border-radius: 50%;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.25s;
-  font-size: 18px;
+  transition: opacity 0.2s ease, transform 0.16s ease, box-shadow 0.16s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 100;
   pointer-events: none;
+}
+
+.back-to-top.has-toc {
+  right: 248px;
+}
+
+.back-to-top:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
 }
 
 .back-to-top.visible {
   opacity: 1;
   pointer-events: auto;
+}
+
+@media (max-width: 768px) {
+  .back-to-top,
+  .back-to-top.has-toc {
+    right: 18px;
+    bottom: 22px;
+  }
 }
 
 /* ============================

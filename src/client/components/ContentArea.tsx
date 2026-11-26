@@ -109,6 +109,9 @@ interface Props {
   onOpenSettings?: () => void
   // 移动端汉堡菜单
   onToggleSidebar?: () => void
+  // 桌面端左侧目录收起/展开
+  sidebarCollapsed?: boolean
+  onToggleDesktopSidebar?: () => void
   // 文件夹视图相关
   selectedNode?: FileNode | null
   tree?: FileNode[]
@@ -144,6 +147,8 @@ const ContentArea: FunctionalComponent<Props> = ({
   themeToggle,
   onOpenSettings,
   onToggleSidebar,
+  sidebarCollapsed = false,
+  onToggleDesktopSidebar,
   selectedNode,
   tree,
   onSelectNode,
@@ -602,18 +607,57 @@ const ContentArea: FunctionalComponent<Props> = ({
     return () => document.removeEventListener('mousedown', handler)
   }, [moreMenuOpen])
 
-  // 回到顶部
-  const [showBackTop, setShowBackTop] = useState(false)
-  useEffect(() => {
-    const el = contentBodyRef.current
-    if (!el) return
-    const handler = () => setShowBackTop(el.scrollTop > 300)
-    el.addEventListener('scroll', handler)
-    return () => el.removeEventListener('scroll', handler)
-  }, [])
-
   const fileName = filePath ? filePath.split('/').pop() : null
   const isFolderView = selectedNode?.type === 'folder'
+
+  // 长文档回到顶部：按当前视图绑定实际滚动容器（preview / code-only / edit）
+  const [showBackTop, setShowBackTop] = useState(false)
+  const activeScrollElRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    setShowBackTop(false)
+    activeScrollElRef.current = null
+    if (isFolderView || !filePath) return
+
+    let cleanup: (() => void) | undefined
+    const bind = () => {
+      const el =
+        viewMode === 'preview'
+          ? contentBodyRef.current
+          : viewMode === 'code-only'
+            ? (editorRef.current?.getScrollDOM() ?? null)
+            : previewPaneRef.current
+      if (!el) return false
+      activeScrollElRef.current = el
+      const sync = () => setShowBackTop(el.scrollTop > 300)
+      sync()
+      el.addEventListener('scroll', sync, { passive: true })
+      cleanup = () => el.removeEventListener('scroll', sync)
+      return true
+    }
+
+    let rafId = 0
+    if (!bind() && typeof requestAnimationFrame === 'function') {
+      rafId = requestAnimationFrame(() => { bind() })
+    }
+    return () => {
+      if (rafId && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId)
+      cleanup?.()
+    }
+  }, [filePath, viewMode, contentReady, isFolderView, activePluginId, activePluginMode])
+
+  const handleScrollToTop = useCallback(() => {
+    const el =
+      activeScrollElRef.current
+      ?? (viewMode === 'preview'
+        ? contentBodyRef.current
+        : viewMode === 'code-only'
+          ? (editorRef.current?.getScrollDOM() ?? null)
+          : previewPaneRef.current)
+    el?.scrollTo({ top: 0, behavior: 'smooth' })
+    if (viewMode === 'edit') {
+      editorRef.current?.getScrollDOM()?.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [viewMode])
   // 懒加载文件夹：children 未就绪（非空文件夹的首次进入）时先显示骨架屏，
   // 避免把"还没加载"误判为"空文件夹"
   const folderChildrenReady = !isFolderView || selectedNode!.children != null
@@ -892,9 +936,25 @@ const ContentArea: FunctionalComponent<Props> = ({
       <div class="content-header">
         <div class="current-file">
           {/* 移动端汉堡菜单按钮 */}
-          <button class="hamburger-btn" onClick={onToggleSidebar} aria-label="菜单">
-            <Icon name="menu" size={18} aria-hidden="true" />
-          </button>
+          {onToggleSidebar && (
+            <button class="hamburger-btn" onClick={onToggleSidebar} aria-label="菜单">
+              <Icon name="menu" size={18} aria-hidden="true" />
+            </button>
+          )}
+          {/* 桌面端左侧目录收起/展开按钮 */}
+          {onToggleDesktopSidebar && (
+            <button
+              type="button"
+              class="sidebar-toggle-btn"
+              data-testid="toggle-sidebar"
+              onClick={onToggleDesktopSidebar}
+              aria-label={sidebarCollapsed ? '展开左侧目录' : '收起左侧目录'}
+              aria-expanded={!sidebarCollapsed}
+              title={sidebarCollapsed ? '展开左侧目录 (Ctrl+\\)' : '收起左侧目录 (Ctrl+\\)'}
+            >
+              <Icon name={sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'} size={17} aria-hidden="true" />
+            </button>
+          )}
           {displayName ? (
             <>
               {!isFolderView && unsaved && <span style={{ color: 'var(--warning)' }}>● </span>}
@@ -1170,12 +1230,16 @@ const ContentArea: FunctionalComponent<Props> = ({
 
       {renderContent()}
 
-      {showBackTop && viewMode === 'preview' && (
+      {showBackTop && !isFolderView && filePath && (
         <button
-          class="back-to-top visible"
-          onClick={() => contentBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+          type="button"
+          class={`back-to-top visible${viewMode === 'preview' && activePlugin?.renderToc ? ' has-toc' : ''}`}
+          data-testid="back-to-top"
+          aria-label="回到顶部"
+          title="回到顶部"
+          onClick={handleScrollToTop}
         >
-          ↑
+          <Icon name="arrow-up" size={18} aria-hidden="true" />
         </button>
       )}
 
