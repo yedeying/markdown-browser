@@ -114,6 +114,8 @@ export async function startServer(config: ServerConfig) {
   const server = Bun.serve({
     port,
     hostname: config.host,
+    // 禁用默认 10s 空闲超时，防止 SSE 长连接 (/api/watch) 每 10 秒被 Bun 强断重连
+    idleTimeout: 0,
     fetch: fetchHandler,
   })
 
@@ -326,6 +328,8 @@ async function startMultiServer(config: ServerConfig, authConfig: AuthConfig | n
   const server = Bun.serve({
     port,
     hostname: config.host,
+    // 禁用默认 10s 空闲超时，防止 SSE 长连接 (/api/watch) 每 10 秒被 Bun 强断重连
+    idleTimeout: 0,
     fetch: app.fetch,
   })
 
