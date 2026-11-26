@@ -34,6 +34,8 @@ function loadHljsTheme(theme: 'dark' | 'light') {
 const colorScheme = window.matchMedia('(prefers-color-scheme: dark)')
 const appearanceKeys: PrefKey[] = [
   'theme',
+  'lightPalette',
+  'darkPalette',
   'accent',
   'accentCustom',
   'readingWidth',

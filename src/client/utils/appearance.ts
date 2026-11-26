@@ -1,10 +1,21 @@
 import {
   getPref,
   type AccentPref,
+  type DarkPalettePref,
+  type LightPalettePref,
   type ThemePref,
 } from './prefs.js'
 
 export type ResolvedTheme = Exclude<ThemePref, 'system'>
+export type ResolvedPalette = LightPalettePref | DarkPalettePref
+
+export function resolvePalette(
+  resolvedTheme: ResolvedTheme,
+  lightPalette: LightPalettePref,
+  darkPalette: DarkPalettePref,
+): ResolvedPalette {
+  return resolvedTheme === 'dark' ? darkPalette : lightPalette
+}
 
 export interface AccentTokens {
   accent: string
@@ -88,7 +99,13 @@ export function applyAppearancePrefs(
     getPref('accentCustom'),
   )
 
+  const resolvedPalette = resolvePalette(
+    resolvedTheme,
+    getPref('lightPalette'),
+    getPref('darkPalette'),
+  )
   root.setAttribute('data-theme', resolvedTheme)
+  root.setAttribute('data-palette', resolvedPalette)
   root.style.setProperty('--accent', accentTokens.accent)
   root.style.setProperty('--accent-active', accentTokens.accentActive)
   root.style.setProperty('--on-accent', accentTokens.onAccent)

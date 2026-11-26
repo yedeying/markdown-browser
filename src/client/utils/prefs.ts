@@ -56,6 +56,8 @@ const DEFAULT_SORT: SortPref = { field: 'name', order: 'asc' }
 // ── 类型化偏好 ────────────────────────────────────────────
 
 export type ThemePref = 'dark' | 'light' | 'system'
+export type LightPalettePref = 'paper' | 'warm' | 'sepia' | 'sage'
+export type DarkPalettePref = 'dark' | 'charcoal' | 'dusk'
 export type AccentPref = 'orange' | 'blue' | 'cyan' | 'green' | 'purple' | 'rose' | 'custom'
 export type ReadingWidthPref = 720 | 900 | 1140 | 'full'
 export type ReadingFontSizePref = 14 | 15 | 16 | 17
@@ -87,6 +89,8 @@ export function clampMasonryLoadConcurrency(n: number): number {
 
 export interface PrefValues {
   theme: ThemePref
+  lightPalette: LightPalettePref
+  darkPalette: DarkPalettePref
   accent: AccentPref
   accentCustom: string
   readingWidth: ReadingWidthPref
@@ -112,6 +116,8 @@ export type PrefKey = keyof PrefValues
 
 const STORAGE_KEYS: Record<PrefKey, string> = {
   theme: 'vmd_theme',
+  lightPalette: 'vmd_light_palette',
+  darkPalette: 'vmd_dark_palette',
   accent: 'vmd_accent',
   accentCustom: 'vmd_accent_custom',
   readingWidth: 'vmd_reading_width',
@@ -134,6 +140,8 @@ const STORAGE_KEYS: Record<PrefKey, string> = {
 }
 
 const THEME_PREFS: ThemePref[] = ['dark', 'light', 'system']
+const LIGHT_PALETTES: LightPalettePref[] = ['paper', 'warm', 'sepia', 'sage']
+const DARK_PALETTES: DarkPalettePref[] = ['dark', 'charcoal', 'dusk']
 const ACCENT_PREFS: AccentPref[] = ['orange', 'blue', 'cyan', 'green', 'purple', 'rose', 'custom']
 const READING_WIDTHS: ReadingWidthPref[] = [720, 900, 1140, 'full']
 const READING_FONT_SIZES: ReadingFontSizePref[] = [14, 15, 16, 17]
@@ -146,6 +154,8 @@ const EDITOR_FONT_SIZES: EditorFontSizePref[] = [13, 14, 15]
 
 const DEFAULTS: PrefValues = {
   theme: 'dark',
+  lightPalette: 'warm',
+  darkPalette: 'dark',
   accent: 'orange',
   accentCustom: '#ff7b47',
   readingWidth: 900,
@@ -207,6 +217,10 @@ function parsePref<K extends PrefKey>(key: K, raw: string | null): PrefValues[K]
   switch (key) {
     case 'theme':
       return (THEME_PREFS.includes(raw as ThemePref) ? raw : DEFAULTS.theme) as PrefValues[K]
+    case 'lightPalette':
+      return (LIGHT_PALETTES.includes(raw as LightPalettePref) ? raw : DEFAULTS.lightPalette) as PrefValues[K]
+    case 'darkPalette':
+      return (DARK_PALETTES.includes(raw as DarkPalettePref) ? raw : DEFAULTS.darkPalette) as PrefValues[K]
     case 'accent':
       return (ACCENT_PREFS.includes(raw as AccentPref) ? raw : DEFAULTS.accent) as PrefValues[K]
     case 'accentCustom':

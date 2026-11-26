@@ -132,3 +132,107 @@
   --warning: var(--color-warning);
   --danger: var(--color-danger);
 }
+
+/* ============================================================
+   人性化阅读主题扩展（data-palette）
+   浅色系：paper (纯白) · warm (暖纸/默认) · sepia (羊皮纸) · sage (护眼绿)
+   深色系：dark (深邃黑/默认) · charcoal (柔灰夜) · dusk (暖夜褐)
+   ============================================================ */
+
+/* 浅色 · 纯白（中性无偏黄，适合白天高亮度环境与技术文档） */
+:root[data-theme="light"][data-palette="paper"] {
+  --canvas: #ffffff;
+  --canvas-soft: #f7f8fa;
+  --surface: #ffffff;
+  --surface-strong: #ebedf0;
+  --ink: #1f2328;
+  --body-text: #383d45;
+  --muted: #656d76;
+  --hairline: #e5e7eb;
+  --hairline-soft: #eef0f3;
+  --hairline-strong: #cdd3db;
+  --color-hover: #f3f4f6;
+  --color-scrollbar: #d0d7de;
+  --bg-secondary: #f7f8fa;
+  --code-bg: #f6f8fa;
+  --th-bg: #f6f8fa;
+  --sidebar-bg: #f7f8fa;
+  --header-bg: #f7f8fa;
+}
+
+/* 浅色 · 羊皮纸（经典纸书暖调，显著降低蓝光刺激，适合长时间沉浸阅读） */
+:root[data-theme="light"][data-palette="sepia"] {
+  --canvas: #f4ecd8;
+  --canvas-soft: #ede3cb;
+  --surface: #f9f4e6;
+  --surface-strong: #e3d6ba;
+  --ink: #33291e;
+  --body-text: #504333;
+  --muted: #82725c;
+  --hairline: #dfd3ba;
+  --hairline-soft: #e8dec8;
+  --hairline-strong: #c8b899;
+  --color-link: #8f4e16;
+  --color-hover: #eae0c8;
+  --color-scrollbar: #cdbfa3;
+  --bg-secondary: #ede3cb;
+  --code-bg: #ebe1c9;
+  --th-bg: #e9dec4;
+  --sidebar-bg: #ede3cb;
+  --header-bg: #efe6d0;
+}
+
+/* 浅色 · 护眼绿（低饱和柔和鼠尾草绿，缓解白底眩光与视觉疲劳） */
+:root[data-theme="light"][data-palette="sage"] {
+  --canvas: #eef4ee;
+  --canvas-soft: #e5eee6;
+  --surface: #f5faf5;
+  --surface-strong: #d7e4d8;
+  --ink: #1e2b22;
+  --body-text: #37483c;
+  --muted: #617667;
+  --hairline: #d4e1d6;
+  --hairline-soft: #e0eae2;
+  --hairline-strong: #b6cab9;
+  --color-link: #1c6b48;
+  --color-hover: #e1ece2;
+  --color-scrollbar: #bfd2c2;
+  --bg-secondary: #e5eee6;
+  --code-bg: #e4ede5;
+  --th-bg: #e1ece2;
+  --sidebar-bg: #e5eee6;
+  --header-bg: #e8f0e9;
+}
+
+/* 深色 · 柔灰夜（降低纯黑高对比导致的散光眩晕，夜间更温和） */
+:root[data-theme="dark"][data-palette="charcoal"] {
+  --canvas: #1c1d21;
+  --canvas-soft: #16171a;
+  --surface: #23252a;
+  --surface-strong: #2d3037;
+  --ink: #eceef2;
+  --body-text: #c8ccd4;
+  --muted: #8c929e;
+  --hairline: #32353d;
+  --hairline-soft: #2c2f36;
+  --hairline-strong: #464a55;
+  --color-hover: #272a30;
+  --color-scrollbar: #3a3e47;
+}
+
+/* 深色 · 暖夜褐（无冷蓝光的暖调夜读方案，适合睡前长文阅读） */
+:root[data-theme="dark"][data-palette="dusk"] {
+  --canvas: #1c1917;
+  --canvas-soft: #151210;
+  --surface: #25211e;
+  --surface-strong: #302b26;
+  --ink: #ede6dc;
+  --body-text: #cfc6b8;
+  --muted: #938879;
+  --hairline: #38322c;
+  --hairline-soft: #2e2924;
+  --hairline-strong: #4e463e;
+  --color-link: #e09f67;
+  --color-hover: #2a2521;
+  --color-scrollbar: #423b34;
+}

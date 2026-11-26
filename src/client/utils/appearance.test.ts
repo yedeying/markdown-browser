@@ -138,3 +138,19 @@ test('applyAppearancePrefs maps unlimited reading width to none', () => {
 
   expect(properties.get('--reading-width')).toBe('none')
 })
+
+test('applyAppearancePrefs resolves light and dark reading palettes onto data-palette', () => {
+  localStorage.setItem('vmd_theme', 'system')
+  localStorage.setItem('vmd_light_palette', 'sage')
+  localStorage.setItem('vmd_dark_palette', 'dusk')
+
+  const lightCase = createRoot()
+  applyAppearancePrefs(lightCase.root, false)
+  expect(lightCase.attributes.get('data-theme')).toBe('light')
+  expect(lightCase.attributes.get('data-palette')).toBe('sage')
+
+  const darkCase = createRoot()
+  applyAppearancePrefs(darkCase.root, true)
+  expect(darkCase.attributes.get('data-theme')).toBe('dark')
+  expect(darkCase.attributes.get('data-palette')).toBe('dusk')
+})

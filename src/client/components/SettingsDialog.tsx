@@ -6,8 +6,10 @@ import { apiFetch } from '../utils/fsApi.js'
 import {
   resetLocalPrefs,
   type AccentPref,
+  type DarkPalettePref,
   type EditorFontSizePref,
   type FolderViewPref,
+  type LightPalettePref,
   type MasonryColModePref,
   type MasonryColSizePref,
   type MasonryImageQualityPref,
@@ -26,6 +28,31 @@ import Icon from './ui/Icon.js'
 import { pluginRegistry, usePluginsVersion } from '../plugins/registry.js'
 import { usePluginPref } from '../plugins/prefs.js'
 import type { PluginSettingDef } from '../plugins/types.js'
+
+const LIGHT_PALETTE_OPTIONS: Array<{
+  value: LightPalettePref
+  label: string
+  bg: string
+  ink: string
+  border: string
+}> = [
+  { value: 'paper', label: '纯白', bg: '#ffffff', ink: '#1f2328', border: '#d8dee4' },
+  { value: 'warm', label: '暖纸', bg: '#f7f7f4', ink: '#26251e', border: '#dcdad1' },
+  { value: 'sepia', label: '羊皮纸', bg: '#f4ecd8', ink: '#33291e', border: '#d8cab0' },
+  { value: 'sage', label: '护眼绿', bg: '#eef4ee', ink: '#1e2b22', border: '#c9dacb' },
+]
+
+const DARK_PALETTE_OPTIONS: Array<{
+  value: DarkPalettePref
+  label: string
+  bg: string
+  ink: string
+  border: string
+}> = [
+  { value: 'dark', label: '深邃黑', bg: '#0d1117', ink: '#f0f6fc', border: '#30363d' },
+  { value: 'charcoal', label: '柔灰夜', bg: '#1c1d21', ink: '#eceef2', border: '#3a3e47' },
+  { value: 'dusk', label: '暖夜褐', bg: '#1c1917', ink: '#ede6dc', border: '#463e37' },
+]
 
 /** 单个插件声明式设置项渲染器 */
 const PluginSettingControl: FunctionalComponent<{ pluginId: string; setting: PluginSettingDef }> = ({ pluginId, setting }) => {
@@ -83,7 +110,9 @@ const ACCENTS: Array<{ value: Exclude<AccentPref, 'custom'>; label: string; colo
 ]
 
 const SettingsDialog: FunctionalComponent<Props> = ({ onClose, currentMountAlias, mountConfigurable = true }) => {
-  const { selectedTheme, setTheme } = useTheme()
+  const { selectedTheme, resolvedTheme, setTheme } = useTheme()
+  const [lightPalette, setLightPalette] = usePref('lightPalette')
+  const [darkPalette, setDarkPalette] = usePref('darkPalette')
   const [accent, setAccent] = usePref('accent')
   const [accentCustom, setAccentCustom] = usePref('accentCustom')
   const [readingWidth, setReadingWidth] = usePref('readingWidth')
@@ -210,6 +239,62 @@ const SettingsDialog: FunctionalComponent<Props> = ({ onClose, currentMountAlias
                     {label}
                   </label>
                 ))}
+              </div>
+            </div>
+
+            <div class="settings-row settings-row-stack">
+              <span class="settings-label">阅读配色</span>
+              <div class="settings-palette-grid" data-testid="settings-palette-grid">
+                {LIGHT_PALETTE_OPTIONS.map((p) => {
+                  const isActive = resolvedTheme === 'light' && lightPalette === p.value
+                  return (
+                    <button
+                      type="button"
+                      key={p.value}
+                      class={`settings-palette-card${isActive ? ' active' : ''}`}
+                      data-testid={`palette-${p.value}`}
+                      aria-pressed={isActive}
+                      onClick={() => {
+                        setLightPalette(p.value)
+                        if (resolvedTheme !== 'light') setTheme('light')
+                      }}
+                    >
+                      <span
+                        class="settings-palette-chip"
+                        style={{ background: p.bg, color: p.ink, borderColor: p.border }}
+                        aria-hidden="true"
+                      >
+                        Aa
+                      </span>
+                      <span class="settings-palette-label">{p.label}</span>
+                    </button>
+                  )
+                })}
+                {DARK_PALETTE_OPTIONS.map((p) => {
+                  const isActive = resolvedTheme === 'dark' && darkPalette === p.value
+                  return (
+                    <button
+                      type="button"
+                      key={p.value}
+                      class={`settings-palette-card${isActive ? ' active' : ''}`}
+                      data-testid={`palette-${p.value}`}
+                      aria-pressed={isActive}
+                      onClick={() => {
+                        setDarkPalette(p.value)
+                        if (resolvedTheme !== 'dark') setTheme('dark')
+                      }}
+                    >
+                      <span
+                        class="settings-palette-chip"
+                        style={{ background: p.bg, color: p.ink, borderColor: p.border }}
+                        aria-hidden="true"
+                      >
+                        Aa
+                      </span>
+                      <span class="settings-palette-label">{p.label}</span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
