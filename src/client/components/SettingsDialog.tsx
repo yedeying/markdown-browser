@@ -87,6 +87,7 @@ const SettingsDialog: FunctionalComponent<Props> = ({ onClose, currentMountAlias
   const [accent, setAccent] = usePref('accent')
   const [accentCustom, setAccentCustom] = usePref('accentCustom')
   const [readingWidth, setReadingWidth] = usePref('readingWidth')
+  const [readingWidthCustom, setReadingWidthCustom] = usePref('readingWidthCustom')
   const [readingFontSize, setReadingFontSize] = usePref('readingFontSize')
   const [readingLineHeight, setReadingLineHeight] = usePref('readingLineHeight')
   const [folderView, setFolderView] = usePref('folderView')
@@ -259,13 +260,17 @@ const SettingsDialog: FunctionalComponent<Props> = ({ onClose, currentMountAlias
             <label class="settings-row">
               <span class="settings-label">内容宽度</span>
               <select
-                value={String(readingWidth)}
-                onChange={(event) => setReadingWidth(
-                  event.currentTarget.value === 'full'
-                    ? 'full'
-                    : Number(event.currentTarget.value) as ReadingWidthPref,
-                )}
+                value={readingWidthCustom !== null ? 'custom' : String(readingWidth)}
+                onChange={(event) => {
+                  const v = event.currentTarget.value
+                  if (v === 'custom') return
+                  setReadingWidthCustom(null)
+                  setReadingWidth(v === 'full' ? 'full' : Number(v) as ReadingWidthPref)
+                }}
               >
+                {readingWidthCustom !== null && (
+                  <option value="custom">自定义 ({readingWidthCustom}px)</option>
+                )}
                 <option value="720">720px</option>
                 <option value="900">900px</option>
                 <option value="1140">1140px</option>

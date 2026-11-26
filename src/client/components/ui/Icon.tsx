@@ -49,6 +49,8 @@ import {
   ExternalLink,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   ArrowUp,
 } from 'lucide-preact'
 
@@ -103,6 +105,8 @@ export type IconName =
   | 'external-link'
   | 'panel-left-close'
   | 'panel-left-open'
+  | 'panel-right-close'
+  | 'panel-right-open'
   | 'arrow-up'
 
 const ICONS = {
@@ -156,6 +160,8 @@ const ICONS = {
   'external-link': ExternalLink,
   'panel-left-close': PanelLeftClose,
   'panel-left-open': PanelLeftOpen,
+  'panel-right-close': PanelRightClose,
+  'panel-right-open': PanelRightOpen,
   'arrow-up': ArrowUp,
 } as const
 

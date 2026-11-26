@@ -2,7 +2,14 @@ import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { h, render } from 'preact'
 import { act } from 'preact/test-utils'
 import { Window } from 'happy-dom'
-import { getPref, setPref } from '../utils/prefs.js'
+import {
+  computeSymmetricReadingWidth,
+  getPref,
+  READING_WIDTH_MAX,
+  READING_WIDTH_MIN,
+  setPref,
+} from '../utils/prefs.js'
+import { applyAppearancePrefs } from '../utils/appearance.js'
 
 mock.module('mermaid', () => ({
   default: {
@@ -132,4 +139,32 @@ test('back-to-top button binds after file loads, appears on scroll > 300, and sc
   act(() => backTopBtn.dispatchEvent(new dom.MouseEvent('click', { bubbles: true })))
   expect(scrolledToTop).toBe(true)
   expect(body.scrollTop).toBe(0)
+})
+
+test('tocCollapsed pref and symmetric reading width math + appearance override', () => {
+  expect(getPref('tocCollapsed')).toBe(false)
+  setPref('tocCollapsed', true)
+  expect(getPref('tocCollapsed')).toBe(true)
+
+  // Symmetric drag: dragging right handle outward by +50 expands centered column by +100
+  expect(computeSymmetricReadingWidth(900, 50, 'right', 1400)).toBe(1000)
+  // Dragging left handle outward by -50 expands centered column by +100
+  expect(computeSymmetricReadingWidth(900, -50, 'left', 1400)).toBe(1000)
+  // Dragging right handle inward by -40 shrinks centered column by -80
+  expect(computeSymmetricReadingWidth(900, -40, 'right', 1400)).toBe(820)
+  // Clamps to min and available max
+  expect(computeSymmetricReadingWidth(600, -500, 'right', 1400)).toBe(READING_WIDTH_MIN)
+  expect(computeSymmetricReadingWidth(900, 500, 'right', 1200)).toBe(1200)
+  expect(computeSymmetricReadingWidth(900, 1000, 'right', 2400)).toBe(READING_WIDTH_MAX)
+
+  // Custom reading width overrides preset in CSS variable, null falls back to preset
+  setPref('readingWidth', 900)
+  setPref('readingWidthCustom', 1020)
+  const fakeRoot = dom.document.documentElement as unknown as HTMLElement
+  applyAppearancePrefs(fakeRoot, false)
+  expect(fakeRoot.style.getPropertyValue('--reading-width')).toBe('1020px')
+
+  setPref('readingWidthCustom', null)
+  applyAppearancePrefs(fakeRoot, false)
+  expect(fakeRoot.style.getPropertyValue('--reading-width')).toBe('900px')
 })

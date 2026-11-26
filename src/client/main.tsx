@@ -37,6 +37,7 @@ const appearanceKeys: PrefKey[] = [
   'accent',
   'accentCustom',
   'readingWidth',
+  'readingWidthCustom',
   'readingFontSize',
   'readingLineHeight',
   'editorFontSize',

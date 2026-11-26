@@ -9,6 +9,26 @@ export const SIDEBAR_WIDTH_MIN = 200
 export const SIDEBAR_WIDTH_MAX = 1200
 export const SIDEBAR_WIDTH_DEFAULT = 280
 
+export const READING_WIDTH_MIN = 480
+export const READING_WIDTH_MAX = 1800
+
+export function clampReadingWidth(width: number, maxAvailable = READING_WIDTH_MAX): number {
+  const upper = Math.min(READING_WIDTH_MAX, Math.max(READING_WIDTH_MIN, Math.floor(maxAvailable)))
+  if (!Number.isFinite(width)) return 900
+  return Math.min(upper, Math.max(READING_WIDTH_MIN, Math.round(width)))
+}
+
+/** 对称拖拽计算阅读宽度：左右任一侧拖动 Δx，居中容器总宽变化 ±2Δx */
+export function computeSymmetricReadingWidth(
+  startWidth: number,
+  deltaX: number,
+  side: 'left' | 'right',
+  maxAvailable = READING_WIDTH_MAX,
+): number {
+  const signedDelta = side === 'right' ? deltaX : -deltaX
+  return clampReadingWidth(startWidth + signedDelta * 2, maxAvailable)
+}
+
 export function clampSidebarWidth(
   width: number,
   viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200,
@@ -70,6 +90,7 @@ export interface PrefValues {
   accent: AccentPref
   accentCustom: string
   readingWidth: ReadingWidthPref
+  readingWidthCustom: number | null
   readingFontSize: ReadingFontSizePref
   readingLineHeight: ReadingLineHeightPref
   folderView: FolderViewPref
@@ -84,6 +105,7 @@ export interface PrefValues {
   editorFontSize: EditorFontSizePref
   sidebarWidth: number
   sidebarCollapsed: boolean
+  tocCollapsed: boolean
 }
 
 export type PrefKey = keyof PrefValues
@@ -93,6 +115,7 @@ const STORAGE_KEYS: Record<PrefKey, string> = {
   accent: 'vmd_accent',
   accentCustom: 'vmd_accent_custom',
   readingWidth: 'vmd_reading_width',
+  readingWidthCustom: 'vmd_reading_width_custom',
   readingFontSize: 'vmd_reading_font_size',
   readingLineHeight: 'vmd_reading_line_height',
   folderView: 'vmd_folder_view_mode',
@@ -107,6 +130,7 @@ const STORAGE_KEYS: Record<PrefKey, string> = {
   editorFontSize: 'vmd_editor_font_size',
   sidebarWidth: SIDEBAR_WIDTH_KEY,
   sidebarCollapsed: 'vmd_sidebar_collapsed',
+  tocCollapsed: 'vmd_toc_collapsed',
 }
 
 const THEME_PREFS: ThemePref[] = ['dark', 'light', 'system']
@@ -125,6 +149,7 @@ const DEFAULTS: PrefValues = {
   accent: 'orange',
   accentCustom: '#ff7b47',
   readingWidth: 900,
+  readingWidthCustom: null,
   readingFontSize: 16,
   readingLineHeight: 1.7,
   folderView: 'list',
@@ -140,6 +165,7 @@ const DEFAULTS: PrefValues = {
   editorFontSize: 14,
   sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
   sidebarCollapsed: false,
+  tocCollapsed: false,
 }
 
 type PrefListener<K extends PrefKey> = (value: PrefValues[K]) => void
@@ -189,6 +215,13 @@ function parsePref<K extends PrefKey>(key: K, raw: string | null): PrefValues[K]
       if (raw === 'full') return 'full' as PrefValues[K]
       const n = Number(raw)
       return (READING_WIDTHS.includes(n as ReadingWidthPref) ? n : DEFAULTS.readingWidth) as PrefValues[K]
+    }
+    case 'readingWidthCustom': {
+      if (raw == null || raw === '') return null as PrefValues[K]
+      const n = Number(raw)
+      return (Number.isFinite(n) && n >= READING_WIDTH_MIN && n <= READING_WIDTH_MAX
+        ? Math.round(n)
+        : null) as PrefValues[K]
     }
     case 'readingFontSize': {
       const n = Number(raw)
@@ -246,6 +279,8 @@ function parsePref<K extends PrefKey>(key: K, raw: string | null): PrefValues[K]
     }
     case 'sidebarCollapsed':
       return (raw === '1') as PrefValues[K]
+    case 'tocCollapsed':
+      return (raw === '1') as PrefValues[K]
     default:
       return DEFAULTS[key]
   }
@@ -258,7 +293,10 @@ function serializePref<K extends PrefKey>(key: K, value: PrefValues[K]): string 
     case 'showHidden':
     case 'masonryRecurse':
     case 'sidebarCollapsed':
+    case 'tocCollapsed':
       return value ? '1' : '0'
+    case 'readingWidthCustom':
+      return value === null ? '' : String(value)
     case 'readingWidth':
     case 'masonryColCount':
     case 'masonryLoadConcurrency':

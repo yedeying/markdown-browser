@@ -92,9 +92,13 @@ export function applyAppearancePrefs(
   root.style.setProperty('--accent', accentTokens.accent)
   root.style.setProperty('--accent-active', accentTokens.accentActive)
   root.style.setProperty('--on-accent', accentTokens.onAccent)
+  const customReadingWidth = getPref('readingWidthCustom')
+  const readingWidth = getPref('readingWidth')
   root.style.setProperty(
     '--reading-width',
-    getPref('readingWidth') === 'full' ? 'none' : `${getPref('readingWidth')}px`,
+    customReadingWidth !== null
+      ? `${customReadingWidth}px`
+      : (readingWidth === 'full' ? 'none' : `${readingWidth}px`),
   )
   root.style.setProperty('--reading-font-size', `${getPref('readingFontSize')}px`)
   root.style.setProperty('--reading-line-height', String(getPref('readingLineHeight')))

@@ -167,6 +167,23 @@
   scroll-behavior: smooth;
 }
 
+.toc-panel-wrap {
+  display: flex;
+  flex-shrink: 0;
+  max-width: 220px;
+  overflow: hidden;
+  transition: max-width 0.2s ease;
+}
+
+.toc-panel-wrap[data-collapsed="true"] {
+  max-width: 0;
+  pointer-events: none;
+}
+
+.toc-panel-wrap[data-collapsed="true"] .toc-panel {
+  border-left-color: transparent;
+}
+
 .toc-panel {
   width: 220px;
   flex-shrink: 0;
@@ -175,6 +192,69 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 阅读视野对称拖拽容器与左右手柄 */
+.reading-width-frame {
+  position: relative;
+  width: 100%;
+  max-width: var(--reading-width);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.reading-width-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  cursor: col-resize;
+  z-index: 15;
+  touch-action: none;
+  display: flex;
+  justify-content: center;
+}
+
+.reading-width-handle-left {
+  left: -16px;
+}
+
+.reading-width-handle-right {
+  right: -16px;
+}
+
+.reading-width-handle::after {
+  content: '';
+  width: 2px;
+  height: 100%;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.16s ease;
+}
+
+.reading-width-handle:hover::after {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.reading-width-frame.is-resizing .reading-width-handle::after {
+  background: var(--accent);
+}
+
+.reading-width-badge {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  z-index: 200;
 }
 
 .toc-header {
@@ -280,7 +360,11 @@
 
 @media (max-width: 768px) {
   .sidebar { width: 240px; }
-  .toc-panel { display: none; }
+  .toc-panel-wrap,
+  .toc-panel,
+  .toc-toggle-btn,
+  .reading-width-handle,
+  .reading-width-badge { display: none; }
   .content-body { padding: 20px; }
   .preview-pane { padding: 16px; }
 }

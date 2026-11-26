@@ -21,6 +21,12 @@ import { registerBuiltinPlugins } from '../plugins/builtin/index.js'
 import { usePluginPref } from '../plugins/prefs.js'
 import { hasPendingPluginJump, takePluginJump } from '../plugins/jumpStore.js'
 import type { PluginSettingDef } from '../plugins/types.js'
+import {
+  computeSymmetricReadingWidth,
+  getPref,
+  setPref,
+  subscribePref,
+} from '../utils/prefs.js'
 
 registerBuiltinPlugins()
 
@@ -610,6 +616,87 @@ const ContentArea: FunctionalComponent<Props> = ({
   const fileName = filePath ? filePath.split('/').pop() : null
   const isFolderView = selectedNode?.type === 'folder'
 
+  // 右侧文章目录（TOC）收起/展开开关（持久化到 localStorage）
+  const [tocCollapsed, setTocCollapsedState] = useState(() => getPref('tocCollapsed'))
+  useEffect(() => subscribePref('tocCollapsed', setTocCollapsedState), [])
+  const handleToggleToc = useCallback(() => {
+    setPref('tocCollapsed', !getPref('tocCollapsed'))
+  }, [])
+
+  // 阅读视野对称拖拽调宽（左右任一侧拖动，居中内容对称增减 2Δx）
+  const readingFrameRef = useRef<HTMLDivElement>(null)
+  const [resizingWidth, setResizingWidth] = useState<number | null>(null)
+  const readingDragRef = useRef<{
+    side: 'left' | 'right'
+    startX: number
+    startWidth: number
+    maxAvailable: number
+    currentWidth: number
+  } | null>(null)
+
+  const handleReadingResizeMove = useCallback((e: PointerEvent) => {
+    const drag = readingDragRef.current
+    if (!drag) return
+    const next = computeSymmetricReadingWidth(
+      drag.startWidth,
+      e.clientX - drag.startX,
+      drag.side,
+      drag.maxAvailable,
+    )
+    drag.currentWidth = next
+    document.documentElement.style.setProperty('--reading-width', `${next}px`)
+    setResizingWidth(next)
+  }, [])
+
+  const handleReadingResizeEnd = useCallback(() => {
+    const drag = readingDragRef.current
+    if (drag) {
+      setPref('readingWidthCustom', drag.currentWidth)
+    }
+    readingDragRef.current = null
+    setResizingWidth(null)
+    window.removeEventListener('pointermove', handleReadingResizeMove)
+    window.removeEventListener('pointerup', handleReadingResizeEnd)
+    window.removeEventListener('pointercancel', handleReadingResizeEnd)
+  }, [handleReadingResizeMove])
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('pointermove', handleReadingResizeMove)
+      window.removeEventListener('pointerup', handleReadingResizeEnd)
+      window.removeEventListener('pointercancel', handleReadingResizeEnd)
+    }
+  }, [handleReadingResizeMove, handleReadingResizeEnd])
+
+  const startReadingWidthResize = (side: 'left' | 'right', e: PointerEvent) => {
+    e.preventDefault()
+    const frameEl = readingFrameRef.current
+    const bodyEl = contentBodyRef.current
+    if (!frameEl || !bodyEl) return
+    const frameWidth = frameEl.getBoundingClientRect().width
+    const bodyStyle = getComputedStyle(bodyEl)
+    const padX =
+      (Number.parseFloat(bodyStyle.paddingLeft) || 0) +
+      (Number.parseFloat(bodyStyle.paddingRight) || 0)
+    const maxAvailable = Math.max(frameWidth, bodyEl.clientWidth - padX)
+    const startWidth = Math.round(frameWidth)
+    readingDragRef.current = {
+      side,
+      startX: e.clientX,
+      startWidth,
+      maxAvailable,
+      currentWidth: startWidth,
+    }
+    setResizingWidth(startWidth)
+    window.addEventListener('pointermove', handleReadingResizeMove)
+    window.addEventListener('pointerup', handleReadingResizeEnd)
+    window.addEventListener('pointercancel', handleReadingResizeEnd)
+  }
+
+  const resetReadingWidthCustom = () => {
+    setPref('readingWidthCustom', null)
+  }
+
   // 长文档回到顶部：按当前视图绑定实际滚动容器（preview / code-only / edit）
   const [showBackTop, setShowBackTop] = useState(false)
   const activeScrollElRef = useRef<HTMLElement | null>(null)
@@ -868,6 +955,23 @@ const ContentArea: FunctionalComponent<Props> = ({
             previewContentRef,
           })
         : null
+      const mainNode = contentReady && content !== null && activePlugin?.renderMain
+        ? activePlugin.renderMain({
+            filePath,
+            fileName: fileName || filePath,
+            content,
+            parsed: resolvedFile?.parsed ?? null,
+            mode: activePluginMode,
+            theme,
+            node: selectedNode ?? null,
+            contentBodyRef,
+            previewContentRef,
+            onSave: onSave ? async (next: string) => { await onSave(filePath, next) } : undefined,
+            onCheckboxToggle: onSave ? handleCheckboxToggle : undefined,
+            onSelectNode,
+          })
+        : null
+      const enableWidthDrag = activePlugin?.id === 'builtin.markdown' && contentReady && content !== null && content !== ''
       return (
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           <div
@@ -875,22 +979,44 @@ const ContentArea: FunctionalComponent<Props> = ({
             class="content-body"
             style={{ flex: 1 }}
           >
-            {contentReady && content !== null && activePlugin?.renderMain && activePlugin.renderMain({
-              filePath,
-              fileName: fileName || filePath,
-              content,
-              parsed: resolvedFile?.parsed ?? null,
-              mode: activePluginMode,
-              theme,
-              node: selectedNode ?? null,
-              contentBodyRef,
-              previewContentRef,
-              onSave: onSave ? async (next: string) => { await onSave(filePath, next) } : undefined,
-              onCheckboxToggle: onSave ? handleCheckboxToggle : undefined,
-              onSelectNode,
-            })}
+            {enableWidthDrag ? (
+              <div
+                ref={readingFrameRef}
+                class={`reading-width-frame${resizingWidth !== null ? ' is-resizing' : ''}`}
+                data-testid="reading-width-frame"
+              >
+                <div
+                  class="reading-width-handle reading-width-handle-left"
+                  data-testid="reading-width-handle-left"
+                  title="左右对称拖拽调整阅读宽度（双击恢复预设）"
+                  onPointerDown={(e) => startReadingWidthResize('left', e as unknown as PointerEvent)}
+                  onDblClick={resetReadingWidthCustom}
+                />
+                {mainNode}
+                <div
+                  class="reading-width-handle reading-width-handle-right"
+                  data-testid="reading-width-handle-right"
+                  title="左右对称拖拽调整阅读宽度（双击恢复预设）"
+                  onPointerDown={(e) => startReadingWidthResize('right', e as unknown as PointerEvent)}
+                  onDblClick={resetReadingWidthCustom}
+                />
+                {resizingWidth !== null && (
+                  <div class="reading-width-badge" data-testid="reading-width-badge">
+                    {resizingWidth}px
+                  </div>
+                )}
+              </div>
+            ) : mainNode}
           </div>
-          {tocNode}
+          {tocNode && (
+            <div
+              class="toc-panel-wrap"
+              data-testid="toc-panel-wrap"
+              data-collapsed={String(tocCollapsed)}
+            >
+              {tocNode}
+            </div>
+          )}
         </div>
       )
     }
@@ -1008,6 +1134,19 @@ const ContentArea: FunctionalComponent<Props> = ({
               aria-label={isFolderView ? '分享此文件夹' : '分享此文件'}
             >
               <Icon name="share" size={16} aria-hidden="true" />
+            </button>
+          )}
+          {!isFolderView && viewMode === 'preview' && filePath && activePlugin?.renderToc && (
+            <button
+              type="button"
+              class="header-icon-btn toc-toggle-btn"
+              data-testid="toggle-toc"
+              onClick={handleToggleToc}
+              aria-label={tocCollapsed ? '展开文章目录' : '收起文章目录'}
+              aria-expanded={!tocCollapsed}
+              title={tocCollapsed ? '展开文章目录' : '收起文章目录'}
+            >
+              <Icon name={tocCollapsed ? 'panel-right-open' : 'panel-right-close'} size={16} aria-hidden="true" />
             </button>
           )}
           {onOpenSettings && (
@@ -1233,7 +1372,7 @@ const ContentArea: FunctionalComponent<Props> = ({
       {showBackTop && !isFolderView && filePath && (
         <button
           type="button"
-          class={`back-to-top visible${viewMode === 'preview' && activePlugin?.renderToc ? ' has-toc' : ''}`}
+          class={`back-to-top visible${viewMode === 'preview' && activePlugin?.renderToc && !tocCollapsed ? ' has-toc' : ''}`}
           data-testid="back-to-top"
           aria-label="回到顶部"
           title="回到顶部"
