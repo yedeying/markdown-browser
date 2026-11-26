@@ -153,8 +153,10 @@ export function getEditorLang(path: string, content?: string | null): string {
 
   const ext = getExtension(path)
   if (ext) {
-    if (['.js', '.jsx', '.mjs', '.cjs'].includes(ext))           return 'javascript'
-    if (['.ts', '.tsx', '.mts', '.cts'].includes(ext))           return 'typescript'
+    if (['.js', '.mjs', '.cjs'].includes(ext))                  return 'javascript'
+    if (ext === '.jsx')                                         return 'jsx'
+    if (['.ts', '.mts', '.cts'].includes(ext))                  return 'typescript'
+    if (ext === '.tsx')                                         return 'tsx'
     if (['.css'].includes(ext))                                 return 'css'
     if (['.scss', '.sass', '.less'].includes(ext))              return 'sass'
     if (['.vue'].includes(ext))                                 return 'vue'

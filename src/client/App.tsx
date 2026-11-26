@@ -295,7 +295,9 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     void syncWatchedDirs(watchClientId, dirs)
     void checkAndRefreshDirs(dirs)
     if (currentPathRef.current) {
-      window.dispatchEvent(new CustomEvent('vmd:file-reload', { detail: { path: currentPathRef.current } }))
+      window.dispatchEvent(new CustomEvent('vmd:file-reload', {
+        detail: { path: currentPathRef.current, reconnect: true },
+      }))
     }
   }, [watchClientId, checkAndRefreshDirs])
 
@@ -376,11 +378,11 @@ const DirModeApp: FunctionalComponent<DirModeProps> = ({ theme, onThemeToggle, m
     handleSelect(makeRootNode(tree, dirName))
   }, [showHidden, handleSelect, selectedNode, tree, dirName])
 
-  // SSE 静默重载：返回是否真的重载了（self-save 窗口内会被抑制），
+  // SSE 静默重载：返回是否真的重载了（self-save 窗口内或磁盘内容无变化时返回 false），
   // ContentArea 据此决定是否还要恢复滚动位置
   const handleSilentReload = useCallback(async (): Promise<boolean> => {
     if (!currentPath) return false
-    return await loadFile(currentPath)
+    return await loadFile(currentPath, { silent: true })
   }, [currentPath, loadFile])
 
   const handleSave = useCallback(async (path: string, text: string): Promise<boolean> => {

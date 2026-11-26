@@ -45,7 +45,9 @@ import type { Extension } from '@codemirror/state'
 export const EDITOR_LANGUAGES = [
   'markdown',
   'javascript',
+  'jsx',
   'typescript',
+  'tsx',
   'css',
   'html',
   'vue',
@@ -85,7 +87,9 @@ export const EDITOR_LANGUAGES = [
 export function getLangExtension(language?: string): Extension {
   switch (language) {
     case 'javascript': return javascript()
+    case 'jsx':        return javascript({ jsx: true })
     case 'typescript': return javascript({ typescript: true })
+    case 'tsx':        return javascript({ typescript: true, jsx: true })
     case 'css':        return css()
     case 'html':       return html()
     case 'vue':        return vue()

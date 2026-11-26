@@ -9,7 +9,9 @@ import { getEditorLang } from './fileType.ts'
 const SAMPLES: Record<string, string> = {
   markdown: '# 标题\n\n正文\n',
   javascript: 'const a = 1\nfunction f() { return a }\n',
+  jsx: 'export function App({ busy }) {\n  return <button className={`a ${busy ? "spin" : ""}`}>{/* tip */}<span>Go</span></button>\n}\n',
   typescript: 'const a: number = 1\nfunction f(): number { return a }\n',
+  tsx: 'export function App({ busy }: { busy: boolean }) {\n  return <section className="grid">{/* comment */}<RefreshCw className={`w-3.5 ${busy ? "spin" : ""}`} /><span>Hi</span></section>\n}\n',
   css: '.a { color: red; }\n.b { margin: 0; }\n',
   html: '<div class="a">hi</div>\n<span>x</span>\n',
   vue: '<template>\n  <div :class="cls" @click="go">{{ msg }}</div>\n</template>\n<script setup lang="ts">\nconst msg: string = "hi"\n</script>\n<style scoped>\n.a { color: red; }\n</style>\n',
@@ -75,6 +77,18 @@ test('vue parses template bindings, interpolation and <script lang="ts">', () =>
   expect(names).toContain('Interpolation')        // {{ msg }}
   expect(names).toContain('ScriptAttributeValue') // :class / @click 的 JS 表达式
   expect(names).toContain('TypeAnnotation')       // <script lang="ts"> 按 TS 解析
+})
+
+test('tsx parses JSX elements, template attributes and type annotations', () => {
+  const tree = parseWith('tsx', SAMPLES.tsx)!
+  const names = new Set<string>()
+  tree.iterate({ enter: (n) => { names.add(n.name) } })
+  expect(names).toContain('JSXElement')
+  expect(names).toContain('JSXSelfClosingTag')
+  expect(names).toContain('JSXAttribute')
+  expect(names).toContain('JSXCloseTag')
+  expect(names).toContain('TemplateString')
+  expect(names).toContain('TypeAnnotation')
 })
 
 test('an undefined language falls back to markdown and still parses', () => {

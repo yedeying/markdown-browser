@@ -6,7 +6,7 @@ import FolderView, { type ClipboardState } from './FolderView.js'
 import { getFileType, getEditorLang, isBinaryContent } from '../utils/fileType.js'
 import type { FileNode } from '../../types.js'
 import ShareDialog from './ShareDialog.js'
-import { getSharePrefix } from '../utils/fsApi.js'
+import { apiFetch, getSharePrefix } from '../utils/fsApi.js'
 import { downloadSingleFile } from '../utils/download.js'
 import Icon from './ui/Icon.js'
 import Skeleton from './ui/Skeleton.js'
@@ -378,14 +378,23 @@ const ContentArea: FunctionalComponent<Props> = ({
   // - 有未保存改动 → 不覆盖，弹出提示条让用户选择
   useEffect(() => {
     const handler = async (e: Event) => {
-      const { path } = (e as CustomEvent<{ path: string }>).detail
+      const { path, reconnect } = (e as CustomEvent<{ path: string; reconnect?: boolean }>).detail
       if (!filePath || path !== filePath) return
       if (unsaved) {
+        // SSE 重连补查时，仅在磁盘内容确实与已加载基准不同才提示外部更新，避免误报
+        if (reconnect && content !== null) {
+          try {
+            const res = await apiFetch(`/api/file/${encodeURI(path)}`)
+            if (res.ok && (await res.text()) === content) return
+          } catch {
+            return
+          }
+        }
         setExternalUpdatePending(true)
       } else {
         restoreScrollForRef.current = filePath
         const reloaded = await onSilentReload?.()
-        // 重载被抑制（self-save 窗口内）：撤回待恢复标记，
+        // 重载被抑制（self-save 窗口内或内容无变化）：撤回待恢复标记，
         // 否则它会残留到下一次无关的 content 变化上
         if (reloaded === false && restoreScrollForRef.current === filePath) {
           restoreScrollForRef.current = null
@@ -394,7 +403,7 @@ const ContentArea: FunctionalComponent<Props> = ({
     }
     window.addEventListener('vmd:file-reload', handler)
     return () => window.removeEventListener('vmd:file-reload', handler)
-  }, [filePath, unsaved, onSilentReload])
+  }, [filePath, unsaved, content, onSilentReload])
 
   // 提示条：加载新版本 —— 主动放弃本地未保存编辑，重载磁盘内容
   const handleExternalReload = useCallback(async () => {
